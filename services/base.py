@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:16:55
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-07 06:36:00
+@LastEditTime : 2026-01-07 07:25:36
 @FilePath     : base.py
 @Description  :
 '''
@@ -48,7 +48,7 @@ class BaseOnnxInfer:
         self.get_input_details()
         self.get_output_details()
         self.session.run(self.output_names, {self.input_names[0]: np.zeros(self.input_model_shape, dtype=np.float32)})
-        print("warmup done")
+        vision_logger.info("warmup done success")
 
     def preprocess(self, im):
         """预处理输入图像
@@ -59,7 +59,7 @@ class BaseOnnxInfer:
         Returns:
             np.ndarray: 处理后的图像
         """
-        img, self.r, self.dw, self.dh = letterbox(im=im, auto=False)
+        img, self.r, self.dw, self.dh = letterbox(im=im, auto=False, new_shape=self.input_model_shape[2:])
         im = np.stack([img])
         im = im[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW
         im = np.ascontiguousarray(im).astype(np.float32)
