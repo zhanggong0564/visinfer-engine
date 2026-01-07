@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:23:42
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-07 06:35:41
+@LastEditTime : 2026-01-07 07:18:31
 @FilePath     : logger.py
 @Description  :
 '''
@@ -13,6 +13,7 @@ from pathlib import Path
 from loguru import logger
 from typing import Optional
 from config import settings  # 引入项目全局配置
+import threading
 
 
 # 定义单例元类（线程安全的单例实现）
@@ -23,7 +24,7 @@ class SingletonMeta(type):
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
             if cls not in cls._lock:
-                cls._lock[cls] = object()
+                cls._lock[cls] = threading.Lock()
             with cls._lock[cls]:  # 加锁防止多线程重复创建
                 if cls not in cls._instances:
                     cls._instances[cls] = super().__call__(*args, **kwargs)
