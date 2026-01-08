@@ -8,3 +8,4 @@
 '''
 
 from .dc_fuse import DCFuseDetectorAPI
+from .lap_surf import LapSurfJudgeApi
