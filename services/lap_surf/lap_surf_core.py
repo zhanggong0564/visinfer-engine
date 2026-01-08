@@ -8,6 +8,7 @@
 '''
 
 from typing import List
+from utils import vision_logger
 
 
 class BoundingBox:
@@ -217,7 +218,9 @@ def match_all_targets(
                     if dist < min_dist:
                         min_dist = dist
                         best_roi = roi
-                best_roi.nuts.append(nut)
+                if best_roi is not None:
+                    best_roi.nuts.append(nut)
+                vision_logger.warning("螺母 可能超出 ROI 范围")
     for screw in screws:
         if not screw.is_match:
             # 找到包含螺丝中心的所有ROI
