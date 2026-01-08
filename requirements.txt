@@ -1,0 +1,7 @@
+opencv-python
+flask==3.1.2
+uvicorn
+fastapi
+loguru
+python-multipart
+pydantic_settings
