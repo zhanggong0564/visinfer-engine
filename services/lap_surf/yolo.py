@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:38:07
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-07 06:38:08
+@LastEditTime : 2026-01-08 02:35:56
 @FilePath     : yolov11.py
 @Description  :
 '''
@@ -15,39 +15,20 @@ sys.path.append(os.getcwd())
 import numpy as np
 import onnxruntime
 from utils import vision_logger
-from .utils import *
-from .box import non_max_suppression_v8
-from .base import BaseOnnxInfer
+from ..utils import *
+from ..box import non_max_suppression_v8
+from ..base import BaseOnnxInfer
 
 onnxruntime.set_default_logger_severity(3)
 
 
 class yolo11ONNX(BaseOnnxInfer):
-    def __init__(
-        self, model_path, nc, confThreshold=0.5, nmsThreshold=0.5, providers=None, input_shape=(1024, 1024), task="det"
-    ):
+    def __init__(self, model_path, nc, confThreshold=0.5, nmsThreshold=0.5, providers=None, task="det"):
         super().__init__(model_path, confThreshold, nmsThreshold, providers)
         self.task = task
         self.filter_classes = None
         self.agnostic = False
         self.nc = nc
-        self.input_shape = input_shape
-
-    def preprocess(self, im):
-        """预处理输入图像
-
-        Args:
-            im (np.ndarray): 输入图像
-
-        Returns:
-            np.ndarray: 处理后的图像
-        """
-        img, self.r, self.dw, self.dh = letterbox(im=im, auto=False, new_shape=self.input_shape)
-        im = np.stack([img])
-        im = im[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW
-        im = np.ascontiguousarray(im).astype(np.float32)
-        im /= 255.0  # 归一化到0-1
-        return im
 
     def post_process(self, preds):
         p = non_max_suppression_v8(
