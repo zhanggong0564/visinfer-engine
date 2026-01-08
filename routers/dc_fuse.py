@@ -16,7 +16,7 @@ from config import settings
 import cv2
 import numpy as np
 
-router = APIRouter()
+dc_router = APIRouter()
 _detector_instance = None
 
 
@@ -33,7 +33,7 @@ async def get_detector_singleton() -> DCFuseDetectorAPI:
     return _detector_instance
 
 
-@router.post(
+@dc_router.post(
     "/dcfuse_detect",
     summary="直流熔丝检测接口",
     description="根据输入的图像和产品类型，返回检测结果",
