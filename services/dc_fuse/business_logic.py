@@ -24,6 +24,7 @@ class ResultJudge:
         is_detect_nut=False,
         is_detectscrew=True,
         is_small_screw=False,
+        metal_piece_num=2,
     ):
         self.ways = ways
         self.is_detect_metal_piece = is_detect_metal_piece
@@ -31,6 +32,7 @@ class ResultJudge:
         self.is_detect_nut = is_detect_nut
         self.is_detectscrew = is_detectscrew
         self.is_small_screw = is_small_screw
+        self.metal_piece_num2 = metal_piece_num
         self.it2classes = {
             "screw_1": "screw",
             "nut_2": "nut",
@@ -74,8 +76,12 @@ class ResultJudge:
             if len(nut) != self.ways * 2:
                 res["nut"] = False
         if self.is_detect_metal_piece:
-            if not (len(metal_piece) == 4 or len(metal_piece) == 6):
-                res["metal_piece"] = False
+            if self.metal_piece_num2:
+                if len(metal_piece) != 2:
+                    res["metal_piece"] = False
+            else:
+                if not (len(metal_piece) == 4 or len(metal_piece) == 6):
+                    res["metal_piece"] = False
         if self.is_detect_upper_screw:
             if (len(upper_screw) != 2 or len(lower_screw) != 2) and (
                 len(no_upper_screw) > 0 or len(no_lower_screw) > 0
@@ -111,7 +117,9 @@ class DCFuseDetectorAPI:
         "六路无熔丝盒无磁环": ResultJudge(ways=6, is_detectscrew=False, is_detect_metal_piece=True, is_detect_nut=True),
         "六路有熔丝盒无磁环": ResultJudge(ways=6, is_detectscrew=True, is_detect_nut=True, is_detect_metal_piece=True),
         "七路无熔丝盒无磁环": ResultJudge(ways=7, is_detectscrew=False, is_detect_nut=True),
-        "七路有熔丝盒无磁环": ResultJudge(ways=7, is_detect_metal_piece=False, is_detectscrew=True, is_detect_nut=True),
+        "七路有熔丝盒无磁环": ResultJudge(
+            ways=7, is_detect_metal_piece=True, is_detectscrew=True, is_detect_nut=True, metal_piece_num=2
+        ),
     }
 
     def __init__(self, model_path: str, conf_threshold: float = 0.4):
