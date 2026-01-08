@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 07:48:54
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-07 07:59:18
+@LastEditTime : 2026-01-08 06:24:21
 @FilePath     : common.py
 @Description  :
 '''
@@ -41,3 +41,11 @@ class ResultResponse(BaseModel):
     status: Literal["true", "false"] = Field(..., description="整体检测状态（false=正常，true=异常）")
     error_msg: str = Field(..., description="错误信息（无错误则为空字符串）")
     message: str = Field(..., description="检测结果描述（如“检测成功”）")
+
+
+class CommonResponse(BaseModel):
+    """接口顶层返回模型（完全匹配示例）"""
+
+    code: Literal[0, 1] = Field(..., description="0=识别失败，1=识别成功（整数类型）")
+    message: str = Field(..., description="返回消息（如“成功”）")
+    result: ResultResponse = Field(..., description="检测结果详情对象")

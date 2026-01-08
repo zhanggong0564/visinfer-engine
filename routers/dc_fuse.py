@@ -2,13 +2,13 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 07:36:21
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-07 09:44:51
+@LastEditTime : 2026-01-08 07:52:38
 @FilePath     : dc_fuse.py
 @Description  :
 '''
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
-from schemas import DCFuseRequest, DCFuseResponse
+from schemas import DCFuseRequest, CommonResponse
 import json
 from utils import vision_logger
 from services import DCFuseDetectorAPI
@@ -37,7 +37,7 @@ async def get_detector_singleton() -> DCFuseDetectorAPI:
     "/dcfuse_detect",
     summary="直流熔丝检测接口",
     description="根据输入的图像和产品类型，返回检测结果",
-    response_model=DCFuseResponse,
+    response_model=CommonResponse,
 )
 async def dcfuse_detect(
     file: UploadFile = File(..., description="直流熔丝检测图片(jpg/png格式)"),
@@ -77,6 +77,6 @@ async def dcfuse_detect(
 
         vision_logger.info("检测成功")
 
-        return DCFuseResponse(code=1, message="success", result=result_info)
+        return CommonResponse(code=1, message="success", result=result_info)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"图片处理过程中发生错误: {str(e)}")
