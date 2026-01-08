@@ -11,6 +11,8 @@ from .yolo import DCFuseDetector
 import numpy as np
 from collections import defaultdict
 from utils import vision_logger
+from ..utils import vis_box_mask
+import cv2
 
 
 class ResultJudge:
