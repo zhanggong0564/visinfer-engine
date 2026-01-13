@@ -106,8 +106,8 @@ def main():
 
     uvicorn.run(
         "app:app",
-        host="0.0.0.0",
-        port=8090,
+        host=settings.HOST,
+        port=settings.PORT,
         reload=True,  # 开发模式开启热重载
         log_level=settings.LOG_LEVEL.lower(),
         access_log=False,  # 禁用uvicorn的访问日志，使用自定义日志

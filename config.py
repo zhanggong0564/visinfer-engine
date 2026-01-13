@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     API_TITLE: str = "Mobile Vision alg API"
     API_VERSION: str = "1.0.0"
 
+    HOST: str = "0.0.0.0"
+    PORT: int = 3007
+
     LOG_DIR: str = "logs"
     LOG_LEVEL: str = "INFO"
     dc_fuse: DcFuseConfig = DcFuseConfig()
