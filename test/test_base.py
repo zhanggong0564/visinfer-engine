@@ -70,7 +70,7 @@ class TestBase(unittest.TestCase):
             self.assertIsInstance(item["coordinate"], list)
             # 修正：坐标可能是8个值（4个点）而不是4个值,
             self.assertTrue(
-                len(item["coordinate"]) in [0, 4, 8], f"coordinate字段应该有4或8个值，实际有: {len(item['coordinate'])}"
+                len(item["coordinate"]) in [0, 8], f"coordinate字段应该有0或8个值，实际有: {len(item['coordinate'])}"
             )
             for coord in item["coordinate"]:
                 self.assertIsInstance(coord, (int, float))
