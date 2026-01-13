@@ -9,3 +9,4 @@
 
 from .dc_fuse import dc_router
 from .lap_surf import lap_surf_router
+from .plate import plate_router
