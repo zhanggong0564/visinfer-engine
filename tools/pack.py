@@ -105,7 +105,7 @@ def collect_encrypted_files_from_module_builds():
 
             # 对于services模块，还需要复制子目录的__init__.py文件
             if folder == "services":
-                for subdir in ["dc_fuse", "lap_surf"]:
+                for subdir in ["dc_fuse", "lap_surf", "plate_screw"]:
                     subdir_init = module_dir / subdir / "__init__.py"
                     if subdir_init.exists():
                         target_subdir_init = encrypted_root / folder / subdir / "__init__.py"
