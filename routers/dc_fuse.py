@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 07:36:21
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-08 07:52:38
+@LastEditTime : 2026-01-14 06:49:22
 @FilePath     : dc_fuse.py
 @Description  :
 '''
@@ -68,6 +68,11 @@ async def dcfuse_detect(
         img_bytes = await file.read()
         img_array = np.frombuffer(img_bytes, dtype=np.uint8)
         image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+        h, w, _ = image.shape
+        if w < h:
+            # 向左旋转90度
+            image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            cv2.imwrite("rotated_image.jpg", image)  # Debug: 保存旋转后的图片
 
         if image is None:
             vision_logger.error("图片读取失败")
