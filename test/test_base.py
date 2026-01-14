@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-08 05:02:37
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-08 06:36:01
+@LastEditTime : 2026-01-14 06:53:14
 @FilePath     : test_base.py
 @Description  :
 '''
@@ -16,7 +16,7 @@ class TestBase(unittest.TestCase):
     """测试基础类"""
 
     def setUp(self):
-        self.base_url = "http://0.0.0.0:8090"
+        self.base_url = "http://0.0.0.0:3007"
 
     def _make_api_request(self, image_path, url, json_data):
         """发送API请求的辅助方法"""
