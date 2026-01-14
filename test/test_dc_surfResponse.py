@@ -26,12 +26,12 @@ class TestDCFuseResponse(TestBase):
 
     def setUp(self):
         super().setUp()
-        self.test_image_path = "./images/lQDPJwfWMYLzRv_NC9DND8CwNWP5oG42qP0I3k_Zt4wLAA_4032_3024.jpg"
+        self.test_image_path = "./images/20260106145926_0pcejci1.jpeg"
         self.url = f"{self.base_url}/api/v1/dcfuse_detect/"
         self.data_dict = {
-            "product": "七路无熔丝盒无磁环",  # 产品号
+            "product": "六无熔丝盒无磁环",  # 产品号
             "type": "WLSH-7",  # 型号
-            "modelParams": {"product_model": "七路无熔丝盒无磁环"},  # 嵌套的模型参数  # 型号参数值
+            "modelParams": {"product_model": "六路无熔丝盒无磁环"},  # 嵌套的模型参数  # 型号参数值
         }
 
     def test_mobile_vision_identification_success(self):
