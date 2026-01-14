@@ -2,8 +2,8 @@
 @Author       : gongzhang4
 @Date         : 2026-01-08 05:49:22
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-08 05:49:23
-@FilePath     : test_lapsurfResponse copy.py
+@LastEditTime : 2026-01-14 06:52:52
+@FilePath     : test_dc_surfResponse.py
 @Description  :
 '''
 
