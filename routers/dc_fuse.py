@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 07:36:21
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-14 06:49:22
+@LastEditTime : 2026-01-16 09:24:46
 @FilePath     : dc_fuse.py
 @Description  :
 '''
@@ -78,10 +78,8 @@ async def dcfuse_detect(
             raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
         result_info = detector.detect(image, product_model)
         vision_logger.info(f"检测结果: {json.dumps(result_info, ensure_ascii=False, indent=2)}")
-        if result_info["status"] == "true":
-            result = CommonResponse(code=1, message="检测成功", result=result_info)
-        else:
-            result = CommonResponse(code=0, message="检测失败", result=result_info)
+
+        result = CommonResponse(code=1, message="检测成功", result=result_info)
         vision_logger.info("参数校验通过，返回检测结果")
         return result
     except Exception as e:
