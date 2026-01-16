@@ -2,13 +2,26 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 05:45:41
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-13 08:17:39
+@LastEditTime : 2026-01-16 05:02:57
 @FilePath     : config.py
 @Description  :
 '''
 
 import os
 from pydantic_settings import BaseSettings
+
+
+class IndicatorLightConfig:
+    class ModelPath:
+        det_model_path: str = "./weights/IndicatorLightDet_v2.onnx"
+        rec_model_path: str = "./weights/IndicatorLightRec_v2.onnx"
+
+    class ConfThreshold:
+        det: float = 0.25
+        rec: float = 0.25
+
+    JSON_PATH: str = "weights/jsons/standard_embeddings.json"
+    SIM_THR: float = 0.7
 
 
 class PlateScrewConfig:
@@ -38,6 +51,7 @@ class Settings(BaseSettings):
     dc_fuse: DcFuseConfig = DcFuseConfig()
     lap_surf: LapSufConfig = LapSufConfig()
     plate_screw: PlateScrewConfig = PlateScrewConfig()
+    indicator_light: IndicatorLightConfig = IndicatorLightConfig()
 
     class Config:
         env_file = ".env"
