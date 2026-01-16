@@ -72,7 +72,6 @@ async def dcfuse_detect(
         if w < h:
             # 向左旋转90度
             image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            cv2.imwrite("rotated_image.jpg", image)  # Debug: 保存旋转后的图片
 
         if image is None:
             vision_logger.error("图片读取失败")

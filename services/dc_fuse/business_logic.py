@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 07:11:32
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-07 07:19:48
+@LastEditTime : 2026-01-16 09:37:02
 @FilePath     : business_logic.py
 @Description  :
 '''
@@ -138,7 +138,8 @@ class DCFuseDetectorAPI:
         """加载模型"""
         return DCFuseDetector(model_path, conf_threshold)
 
-    def detect(self, image: np.ndarray, detect_type: str) -> dict:
+    def detect(self, image: np.ndarray, detect_type: str, is_rotate: bool = False) -> dict:
+        h, w, _ = image.shape
         """检测图像中的直流熔丝盒"""
         if detect_type not in self.SUPPORTED_TYPES:
             return {"details": [], "status": False, "error_msg": f"不支持的检测类型: {detect_type}"}
@@ -159,16 +160,50 @@ class DCFuseDetectorAPI:
             x2, y2 = ltx + w, lty
             x3, y3 = rbx, rby
             x4, y4 = ltx, lty + h
-            points_normalized = [
-                x1 / image.shape[1],
-                y1 / image.shape[0],
-                x2 / image.shape[1],
-                y2 / image.shape[0],
-                x3 / image.shape[1],
-                y3 / image.shape[0],
-                x4 / image.shape[1],
-                y4 / image.shape[0],
-            ]
+            # points_normalized = [
+            #     x1 / image.shape[1],
+            #     y1 / image.shape[0],
+            #     x2 / image.shape[1],
+            #     y2 / image.shape[0],
+            #     x3 / image.shape[1],
+            #     y3 / image.shape[0],
+            #     x4 / image.shape[1],
+            #     y4 / image.shape[0],
+            # ]
+            if is_rotate:
+                # 旋转后的bbox需要映射回原始坐标
+                true_original_w = h
+                true_original_h = w
+
+                def rotate_point_back(x, y):
+                    # 将旋转后的点(x, y)还原到原始图像坐标
+                    return (h - y - 1, x)
+
+                x1, y1 = rotate_point_back(x1, y1)
+                x2, y2 = rotate_point_back(x2, y2)
+                x3, y3 = rotate_point_back(x3, y3)
+                x4, y4 = rotate_point_back(x4, y4)
+                points_normalized = [
+                    x1 / true_original_w,
+                    y1 / true_original_h,
+                    x2 / true_original_w,
+                    y2 / true_original_h,
+                    x3 / true_original_w,
+                    y3 / true_original_h,
+                    x4 / true_original_w,
+                    y4 / true_original_h,
+                ]
+            else:
+                points_normalized = [
+                    x1 / w,
+                    y1 / h,
+                    x2 / w,
+                    y2 / h,
+                    x3 / w,
+                    y3 / h,
+                    x4 / w,
+                    y4 / h,
+                ]
 
             # bbox_normalized = [ltx / image.shape[1], lty / image.shape[0], rbx / image.shape[1], rby / image.shape[0]]
             det_info[label].append({"bbox": points_normalized, "score": score})
