@@ -58,7 +58,11 @@ async def lap_surf_detect(
             raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
         result_info = judge.detect(image)
         vision_logger.info(f"检测结果: {json.dumps(result_info, ensure_ascii=False, indent=2)}")
-        vision_logger.info("检测成功")
-        return CommonResponse(code=1, message="success", result=result_info)
+        if result_info["status"] == "true":
+            result = CommonResponse(code=1, message="检测成功", result=result_info)
+        else:
+            result = CommonResponse(code=0, message="检测失败", result=result_info)
+        vision_logger.info("参数校验通过，返回检测结果")
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"图片处理过程中发生错误: {str(e)}")
