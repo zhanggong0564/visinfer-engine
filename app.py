@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 05:45:30
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-13 08:17:52
+@LastEditTime : 2026-01-16 05:56:13
 @FilePath     : app.py
 @Description  :
 '''
@@ -14,7 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_swagger_ui_html
 from config import settings
 from utils import vision_logger
-from routers import dc_router, lap_surf_router, plate_router
+from routers import dc_router, lap_surf_router, plate_router, indicator_router
 import uvicorn
 
 
@@ -40,6 +40,7 @@ app.add_middleware(
 app.include_router(dc_router, prefix="/api/v1", tags=["直流熔丝检测"])
 app.include_router(lap_surf_router, prefix="/api/v1", tags=["搭界面检测"])
 app.include_router(plate_router, prefix="/api/v1", tags=["铁片检测"])
+app.include_router(indicator_router, prefix="/api/v1", tags=["指示灯检测"])
 
 
 # 全局异常处理
