@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 07:36:21
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-16 09:24:46
+@LastEditTime : 2026-01-16 09:40:35
 @FilePath     : dc_fuse.py
 @Description  :
 '''
@@ -69,14 +69,15 @@ async def dcfuse_detect(
         img_array = np.frombuffer(img_bytes, dtype=np.uint8)
         image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
         h, w, _ = image.shape
-        if w < h:
+        is_rotate = w < h
+        if is_rotate:
             # 向左旋转90度
             image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
         if image is None:
             vision_logger.error("图片读取失败")
             raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
-        result_info = detector.detect(image, product_model)
+        result_info = detector.detect(image, product_model, is_rotate=is_rotate)
         vision_logger.info(f"检测结果: {json.dumps(result_info, ensure_ascii=False, indent=2)}")
 
         result = CommonResponse(code=1, message="检测成功", result=result_info)
