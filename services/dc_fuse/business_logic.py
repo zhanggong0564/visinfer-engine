@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 07:11:32
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-07 07:19:48
+@LastEditTime : 2026-01-17 05:45:57
 @FilePath     : business_logic.py
 @Description  :
 '''
@@ -24,7 +24,7 @@ class ResultJudge:
         is_detect_nut=False,
         is_detectscrew=True,
         is_small_screw=False,
-        metal_piece_num=2,
+        metal_piece_num=4,
     ):
         self.ways = ways
         self.is_detect_metal_piece = is_detect_metal_piece
@@ -76,7 +76,7 @@ class ResultJudge:
             if len(nut) != self.ways * 2:
                 res["nut"] = False
         if self.is_detect_metal_piece:
-            if self.metal_piece_num2:
+            if self.metal_piece_num2 == 2:
                 if len(metal_piece) != 2:
                     res["metal_piece"] = False
             else:
