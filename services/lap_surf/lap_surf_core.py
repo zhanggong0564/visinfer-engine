@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:42:49
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-13 07:20:36
+@LastEditTime : 2026-01-16 10:03:26
 @FilePath     : lap_surf_core.py
 @Description  :  lap surf 业务逻辑
 '''
@@ -84,7 +84,7 @@ class ROI:
                     "coordinate": [
                         self.bb.x1 / self.bb.w,
                         self.bb.y1 / self.bb.h,
-                        (self.bb.x1 + self.bb.w) / self.bb.w,
+                        self.bb.x2 / self.bb.w,
                         self.bb.y1 / self.bb.h,
                         self.bb.x2 / self.bb.w,
                         self.bb.y2 / self.bb.h,
@@ -111,7 +111,7 @@ class ROI:
                     "coordinate": [
                         self.lap_joint.x1 / self.lap_joint.w,
                         self.lap_joint.y1 / self.lap_joint.h,
-                        (self.lap_joint.x1 + self.lap_joint.w) / self.lap_joint.w,
+                        self.lap_joint.x2 / self.lap_joint.w,
                         self.lap_joint.y1 / self.lap_joint.h,
                         self.lap_joint.x2 / self.lap_joint.w,
                         self.lap_joint.y2 / self.lap_joint.h,
@@ -138,8 +138,8 @@ class ROI:
                     "coordinate": [
                         nut.x1 / self.bb.w,
                         nut.y1 / self.bb.h,
-                        (nut.x1 + nut.w) / self.bb.w,
-                        nut.y2 / self.bb.h,
+                        nut.x2 / self.bb.w,
+                        nut.y1 / self.bb.h,
                         nut.x2 / self.bb.w,
                         nut.y2 / self.bb.h,
                         nut.x1 / self.bb.w,
@@ -156,8 +156,8 @@ class ROI:
                     "coordinate": [
                         screw.x1 / self.bb.w,
                         screw.y1 / self.bb.h,
-                        (screw.x1 + screw.w) / self.bb.w,
-                        screw.y2 / self.bb.h,
+                        screw.x2 / self.bb.w,
+                        screw.y1 / self.bb.h,
                         screw.x2 / self.bb.w,
                         screw.y2 / self.bb.h,
                         screw.x1 / self.bb.w,
@@ -174,8 +174,8 @@ class ROI:
                     "coordinate": [
                         nut.x1 / self.bb.w,
                         nut.y1 / self.bb.h,
-                        (nut.x1 + nut.w) / self.bb.w,
-                        nut.y2 / self.bb.h,
+                        nut.x2 / self.bb.w,
+                        nut.y1 / self.bb.h,
                         nut.x2 / self.bb.w,
                         nut.y2 / self.bb.h,
                         nut.x1 / self.bb.w,
