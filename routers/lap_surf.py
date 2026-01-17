@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-08 05:51:33
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-17 03:10:57
+@LastEditTime : 2026-01-17 05:21:47
 @FilePath     : lap_surf.py
 @Description  :
 '''
@@ -62,7 +62,8 @@ async def lap_surf_detect(
             vision_logger.error("图片读取失败")
             raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
         result_info = judge.detect(image)
-        result_info = rotate_points(result_info, w, h)
+        if is_rotate:
+            result_info = rotate_points(result_info, w, h)
         vision_logger.info(f"检测结果: {json.dumps(result_info, ensure_ascii=False, indent=2)}")
         result = CommonResponse(code=1, message="检测成功", result=result_info)
 
