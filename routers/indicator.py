@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-16 05:33:06
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-16 06:28:13
+@LastEditTime : 2026-01-17 05:19:35
 @FilePath     : indicator.py
 @Description  :
 '''
@@ -81,7 +81,8 @@ async def indicator_light_detect(
             vision_logger.error("图片读取失败")
             raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
         result_info = detector.detect(image, type_s=product_type, is_register=register)
-        result_info = rotate_points(result_info, w, h)
+        if not register and w < h:
+            result_info = rotate_points(result_info, w, h)
         vision_logger.info(f"检测结果: {json.dumps(result_info, ensure_ascii=False, indent=2)}")
         result = CommonResponse(code=1, message="检测成功", result=result_info)
         vision_logger.info("参数校验通过，返回检测结果")
