@@ -64,10 +64,8 @@ async def lap_surf_detect(
         result_info = judge.detect(image)
         result_info = rotate_points(result_info, w, h)
         vision_logger.info(f"检测结果: {json.dumps(result_info, ensure_ascii=False, indent=2)}")
-        if result_info["status"] == "true":
-            result = CommonResponse(code=1, message="检测成功", result=result_info)
-        else:
-            result = CommonResponse(code=0, message="检测失败", result=result_info)
+        result = CommonResponse(code=1, message="检测成功", result=result_info)
+
         vision_logger.info("参数校验通过，返回检测结果")
         return result
     except Exception as e:
