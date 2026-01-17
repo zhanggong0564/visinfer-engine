@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-08 01:55:25
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-08 06:02:46
+@LastEditTime : 2026-01-17 03:12:49
 @FilePath     : lap_suf.py
 @Description  :
 '''
