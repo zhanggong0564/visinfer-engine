@@ -15,6 +15,7 @@ from services import IndicatorLightBusinessAPI
 from config import settings
 import cv2
 import numpy as np
+from services import rotate_points
 
 indicator_router = APIRouter()
 _detector_instance = None
@@ -80,11 +81,9 @@ async def indicator_light_detect(
             vision_logger.error("图片读取失败")
             raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
         result_info = detector.detect(image, type_s=product_type, is_register=register)
+        result_info = rotate_points(result_info, w, h)
         vision_logger.info(f"检测结果: {json.dumps(result_info, ensure_ascii=False, indent=2)}")
-        if result_info["status"] == "true":
-            result = CommonResponse(code=1, message="检测成功", result=result_info)
-        else:
-            result = CommonResponse(code=0, message="检测失败", result=result_info)
+        result = CommonResponse(code=1, message="检测成功", result=result_info)
         vision_logger.info("参数校验通过，返回检测结果")
         return result
     except Exception as e:
