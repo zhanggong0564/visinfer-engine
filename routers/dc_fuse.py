@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 07:36:21
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-16 09:40:35
+@LastEditTime : 2026-01-17 03:33:49
 @FilePath     : dc_fuse.py
 @Description  :
 '''
@@ -15,6 +15,7 @@ from services import DCFuseDetectorAPI
 from config import settings
 import cv2
 import numpy as np
+from services import rotate_points
 
 dc_router = APIRouter()
 _detector_instance = None
@@ -77,7 +78,8 @@ async def dcfuse_detect(
         if image is None:
             vision_logger.error("图片读取失败")
             raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
-        result_info = detector.detect(image, product_model, is_rotate=is_rotate)
+        result_info = detector.detect(image, product_model)
+        result_info = rotate_points(result_info, w, h)
         vision_logger.info(f"检测结果: {json.dumps(result_info, ensure_ascii=False, indent=2)}")
 
         result = CommonResponse(code=1, message="检测成功", result=result_info)
