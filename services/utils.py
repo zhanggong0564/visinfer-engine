@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:20:56
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-07 06:20:57
+@LastEditTime : 2026-01-17 03:10:21
 @FilePath     : utils.py
 @Description  :
 '''
@@ -418,3 +418,49 @@ def segments2masks(points, mask_shape):
     for p in points:
         cv2.fillPoly(gt, p.astype(np.int32)[np.newaxis, :, :], int(1))
     return gt
+
+
+def rotate_points(res, src_w, src_h):
+    w = src_h
+    h = src_w
+
+    detailList = res.get("detailList", [])
+    for detail in detailList:
+        # 归一化坐标还原,并限制wh
+        x1, y1, x2, y2, x3, y3, x4, y4 = detail.get("coordinate", [])
+        x1, y1, x2, y2, x3, y3, x4, y4 = (
+            min(w, max(0, int(x1 * w))),
+            min(h, max(0, int(y1 * h))),
+            min(w, max(0, int(x2 * w))),
+            min(h, max(0, int(y2 * h))),
+            min(w, max(0, int(x3 * w))),
+            min(h, max(0, int(y3 * h))),
+            min(w, max(0, int(x4 * w))),
+            min(h, max(0, int(y4 * h))),
+        )
+
+        x2 = x3
+        y2 = y3
+
+        x_1 = h - y2
+        y_1 = x1
+
+        x_2 = h - y1
+        y_2 = x2
+
+        x_3 = x_2
+        y_3 = y_1
+
+        x_4 = x_1
+        y_4 = y_2
+        detail["coordinate"] = [
+            x_1 / src_w,
+            y_1 / src_h,
+            x_3 / src_w,
+            y_3 / src_h,
+            x_2 / src_w,
+            y_2 / src_h,
+            x_4 / src_w,
+            y_4 / src_h,
+        ]
+    return res
