@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-08 05:51:33
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-08 08:01:09
+@LastEditTime : 2026-01-17 03:10:57
 @FilePath     : lap_surf.py
 @Description  :
 '''
@@ -15,6 +15,7 @@ from services import LapSurfJudgeApi
 from config import settings
 import cv2
 import numpy as np
+from services import rotate_points
 
 lap_surf_router = APIRouter()
 _judge_instance = None
@@ -52,11 +53,16 @@ async def lap_surf_detect(
         img_bytes = await file.read()
         img_array = np.frombuffer(img_bytes, dtype=np.uint8)
         image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-
+        h, w, _ = image.shape
+        is_rotate = w < h
+        if is_rotate:
+            # 向左旋转90度
+            image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
         if image is None:
             vision_logger.error("图片读取失败")
             raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
         result_info = judge.detect(image)
+        result_info = rotate_points(result_info, w, h)
         vision_logger.info(f"检测结果: {json.dumps(result_info, ensure_ascii=False, indent=2)}")
         if result_info["status"] == "true":
             result = CommonResponse(code=1, message="检测成功", result=result_info)
