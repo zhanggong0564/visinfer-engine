@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-17 06:31:48
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-17 06:32:53
+@LastEditTime : 2026-01-17 06:44:26
 @FilePath     : yolo.py
 @Description  :
 '''
@@ -15,7 +15,7 @@ import numpy as np
 
 class RoiDet(BaseOnnxInfer):
     def __init__(self, model_path, nc, input_model_shape, confThreshold=0.5, nmsThreshold=0.5, providers=None):
-        super().__init__(model_path, input_model_shape, confThreshold, nmsThreshold, providers)
+        super().__init__(model_path, confThreshold, nmsThreshold, providers)
         self.task = "rect"
         self.filter_classes = None
         self.agnostic = False
