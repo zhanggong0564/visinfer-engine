@@ -22,7 +22,7 @@ class BaseOnnxInfer:
         self.model_path = model_path
         self.confThreshold = confThreshold
         self.nmsThreshold = nmsThreshold
-        self.providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        self.providers = ["CUDAExecutionProvider"]
         self.r = None
         self.dw = None
         self.dh = None
