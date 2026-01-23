@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 07:14:19
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-17 03:23:43
+@LastEditTime : 2026-01-23 08:53:29
 @FilePath     : dc_fuse.py
 @Description  :
 '''
@@ -27,6 +27,7 @@ from utils import vision_logger
 import json
 from services import rotate_points
 import numpy as np
+from services.data_base import InputParamsBusiness
 
 
 if __name__ == '__main__':
@@ -41,10 +42,11 @@ if __name__ == '__main__':
         image_src = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
         h, w, _ = image_src.shape
 
-    detector = DCFuseDetectorAPI(model_path=settings.dc_fuse.model_path, conf_threshold=settings.dc_fuse.confThreshold)
-    res = detector.detect(image, type_name)
+    detector = DCFuseDetectorAPI(settings)
+    input = InputParamsBusiness(image=image, product_type=type_name)
+    res = detector.detect(input)
 
-    res_new = rotate_points(res, w, h)
+    res_new = rotate_points(res.to_dict(), w, h)
     for detail in res_new.get("detailList", []):
         x1, y1, x2, y2, x3, y3, x4, y4 = detail.get("coordinate", [])
         x1 = int(x1 * w)
