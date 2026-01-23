@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:48:03
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-07 07:20:17
+@LastEditTime : 2026-01-22 01:29:46
 @FilePath     : yolo.py
 @Description  :
 '''
@@ -12,11 +12,12 @@ from ..utils import *
 from ..box import non_max_suppression_v8
 from collections import defaultdict
 from utils import vision_logger
+from ..data_base import DetectResult
 
 
 class DCFuseDetector(BaseOnnxInfer):
-    def __init__(self, model_path, confThreshold=0.5, nmsThreshold=0.5, providers=None, task="det"):
-        super().__init__(model_path, confThreshold, nmsThreshold, providers)
+    def __init__(self, model_path, confThreshold=0.5, nmsThreshold=0.5, task="det"):
+        super().__init__(model_path, confThreshold, nmsThreshold)
         self.task = task
         self.filter_classes = None
         self.agnostic = False
@@ -59,10 +60,7 @@ class DCFuseDetector(BaseOnnxInfer):
             bbox = xywhr2xyxyxyxy(bbox)
         # else:
         #     bbox = xywh2xyxy(bbox)
-        conf = pred[:, -2]
-        clas = pred[:, -1]
-        res["rect"] = bbox.tolist()
-        res["score"] = conf.tolist()
-        res["cls"] = clas.tolist()
-        res["cls_name"] = [self.id2name[int(cls)] for cls in clas]
-        return res
+        detect_result = DetectResult(
+            bbox.tolist(), pred[:, -2].tolist(), pred[:, -1].tolist(), [self.id2name[int(cls)] for cls in pred[:, -1]]
+        )
+        return detect_result
