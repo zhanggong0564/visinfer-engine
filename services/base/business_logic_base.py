@@ -40,5 +40,15 @@ class BusinessLogicBase:
     def registered_post_process(self, result: IndicatorLightEmbedding, product_type: str) -> bool:
         raise NotImplementedError
 
-    def result_post_process(self, result: MoMResult) -> MoMResult:
-        raise NotImplementedError
+    def result_post_process(self, result: MoMResult, w, h) -> MoMResult:
+        """结果后处理"""
+        detailList = result.detailList
+        for item in detailList:
+            coordinate = item.coordinate
+            ltx, lty, rbx, rby = coordinate
+            x1, y1 = ltx, lty
+            x2, y2 = rbx, lty
+            x3, y3 = rbx, rby
+            x4, y4 = ltx, rby
+            item.coordinate = [x1 / w, y1 / h, x2 / w, y2 / h, x3 / w, y3 / h, x4 / w, y4 / h]
+        return result
