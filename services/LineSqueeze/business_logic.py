@@ -10,7 +10,7 @@
 from .yolo import RoiDet
 import cv2
 import numpy as np
-from ..base import sort_boxes, vis_box_mask
+from ..base.onnx_base import sort_boxes, vis_box_mask
 from paddleocr import TextRecognition, PaddleOCR
 from typing import List, Dict
 from collections import defaultdict
