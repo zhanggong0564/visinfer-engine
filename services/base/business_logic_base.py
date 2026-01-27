@@ -23,12 +23,14 @@ class BusinessLogicBase:
     def _initialize_model(self, settings):
         raise NotImplementedError
 
-    def detect(self, InputParamsBusiness: InputParamsBusiness) -> MoMResult:
-        image = InputParamsBusiness.image
+    def detect(self, InputParams: InputParamsBusiness) -> MoMResult:
+        image = InputParams.image
         h, w, _ = image.shape
-        is_registered = InputParamsBusiness.is_registered
-        product_type = InputParamsBusiness.product_type
+        is_registered = InputParams.is_registered
+        product_type = InputParams.product_type
         result = self.detector.infer(image)
+        if is_registered:
+            return self.registered_post_process(result, product_type)
         result = self.business_logic_post_process(result, product_type)
         result = self.result_post_process(result, w, h)
 
