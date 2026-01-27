@@ -79,6 +79,7 @@ async def root():
         "code": 1,
         "message": f"{settings.API_TITLE} 服务运行正常",
         "result": {"service": settings.API_TITLE, "version": settings.API_VERSION, "status": "running"},
+        "service": detection_factory.list_scenarios(),
     }
 
 
