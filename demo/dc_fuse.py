@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 07:14:19
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-23 09:34:13
+@LastEditTime : 2026-01-27 05:28:00
 @FilePath     : dc_fuse.py
 @Description  :
 '''
@@ -19,16 +19,12 @@
 import sys
 
 sys.path.append("..")
-from services import DCFuseDetectorAPI
 import cv2
-from collections import defaultdict
-from config import settings
 from utils import vision_logger
-import json
 from services import rotate_points
 import numpy as np
 from services.data_base import InputParamsBusiness
-from services.api import ApiFactory
+from services import detection_factory
 
 
 if __name__ == '__main__':
@@ -42,9 +38,10 @@ if __name__ == '__main__':
         print("rotate image")
         image_src = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
         h, w, _ = image_src.shape
+    print(detection_factory.list_scenarios())
 
     # detector = DCFuseDetectorAPI(settings)
-    detector = ApiFactory.create_api("dc_fuse")
+    detector = detection_factory.get_scenarios("dc_fuse")
     input = InputParamsBusiness(image=image, product_type=type_name)
     res = detector.detect(input)
     vision_logger.info(res.to_dict())
