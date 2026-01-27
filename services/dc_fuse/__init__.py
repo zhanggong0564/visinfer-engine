@@ -8,4 +8,4 @@
 '''
 
 from .business_logic_v2 import DCFuseDetectorAPI
-from .yolo import DCFuseDetector
+from .dc_fuse_detect import DCFuseDetector
