@@ -1,5 +1,14 @@
 '''
 @Author       : gongzhang4
+@Date         : 2026-01-23 06:32:10
+@LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
+@LastEditTime : 2026-01-27 05:25:40
+@FilePath     : business_logic_v2.py
+@Description  :
+'''
+
+'''
+@Author       : gongzhang4
 @Date         : 2026-01-07 07:11:32
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
 @LastEditTime : 2026-01-17 05:45:57
@@ -7,12 +16,13 @@
 @Description  :
 '''
 
-from .yolo import DCFuseDetector
+from .dc_fuse_detect import DCFuseDetector
 import numpy as np
 from collections import defaultdict
 from utils import vision_logger
-from ..utils import vis_box_mask
-import cv2
+from ..base.business_logic_base import BusinessLogicBase
+from ..data_base import DetectResult, MoMResult, DetectionItem
+from ..api import detection_factory
 
 
 class ResultJudge:
@@ -105,10 +115,8 @@ class ResultJudge:
         return detection_map.get(key, False)
 
 
-class DCFuseDetectorAPI:
-    """直流熔丝盒检测对外接口类"""
-
-    # 支持的检测类型配置
+@detection_factory.register("dc_fuse")
+class DCFuseDetectorAPI(BusinessLogicBase):
     SUPPORTED_TYPES = {
         "五路有熔丝盒有磁环": ResultJudge(
             ways=5, is_detectscrew=True, is_small_screw=True, is_detect_metal_piece=True, is_detect_upper_screw=True
@@ -122,8 +130,9 @@ class DCFuseDetectorAPI:
         ),
     }
 
-    def __init__(self, model_path: str, conf_threshold: float = 0.4):
-        self.detector = self.load_model(model_path, conf_threshold)
+    def __init__(self, settings):
+        super().__init__(settings)
+
         self.label_mapping = {
             "screw": ["screw_1", "no_screw_1"],
             "nut": ["nut_2"],
@@ -134,63 +143,45 @@ class DCFuseDetectorAPI:
             "lower_screw": ["lower_crossbeam_screw_10", "no_lower_crossbeam_screw_10"],
         }
 
-    def load_model(self, model_path: str, conf_threshold: float = 0.4):
-        """加载模型"""
-        return DCFuseDetector(model_path, conf_threshold)
-
-    def detect(self, image: np.ndarray, detect_type: str) -> dict:
-        """检测图像中的直流熔丝盒"""
-        if detect_type not in self.SUPPORTED_TYPES:
-            return {"details": [], "status": False, "error_msg": f"不支持的检测类型: {detect_type}"}
+    def _initialize_model(self, settings):
         try:
-            infer_result = self.detector.infer(image)
-            # image_vis = vis_box_mask(image.copy(), infer_result)
-            # cv2.imwrite("vis.jpg", image_vis)
-
+            """初始化模型"""
+            self.detector = DCFuseDetector(settings.dc_fuse.model_path, settings.dc_fuse.confThreshold)
         except Exception as e:
-            return {"details": [], "status": False, "error_msg": str(e), "message": "检测失败"}
+            vision_logger.error(f"初始化模型失败: {e}")
+
+    def business_logic_post_process(self, result: DetectResult, product_type: str) -> MoMResult:
+        """业务逻辑后处理"""
+        if product_type not in self.SUPPORTED_TYPES:
+            return MoMResult(status=False, error_msg=f"不支持的检测类型: {product_type}")
+        result_judge = self.SUPPORTED_TYPES[product_type]
         det_info = defaultdict(list)
-        for label, bbox, score in zip(infer_result["cls_name"], infer_result["rect"], infer_result["score"]):
-            # 归一化bbox
-            ltx, lty, rbx, rby = bbox
-            # 转成矩形框的四个顶点
-            w, h = rbx - ltx, rby - lty
-            x1, y1 = ltx, lty
-            x2, y2 = ltx + w, lty
-            x3, y3 = rbx, rby
-            x4, y4 = ltx, lty + h
-            points_normalized = [
-                x1 / image.shape[1],
-                y1 / image.shape[0],
-                x2 / image.shape[1],
-                y2 / image.shape[0],
-                x3 / image.shape[1],
-                y3 / image.shape[0],
-                x4 / image.shape[1],
-                y4 / image.shape[0],
-            ]
-
-            # bbox_normalized = [ltx / image.shape[1], lty / image.shape[0], rbx / image.shape[1], rby / image.shape[0]]
-            det_info[label].append({"bbox": points_normalized, "score": score})
-
-        # 执行结果判断
-        result_judge = self.SUPPORTED_TYPES[detect_type]
+        for label_id, bbox, score, label in zip(result.class_ids, result.boxes, result.scores, result.class_names):
+            det_info[label].append({"bbox": bbox, "score": score})
         judge_result = result_judge(det_info)
-
-        # 生成详细结果
-        details = []
-        status = True
-        for cls, is_passed in judge_result.items():
-            if not is_passed:
-                status = False
-            # 找到对应的原始标签和检测结果
-            labels = self.label_mapping.get(cls, [])
+        mom_result = MoMResult(status=True)
+        for label, is_pass in judge_result.items():
+            if not is_pass:
+                mom_result.status = False
+            labels = self.label_mapping.get(label, [])
             for label in labels:
                 det_infos = det_info.get(label, [])
                 for det in det_infos:
-                    details.append(
-                        {"status": is_passed, "scene": cls, "coordinate": det["bbox"], "accuracy": det["score"]}
+                    mom_result.detailList.append(
+                        DetectionItem(status=is_pass, scene=label, coordinate=det["bbox"], accuracy=det["score"])
                     )
+        mom_result.message = "检测成功"
+        return mom_result
 
-        # 整体结果
-        return {"detailList": details, "status": "true" if status else "false", "error_msg": "", "message": "检测成功"}
+    def result_post_process(self, result: MoMResult, w, h) -> MoMResult:
+        """结果后处理"""
+        detailList = result.detailList
+        for item in detailList:
+            coordinate = item.coordinate
+            ltx, lty, rbx, rby = coordinate
+            x1, y1 = ltx, lty
+            x2, y2 = rbx, lty
+            x3, y3 = rbx, rby
+            x4, y4 = ltx, rby
+            item.coordinate = [x1 / w, y1 / h, x2 / w, y2 / h, x3 / w, y3 / h, x4 / w, y4 / h]
+        return result
