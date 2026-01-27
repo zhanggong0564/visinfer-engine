@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-08 01:55:25
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-17 03:12:49
+@LastEditTime : 2026-01-27 09:55:55
 @FilePath     : lap_suf.py
 @Description  :
 '''
@@ -15,8 +15,8 @@ import cv2
 import numpy as np
 from config import settings
 from utils import vision_logger
-from services import LapSurfJudgeApi
-import json
+from services import detection_factory
+from services.data_base import InputParamsBusiness
 
 
 if __name__ == "__main__":
@@ -28,11 +28,13 @@ if __name__ == "__main__":
         # 向左旋转90度
         print("rotate image")
         image = cv2.rotate(image_src, cv2.ROTATE_90_COUNTERCLOCKWISE)
-
-    infer = LapSurfJudgeApi(settings.lap_surf.model_path, conf_threshold=settings.lap_surf.confThreshold)
+    infer = detection_factory.get_scenarios("lap_surf")
+    input = InputParamsBusiness(image=image)
+    # infer = LapSurfJudgeApi(settings.lap_surf.model_path, conf_threshold=settings.lap_surf.confThreshold)
 
     # bboxes, scores, labels, masks = infer(image)
-    res = infer.detect(image)
+    res = infer.detect(input)
+    print(res)
 
     def rotate_points(res, src_w, src_h):
         w = src_h
@@ -79,7 +81,7 @@ if __name__ == "__main__":
             ]
         return res
 
-    res_new = rotate_points(res, w, h)
+    res_new = rotate_points(res.to_dict(), w, h)
     for detail in res_new.get("detailList", []):
         x1, y1, x2, y2, x3, y3, x4, y4 = detail.get("coordinate", [])
         x1 = int(x1 * w)
