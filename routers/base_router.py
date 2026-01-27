@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-19 08:25:59
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-19 09:13:44
+@LastEditTime : 2026-01-27 06:53:44
 @FilePath     : base_router.py
 @Description  :路由基类，封装所有路由共有的功能
 '''
@@ -12,12 +12,13 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi import Depends
 from schemas import CommonResponse
 from utils import vision_logger
-from services import detector_factory
+from services import detection_factory
 from config import settings
 import json
 from typing import Any
 import cv2
 import numpy as np
+import time
 
 
 class BaseRouter(ABC):
@@ -47,28 +48,40 @@ class BaseRouter(ABC):
         self,
         file: UploadFile = File(..., description="检测图片(jpg/png格式)"),
         json_data: str = Form(..., description="产品/物料号/模型参数的JSON字符串"),
-        detector=Depends(get_detector_singleton),
     ):
         vision_logger.info(f"接收{self.router_name}请求：图片={file.filename}, json_data={json_data}")
         request_params = await self._validate_and_parse_params(json_data)
+        vision_logger.info(f"校验参数：{request_params}")
+
         image = await self._process_image(file)
-
-        result_info = await self._process_business_logic(image, request_params, detector)
-
-        result = CommonResponse(code=1, message="检测成功", result=result_info)
+        inputs = self.get_inputs(request_params, image)
+        detector = self.get_detector_singleton()
+        start = time.time()
+        result_info = detector.detect(inputs)
+        end = time.time()
+        vision_logger.info(f"检测耗时：{end - start}秒")
+        result = CommonResponse(code=1, message="检测成功", result=result_info.to_dict())
         vision_logger.info("参数校验通过，返回检测结果")
         return result
+
+    def get_inputs(self, request_params: Any, image: np.ndarray) -> dict:
+        """获取模型输入"""
+        raise NotImplementedError("子类必须实现get_inputs方法")
 
     async def _validate_and_parse_params(self, json_data: str) -> Any:
         """验证和解析参数"""
         try:
             json_dict = json.loads(json_data)
-            request_params = self.request_schema(**json_dict)
+            request_params = self.request_schema(json_dict)
             return request_params
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="json_data格式非法，需传入标准JSON字符串")
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"参数校验失败：{str(e)}")
+
+    def request_schema(self, json_dict) -> Any:
+        """请求参数校验模式"""
+        raise NotImplementedError("子类必须实现request_schema方法")
 
     async def _process_image(self, file: UploadFile) -> np.ndarray:
         """处理图像"""
@@ -82,7 +95,5 @@ class BaseRouter(ABC):
 
         return image
 
-    @abstractmethod
-    async def _process_business_logic(self, image: np.ndarray, request_params: Any, detector: Any) -> dict:
-        """处理业务逻辑，子类必须实现"""
-        pass
+    def get_router(self):
+        return self.router
