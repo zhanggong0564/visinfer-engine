@@ -2,9 +2,9 @@
 @Author       : gongzhang4
 @Date         : 2026-01-23 09:11:23
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-27 06:32:33
+@LastEditTime : 2026-01-27 09:14:46
 @FilePath     : dc_fuse_routers.py
-@Description  : 检测融合算法v2
+@Description  : 直流熔丝检测接口
 '''
 
 from .base_router import BaseRouter
