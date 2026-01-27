@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 07:48:54
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-08 06:24:21
+@LastEditTime : 2026-01-27 10:18:52
 @FilePath     : common.py
 @Description  :
 '''
@@ -49,3 +49,7 @@ class CommonResponse(BaseModel):
     code: Literal[0, 1] = Field(..., description="0=识别失败，1=识别成功（整数类型）")
     message: str = Field(..., description="返回消息（如“成功”）")
     result: ResultResponse = Field(..., description="检测结果详情对象")
+
+
+class EmptyRequest(BaseModel):
+    """空返回模型"""
