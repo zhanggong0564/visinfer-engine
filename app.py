@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 05:45:30
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-27 06:14:13
+@LastEditTime : 2026-01-27 09:18:18
 @FilePath     : app.py
 @Description  :
 '''
@@ -113,6 +113,7 @@ def main():
         reload=True,  # 开发模式开启热重载
         log_level=settings.LOG_LEVEL.lower(),
         access_log=False,  # 禁用uvicorn的访问日志，使用自定义日志
+        workers=settings.WORKERS,
     )
 
 
