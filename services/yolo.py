@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-27 02:06:28
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-27 02:19:56
+@LastEditTime : 2026-01-27 03:09:34
 @FilePath     : yolo.py
 @Description  :
 '''
@@ -10,7 +10,6 @@
 from .base import BaseOnnxInfer
 from .utils import *
 from collections import defaultdict
-from .box import non_max_suppression_v8
 from .data_base import DetectResult
 
 
