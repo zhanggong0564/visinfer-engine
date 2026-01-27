@@ -2,13 +2,13 @@
 @Author       : gongzhang4
 @Date         : 2026-01-23 05:37:39
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-23 09:29:16
+@LastEditTime : 2026-01-27 08:52:22
 @FilePath     : business_logic_base.py
 @Description  : 业务逻辑基类
 '''
 
 import numpy as np
-from ..data_base import InputParamsBusiness, MoMResult, DetectResult
+from ..data_base import InputParamsBusiness, MoMResult, DetectResult, IndicatorLightEmbedding
 
 
 class BusinessLogicBase:
@@ -31,14 +31,13 @@ class BusinessLogicBase:
         result = self.detector.infer(image)
         result = self.business_logic_post_process(result, product_type)
         result = self.result_post_process(result, w, h)
-        if is_registered:
-            result = self.registered_post_process(result)
+
         return result
 
     def business_logic_post_process(self, result: DetectResult, product_type: str) -> MoMResult:
         raise NotImplementedError
 
-    def registered_post_process(self, result: dict) -> bool:
+    def registered_post_process(self, result: IndicatorLightEmbedding, product_type: str) -> bool:
         raise NotImplementedError
 
     def result_post_process(self, result: MoMResult) -> MoMResult:
