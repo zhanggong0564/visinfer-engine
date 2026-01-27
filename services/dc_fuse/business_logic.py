@@ -1,14 +1,5 @@
 '''
 @Author       : gongzhang4
-@Date         : 2026-01-23 06:32:10
-@LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-27 05:25:40
-@FilePath     : business_logic_v2.py
-@Description  :
-'''
-
-'''
-@Author       : gongzhang4
 @Date         : 2026-01-07 07:11:32
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
 @LastEditTime : 2026-01-17 05:45:57
@@ -172,16 +163,3 @@ class DCFuseDetectorAPI(BusinessLogicBase):
                     )
         mom_result.message = "检测成功"
         return mom_result
-
-    def result_post_process(self, result: MoMResult, w, h) -> MoMResult:
-        """结果后处理"""
-        detailList = result.detailList
-        for item in detailList:
-            coordinate = item.coordinate
-            ltx, lty, rbx, rby = coordinate
-            x1, y1 = ltx, lty
-            x2, y2 = rbx, lty
-            x3, y3 = rbx, rby
-            x4, y4 = ltx, rby
-            item.coordinate = [x1 / w, y1 / h, x2 / w, y2 / h, x3 / w, y3 / h, x4 / w, y4 / h]
-        return result
