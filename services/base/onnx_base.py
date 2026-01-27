@@ -2,17 +2,17 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:16:55
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-23 05:32:30
-@FilePath     : base.py
+@LastEditTime : 2026-01-27 03:07:28
+@FilePath     : onnx_base.py
 @Description  :
 '''
 
 import numpy as np
 import onnxruntime
-from .utils import *
+from ..utils.utils import *
 from utils import vision_logger
 import time
-from .data_base import DetectResult
+from ..data_base import DetectResult
 
 # 设置onnxruntime日志级别
 onnxruntime.set_default_logger_severity(3)
@@ -72,20 +72,7 @@ class BaseOnnxInfer:
         vision_logger.info(f"预热时间: {end - start:.4f}秒")
 
     def preprocess(self, im):
-        """预处理输入图像
-
-        Args:
-            im (np.ndarray): 输入图像
-
-        Returns:
-            np.ndarray: 处理后的图像
-        """
-        img, self.r, self.dw, self.dh = letterbox(im=im, auto=False, new_shape=self._input_model_shape[2:])
-        im = np.stack([img])
-        im = im[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW
-        im = np.ascontiguousarray(im).astype(np.float32)
-        im /= 255.0  # 归一化到0-1
-        return im
+        raise NotImplementedError("preprecess method must be implemented in subclass")
 
     def post_process(self, output_data) -> DetectResult:
         """后处理模型输出结果

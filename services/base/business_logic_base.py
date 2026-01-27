@@ -2,13 +2,13 @@
 @Author       : gongzhang4
 @Date         : 2026-01-23 05:37:39
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-23 08:53:50
+@LastEditTime : 2026-01-23 09:29:16
 @FilePath     : business_logic_base.py
 @Description  : 业务逻辑基类
 '''
 
 import numpy as np
-from .data_base import InputParamsBusiness, MoMResult, DetectResult
+from ..data_base import InputParamsBusiness, MoMResult, DetectResult
 
 
 class BusinessLogicBase:
@@ -23,7 +23,7 @@ class BusinessLogicBase:
     def _initialize_model(self, settings):
         raise NotImplementedError
 
-    def detect(self, InputParamsBusiness: InputParamsBusiness) -> dict:
+    def detect(self, InputParamsBusiness: InputParamsBusiness) -> MoMResult:
         image = InputParamsBusiness.image
         h, w, _ = image.shape
         is_registered = InputParamsBusiness.is_registered
