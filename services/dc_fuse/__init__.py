@@ -7,5 +7,5 @@
 @Description  :
 '''
 
-from .business_logic_v2 import DCFuseDetectorAPI
+from .business_logic import DCFuseDetectorAPI
 from .dc_fuse_detect import DCFuseDetector
