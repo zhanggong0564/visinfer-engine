@@ -23,10 +23,11 @@ import numpy as np
 class BaseRouter(ABC):
     """路由基类，封装所有路由共有的功能"""
 
-    def __init__(self, router_name, api_path, summary, description):
+    def __init__(self, router_name, api_path, summary, description, detector_type):
         self.router = APIRouter()
         self.router_name = router_name
         self.instance = None
+        self.detector_type = detector_type
 
         self.router.post(
             api_path,
@@ -34,13 +35,13 @@ class BaseRouter(ABC):
             description=description,
         )(self._handle_request)
 
-    async def get_detector_singleton(self):
-        detector_instance = None
-        if detector_instance is None:
-            detector = detector_factory.get_detector(self.detector_type)
+    def get_detector_singleton(self):
+        if self.instance is None:
+            detector = detection_factory.get_scenarios(self.detector_type)
             if not detector:
                 raise HTTPException(status_code=500, detail=f"未找到{self.detector_type}检测器")
-        return detector
+            self.instance = detector
+        return self.instance
 
     async def _handle_request(
         self,
