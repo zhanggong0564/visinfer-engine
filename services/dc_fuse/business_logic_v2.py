@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-23 06:32:10
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-23 08:52:47
+@LastEditTime : 2026-01-27 05:25:40
 @FilePath     : business_logic_v2.py
 @Description  :
 '''
@@ -16,12 +16,13 @@
 @Description  :
 '''
 
-from .yolo import DCFuseDetector
+from .dc_fuse_detect import DCFuseDetector
 import numpy as np
 from collections import defaultdict
 from utils import vision_logger
-from ..business_logic_base import BusinessLogicBase
+from ..base.business_logic_base import BusinessLogicBase
 from ..data_base import DetectResult, MoMResult, DetectionItem
+from ..api import detection_factory
 
 
 class ResultJudge:
@@ -114,6 +115,7 @@ class ResultJudge:
         return detection_map.get(key, False)
 
 
+@detection_factory.register("dc_fuse")
 class DCFuseDetectorAPI(BusinessLogicBase):
     SUPPORTED_TYPES = {
         "五路有熔丝盒有磁环": ResultJudge(
