@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:42:49
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-16 10:03:26
+@LastEditTime : 2026-01-27 09:53:21
 @FilePath     : lap_surf_core.py
 @Description  :  lap surf 业务逻辑
 '''
@@ -81,16 +81,7 @@ class ROI:
         if self.bb:
             result.append(
                 {
-                    "coordinate": [
-                        self.bb.x1 / self.bb.w,
-                        self.bb.y1 / self.bb.h,
-                        self.bb.x2 / self.bb.w,
-                        self.bb.y1 / self.bb.h,
-                        self.bb.x2 / self.bb.w,
-                        self.bb.y2 / self.bb.h,
-                        self.bb.x1 / self.bb.w,
-                        self.bb.y2 / self.bb.h,
-                    ],
+                    "coordinate": [self.bb.x1, self.bb.y1, self.bb.x2, self.bb.y2],
                     "status": self.is_valid,
                     "scene": self.label2name[self.bb.label],
                     "accuracy": self.bb.conf,
@@ -109,14 +100,10 @@ class ROI:
             result.append(
                 {
                     "coordinate": [
-                        self.lap_joint.x1 / self.lap_joint.w,
-                        self.lap_joint.y1 / self.lap_joint.h,
-                        self.lap_joint.x2 / self.lap_joint.w,
-                        self.lap_joint.y1 / self.lap_joint.h,
-                        self.lap_joint.x2 / self.lap_joint.w,
-                        self.lap_joint.y2 / self.lap_joint.h,
-                        self.lap_joint.x1 / self.lap_joint.w,
-                        self.lap_joint.y2 / self.lap_joint.h,
+                        self.lap_joint.x1,
+                        self.lap_joint.y1,
+                        self.lap_joint.x2,
+                        self.lap_joint.y2,
                     ],
                     "status": self.lap_joint.is_match,
                     "scene": self.label2name[self.lap_joint.label],
@@ -136,14 +123,10 @@ class ROI:
             result.append(
                 {
                     "coordinate": [
-                        nut.x1 / self.bb.w,
-                        nut.y1 / self.bb.h,
-                        nut.x2 / self.bb.w,
-                        nut.y1 / self.bb.h,
-                        nut.x2 / self.bb.w,
-                        nut.y2 / self.bb.h,
-                        nut.x1 / self.bb.w,
-                        nut.y2 / self.bb.h,
+                        nut.x1,
+                        nut.y1,
+                        nut.x2,
+                        nut.y2,
                     ],
                     "status": nut.is_match,
                     "scene": self.label2name[nut.label],
@@ -154,14 +137,10 @@ class ROI:
             result.append(
                 {
                     "coordinate": [
-                        screw.x1 / self.bb.w,
-                        screw.y1 / self.bb.h,
-                        screw.x2 / self.bb.w,
-                        screw.y1 / self.bb.h,
-                        screw.x2 / self.bb.w,
-                        screw.y2 / self.bb.h,
-                        screw.x1 / self.bb.w,
-                        screw.y2 / self.bb.h,
+                        screw.x1,
+                        screw.y1,
+                        screw.x2,
+                        screw.y2,
                     ],
                     "status": True,
                     "scene": self.label2name[screw.label],
@@ -172,14 +151,10 @@ class ROI:
             result.append(
                 {
                     "coordinate": [
-                        nut.x1 / self.bb.w,
-                        nut.y1 / self.bb.h,
-                        nut.x2 / self.bb.w,
-                        nut.y1 / self.bb.h,
-                        nut.x2 / self.bb.w,
-                        nut.y2 / self.bb.h,
-                        nut.x1 / self.bb.w,
-                        nut.y2 / self.bb.h,
+                        nut.x1,
+                        nut.y1,
+                        nut.x2,
+                        nut.y2,
                     ],
                     "status": True,
                     "scene": self.label2name[nut.label],
