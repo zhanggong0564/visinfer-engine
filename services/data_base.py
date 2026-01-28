@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-21 06:34:07
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-27 08:15:23
+@LastEditTime : 2026-01-28 02:12:58
 @FilePath     : data_base.py
 @Description  :
 '''
@@ -26,6 +26,13 @@ class IndicatorLightEmbedding:
     embeddings: List[List[float]] = field(default_factory=list)
     boxes: List[List[float]] = field(default_factory=list)
     scores: List[float] = field(default_factory=list)
+
+
+@dataclass
+class OCRResult:
+    text: List[str] = field(default_factory=list)
+    boxes: List[List[float]] = field(default_factory=list)
+    class_ids: List[int] = field(default_factory=list)
 
 
 class StatusCode(int, Enum):
