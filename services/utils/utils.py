@@ -2,16 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:20:56
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-17 03:10:21
-@FilePath     : utils.py
-@Description  :
-'''
-
-'''
-@Author       : gongzhang4
-@Date         : 2025-08-28 13:54:51
-@LastEditors  : zhanggong zhanggong1@sungrowpower.com
-@LastEditTime : 2025-10-15 19:15:42
+@LastEditTime : 2026-01-28 07:10:26
 @FilePath     : utils.py
 @Description  :
 '''
@@ -20,6 +11,8 @@ import cv2
 import random
 import numpy as np
 import base64
+import numpy as np
+from typing import List, Tuple, Any
 
 
 def clip_boxes(boxes, shape):
@@ -187,59 +180,45 @@ def visualizeobb(img, bbox_array, scores, labels):
     return img
 
 
-def sort_boxes(boxes):
+def sort_boxes(boxes: List[List[Any]]) -> Tuple[List[List[Any]], List[int]]:
     """
     将目标框按从左到右、从上到下排序
-    :param boxes: list of [x_min, y_min, x_max, y_max]
-    :return: 排序后的boxes列表
+
+    :param boxes: list of [x_min, y_min, x_max, y_max, ...]
+    :return: (排序后的boxes列表, 排序后对应的原始索引列表)
     """
-    # 计算中心点坐标
-    centers = []
-    for box in boxes:
-        x_min, y_min, x_max, y_max, _ = box
-        center_x = x_min
-        center_y = y_min
-        centers.append((center_x, center_y))
-
-    # 计算平均高度（用于行分组阈值）
-    heights = [y_max - y_min for x_min, y_min, x_max, y_max, _ in boxes]
-    avg_height = np.mean(heights) if heights else 0
-    row_threshold = avg_height * 1  # 阈值可调整
-
-    # 如果没有检测到目标框，直接返回空列表
     if not boxes:
-        return []
+        return [], []
 
-    # 按Y坐标排序
-    sorted_indices = np.argsort([c[1] for c in centers])
-    sorted_boxes = [boxes[i] for i in sorted_indices]
-    sorted_centers = [centers[i] for i in sorted_indices]
+    # 向量化提取坐标
+    coords = np.array([[box[0], box[1], box[2], box[3]] for box in boxes])
+    x_mins, y_mins, x_maxs, y_maxs = coords.T
+    center_xs = (x_mins + x_maxs) / 2
 
-    # 分组为行
-    rows = []
-    current_row = [sorted_boxes[0]]
-    current_centers = [sorted_centers[0]]
+    # 行分组阈值（基于平均高度）
+    row_threshold = np.mean(y_maxs - y_mins)
 
-    for i in range(1, len(sorted_boxes)):
-        # 检查是否属于同一行
-        if abs(sorted_centers[i][1] - current_centers[0][1]) < row_threshold:
-            current_row.append(sorted_boxes[i])
-            current_centers.append(sorted_centers[i])
+    # 按 Y 坐标排序
+    y_order = np.argsort(y_mins)
+
+    # 分组为行（只存储原始索引）
+    rows = [[y_order[0]]]
+    base_y = y_mins[y_order[0]]
+
+    for idx in y_order[1:]:
+        if abs(y_mins[idx] - base_y) < row_threshold:
+            rows[-1].append(idx)
         else:
-            # 结束当前行，开始新行
-            rows.append(current_row)
-            current_row = [sorted_boxes[i]]
-            current_centers = [sorted_centers[i]]
-    rows.append(current_row)  # 添加最后一行
+            rows.append([idx])
+            base_y = y_mins[idx]
 
-    # 每行内按X坐标排序
-    sorted_result = []
+    # 每行按 X 排序，收集最终索引
+    sorted_indices = []
     for row in rows:
-        row_centers = [((box[0] + box[2]) / 2, (box[1] + box[3]) / 2) for box in row]
-        sorted_row = [box for _, box in sorted(zip(row_centers, row), key=lambda x: x[0][0])]
-        sorted_result.extend(sorted_row)
+        sorted_indices.extend(sorted(row, key=lambda i: center_xs[i]))
 
-    return sorted_result
+    sorted_boxes = [boxes[i] for i in sorted_indices]
+    return sorted_boxes, sorted_indices
 
 
 def decode2cv(image_base64):
