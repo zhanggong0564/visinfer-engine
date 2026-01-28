@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:20:56
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-28 07:10:26
+@LastEditTime : 2026-01-28 07:36:17
 @FilePath     : utils.py
 @Description  :
 '''
@@ -215,7 +215,7 @@ def sort_boxes(boxes: List[List[Any]]) -> Tuple[List[List[Any]], List[int]]:
     # 每行按 X 排序，收集最终索引
     sorted_indices = []
     for row in rows:
-        sorted_indices.extend(sorted(row, key=lambda i: center_xs[i]))
+        sorted_indices.extend(list(map(int, sorted(row, key=lambda i: center_xs[i]))))
 
     sorted_boxes = [boxes[i] for i in sorted_indices]
     return sorted_boxes, sorted_indices
