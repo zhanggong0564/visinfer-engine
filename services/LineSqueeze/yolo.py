@@ -31,5 +31,4 @@ class LineSqueezePipeline:
         rois = [image[int(box[1]) + 10 : int(box[3]) - 10, int(box[0]) : int(box[2])] for box in results.boxes]
 
         res = [res['rec_text'] for res in self.ocr.predict(input=rois) if len(res['rec_text']) > 2]
-        return OCRResult(text=res, boxes=results.boxes, class_ids=results.class_ids)
-
+        return OCRResult(text=res, boxes=results.boxes, class_ids=results.class_ids, scores=results.scores)
