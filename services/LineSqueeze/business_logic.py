@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-17 06:45:33
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-28 07:04:10
+@LastEditTime : 2026-01-28 07:38:33
 @FilePath     : business_logic.py
 @Description  :
 '''
@@ -44,7 +44,7 @@ class VerifyLineSequenceUtils(object):
                     DetectionItem(
                         status=res,
                         scene="dc",
-                        coordinate=box[:4].tolist(),
+                        coordinate=box[:4],
                         accuracy=float(box[4]) if len(box) != 0 else "",
                     )
                 )
@@ -58,7 +58,7 @@ class VerifyLineSequenceUtils(object):
                     DetectionItem(
                         status=res,
                         scene="fu",
-                        coordinate=box[:4].tolist(),
+                        coordinate=box[:4],
                         accuracy=float(box[4]) if len(box) != 0 else "",
                     )
                 )
@@ -171,7 +171,7 @@ class LineSqueezeDetectApi(BusinessLogicBase):
         try:
             self.detector = LineSqueezePipeline(
                 det_model_path=settings.line_squeeze.ModelPath.det_model_path,
-                ocr_model_path=settings.line_squeeze.ModelPath.oct_model_path,
+                ocr_model_path=settings.line_squeeze.ModelPath.ocr_model_dir,
                 confThreshold=settings.line_squeeze.ConfThreshold.det,
             )
         except Exception as e:
