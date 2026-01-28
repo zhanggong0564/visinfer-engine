@@ -33,6 +33,7 @@ class OCRResult:
     text: List[str] = field(default_factory=list)
     boxes: List[List[float]] = field(default_factory=list)
     class_ids: List[int] = field(default_factory=list)
+    scores: List[float] = field(default_factory=list)
 
 
 class StatusCode(int, Enum):
