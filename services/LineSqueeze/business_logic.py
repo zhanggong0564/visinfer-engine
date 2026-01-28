@@ -185,9 +185,11 @@ class LineSqueezeDetectApi(BusinessLogicBase):
                 status=False, error_msg=f"product_type {product_type} not in ProductType", message="检测失败"
             )
         # 对result中的boxes进行排序,text,class_ids同时也排序
-        dc_boxes = [result.boxes[i] for i in sorted_indices if result.class_ids[i] == 1]
-        fu_boxes = [result.boxes[i] for i in sorted_indices if result.class_ids[i] == 0]
+
         _, sorted_indices = sort_boxes(result.boxes)
+        dc_boxes = [result.boxes[i] + [result.scores[i]] for i in sorted_indices if result.class_ids[i] == 1]
+        fu_boxes = [result.boxes[i] + [result.scores[i]] for i in sorted_indices if result.class_ids[i] == 0]
+
         dc_res = [result.text[i][2] for i in sorted_indices if result.class_ids[i] == 1]
         fu_res = [result.text[i][2] for i in sorted_indices if result.class_ids[i] == 0]
         dc_res = self.check_infos(dc_res)
