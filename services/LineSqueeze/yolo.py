@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-17 06:31:48
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-28 07:13:33
+@LastEditTime : 2026-01-28 07:31:16
 @FilePath     : yolo.py
 @Description  :
 '''
@@ -15,7 +15,7 @@ from ..data_base import OCRResult, DetectResult
 
 class LineSqueezeDetect(YoloOnnxInfer):
     def __init__(self, model_path, confThreshold=0.5, nmsThreshold=0.5, task="det"):
-        super().__init__(model_path, confThreshold, nmsThreshold, task, nc=2)
+        super().__init__(model_path, 2, confThreshold, nmsThreshold, task)
         self.id2name = {0: "fu_line", 1: "dc_line"}
 
 
