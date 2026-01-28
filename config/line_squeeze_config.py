@@ -11,7 +11,7 @@
 class LineSqueezeConfig:
     class ModelPath:
         det_model_path: str = "./weights/LineSqueeze_v3.onnx"
-        oct_model_path: str = "./weights/official_models"
+        ocr_model_dir: str = "./weights/official_models/PP-en_rec_ppocr_v5"
 
     class ConfThreshold:
         det: float = 0.25
