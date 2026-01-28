@@ -1,2 +1,1 @@
-from .yolo import RoiDet
-from .business_logic import LineSqueezeRecognition
+from .business_logic import LineSqueezeDetectApi
