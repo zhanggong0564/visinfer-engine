@@ -19,6 +19,8 @@ from ..data_base import DetectResult, DetectionItem, MoMResult
 
 @detection_factory.register("lap_surf")
 class LapSurfJudgeApi(BusinessLogicBase):
+    def __init__(self, settings):
+        super().__init__(settings)
 
     def _initialize_model(self, settings):
         try:
