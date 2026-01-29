@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-17 06:47:42
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-17 06:51:24
+@LastEditTime : 2026-01-28 07:42:31
 @FilePath     : LineSqueezeDemo.py
 @Description  :
 '''
@@ -11,14 +11,16 @@ import sys
 
 sys.path.append('../')
 import cv2
-from services import LineSqueezeRecognition
+from services import detection_factory
 from pathlib import Path
+from services.data_base import InputParamsBusiness
+import numpy as np
 
 
 if __name__ == '__main__':
     onnx_path = './weights/LineSqueeze_v3.onnx'
     ocr_model_dir = './weights/official_models/PP-en_rec_ppocr_v5'
-    line_squeeze_recognition = LineSqueezeRecognition(onnx_path, ocr_model_dir)
+    line_squeeze_recognition = detection_factory.get_scenarios('LineSqueeze')
 
     all_image_info = Path(
         '/data/zhanggong/workspace/project/move_vsion/LineSequence_identification/src/datas/1023_debug'
@@ -31,29 +33,33 @@ if __name__ == '__main__':
             "image": cv2.imread(str(image_info)),
             "types": "五路有熔丝盒有磁环",
         }
-        print(image_info)
+        inputs_info = InputParamsBusiness(image=inputs_info['image'], product_type=inputs_info['types'])
         import time
 
         start = time.time()
         for i in range(1):
-            results = line_squeeze_recognition.verify_line_sequence(**inputs_info)
+            results = line_squeeze_recognition.detect(inputs_info)
         end = time.time()
         print(f'cost time: {(end - start) / 10} s')
-        # print(results)
+        print(results)
         # 可视化结果,status_all写在图像的右上角，scene和state写在框的左上角
-        status_all = results['status']
-        vis_image = inputs_info['image'].copy()
+        status_all = results.status
+        vis_image = inputs_info.image.copy()
         h, w, _ = vis_image.shape
         print(status_all)
         cv2.putText(vis_image, f'status: {status_all}', (w - 500, 500), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2)
-        for info in results['detailList']:
-            scene = info['scene']
-            state = info['status']
-            coordinate = info['coordinate']
+        for info in results.detailList:
+            scene = info.scene
+            state = info.status
+            coordinate = info.coordinate
             if len(coordinate) == 0:
                 continue
-            x1, y1, x2, y2 = (int(coord * dim) for coord, dim in zip(coordinate, [w, h, w, h]))
-            cv2.rectangle(vis_image, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+            x1, y1, x2, y2, x3, y3, x4, y4 = (
+                int(coord * dim) for coord, dim in zip(coordinate, [w, h, w, h, w, h, w, h])
+            )
+            points = np.array([[[x1, y1], [x2, y2], [x3, y3], [x4, y4]]], dtype=np.int32)
+            cv2.polylines(vis_image, points, True, (0, 255, 0), 2)
+            # cv2.rectangle(vis_image, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
             cv2.putText(
                 vis_image, f'{scene}:{state}', (int(x1), int(y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2
             )
