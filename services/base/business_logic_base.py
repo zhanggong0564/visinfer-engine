@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-23 05:37:39
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-27 08:52:22
+@LastEditTime : 2026-01-29 12:45:56
 @FilePath     : business_logic_base.py
 @Description  : 业务逻辑基类
 '''
@@ -25,14 +25,14 @@ class BusinessLogicBase:
 
     def detect(self, InputParams: InputParamsBusiness) -> MoMResult:
         image = InputParams.image
-        h, w, _ = image.shape
+        self.h, self.w, _ = image.shape
         is_registered = InputParams.is_registered
         product_type = InputParams.product_type
         result = self.detector.infer(image)
         if is_registered:
             return self.registered_post_process(result, product_type)
         result = self.business_logic_post_process(result, product_type)
-        result = self.result_post_process(result, w, h)
+        result = self.result_post_process(result)
 
         return result
 
@@ -42,7 +42,7 @@ class BusinessLogicBase:
     def registered_post_process(self, result: IndicatorLightEmbedding, product_type: str) -> bool:
         raise NotImplementedError
 
-    def result_post_process(self, result: MoMResult, w, h) -> MoMResult:
+    def result_post_process(self, result: MoMResult) -> MoMResult:
         """结果后处理"""
         detailList = result.detailList
         for item in detailList:
@@ -52,5 +52,14 @@ class BusinessLogicBase:
             x2, y2 = rbx, lty
             x3, y3 = rbx, rby
             x4, y4 = ltx, rby
-            item.coordinate = [x1 / w, y1 / h, x2 / w, y2 / h, x3 / w, y3 / h, x4 / w, y4 / h]
+            item.coordinate = [
+                x1 / self.w,
+                y1 / self.h,
+                x2 / self.w,
+                y2 / self.h,
+                x3 / self.w,
+                y3 / self.h,
+                x4 / self.w,
+                y4 / self.h,
+            ]
         return result
