@@ -1,14 +1,19 @@
 '''
 @Author       : gongzhang4
-@Date         : 2026-01-13 05:18:18
+@Date         : 2026-01-29 12:25:07
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-13 07:30:24
-@FilePath     : business_logic.py
+@LastEditTime : 2026-01-29 12:47:55
+@FilePath     : business_logic_v2.py
 @Description  :
 '''
 
-from .yolo import yolo11ONNX
 from .tools import check_box_containment
+from ..api import detection_factory
+from ..base import BusinessLogicBase
+from .plate_screw_detect import PlateScrewDetect
+from utils import vision_logger
+from ..data_base import MoMResult, DetectResult, DetectionItem
+from collections import defaultdict
 
 
 def select_box(box_info, image_width, image_height):
@@ -49,34 +54,34 @@ def select_box(box_info, image_width, image_height):
     return all_result_after_contain
 
 
-class PlateScrewJudgeApi:
-    def __init__(self, model_path, conf_threshold=0.5):
-        self.detector = self.load_model(model_path, conf_threshold)
+@detection_factory.register("plate_screw")
+class PlateScrewJudgeApi(BusinessLogicBase):
+    def __init__(self, settings):
+        super().__init__(settings)
 
-    def load_model(self, model_path, conf_threshold):
-        return yolo11ONNX(model_path, nc=4, confThreshold=conf_threshold)
+    def _initialize_model(self, settings):
+        try:
+            self.detector = PlateScrewDetect(settings.plate_screw.model_path, settings.plate_screw.confThreshold)
+        except Exception as e:
+            vision_logger.error(f"加载模型失败: {e}")
+            raise e
 
-    def detect(self, im):
-        outputs = self.detector.infer(im)
-        self.image_width, self.image_height = im.shape[1], im.shape[0]
-        # vis = vis_box_mask(im, outputs)
-        # cv2.imwrite("vis.jpg", vis)
-        results = self.postprocess(outputs)
-        return results
-
-    def postprocess(self, outputs):
-        results_contain = select_box(outputs, self.image_width, self.image_height)
+    def business_logic_post_process(self, result: DetectResult, product_type: str) -> MoMResult:
+        res = defaultdict(list)
+        for box, cls, score, name in zip(result.boxes, result.class_ids, result.scores, result.class_names):
+            info = []
+            info.append(box)
+            info.append(score)
+            res[name].append(info)
+        results_contain = select_box(res, self.w, self.h)
         res = self._judge_result(results_contain, True)
         return res
-
         # return results
 
     def _judge_result(self, results_contain, return_box=True):
-        judge_result_info = {}
+        judge_result_info = MoMResult()
         #####  先判断 场景七--铁片 是否存在缺失
-        judge_result_info["detailList"] = []
-        judge_result_info['status'] = True
-        judge_result_info['error_msg'] = ""
+        judge_result_info.status = True
 
         try:
             for one_result in results_contain:
@@ -87,18 +92,17 @@ class PlateScrewJudgeApi:
                         label = box_info[2]
                         status = False if 'no' in label else True
                         if not status:
-                            judge_result_info['status'] = False
-                        temp = {
-                            "coordinate": [box[0], box[1], box[2], box[1], box[2], box[3], box[0], box[3]],
-                            "scene": label,
-                            "accuracy": conf,
-                            "status": "true" if status else "false",
-                        }
+                            judge_result_info.status = False
+                        temp = DetectionItem(
+                            status=status,
+                            scene=label,
+                            coordinate=[box[0], box[1], box[2], box[3]],
+                            accuracy=conf,
+                        )
                         if return_box:
-                            judge_result_info["detailList"].append(temp)
-            judge_result_info['message'] = "检测成功"
+                            judge_result_info.detailList.append(temp)
+            judge_result_info.message = "检测成功"
         except Exception as e:
-            judge_result_info['status'] = False
-            judge_result_info['error_msg'] = str(e)
-        judge_result_info['status'] = "true" if judge_result_info['status'] else "false"
+            judge_result_info.status = False
+            judge_result_info.error_msg = str(e)
         return judge_result_info
