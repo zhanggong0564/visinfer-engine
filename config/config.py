@@ -13,11 +13,7 @@ from .dc_fuse_confg import DcFuseConfig
 from .indicator_light_config import IndicatorLightConfig
 from .lap_surf_conf import LapSufConfig
 from .line_squeeze_config import LineSqueezeConfig
-
-
-class PlateScrewConfig:
-    model_path: str = "./weights/mobile_vision_plate_v2.onnx"
-    confThreshold: float = 0.25
+from .plate_screw_congfig import PlateScrewConfig
 
 
 class Settings(BaseSettings):
