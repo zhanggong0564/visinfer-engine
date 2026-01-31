@@ -2,17 +2,17 @@
 
 ## 项目简介
 
-**Mobile Vision** 是一个基于 **FastAPI** 开发的移动视觉算法 API 服务，提供多种工业场景的视觉检测功能，包括**直流熔丝检测、指示灯检测、搭界面检测、铁片检测**等。服务采用**模块化架构设计**，支持灵活扩展新的检测场景。
+**Mobile Vision** 是一个基于 **FastAPI** 开发的移动视觉算法 API 服务，提供多种工业场景的视觉检测功能，包括**直流熔丝检测、指示灯检测、搭接面检测、铁片螺丝检测**等。服务采用**模块化架构设计**，支持灵活扩展新的检测场景。
 
 ## 当前版本
 
-**v1.1.2**
+**v1.1.5**
 
 ---
 
 ## 版本规范
 
-项目采用语义化版本控制规范，版本号格式为 `v{主版本号}.{次版本号}.{修订号}`：
+项目版本控制规范，版本号格式为 `v{主版本号}.{次版本号}.{修订号}`：
 
 1. **主版本号（Major）**：当有重大架构变更或不兼容的 API 修改时递增  
 2. **次版本号（Minor）**：当有框架层面的更新或新增功能时递增  
@@ -131,7 +131,6 @@ python app.py
 #### 请求参数
 
 - `image`：图片文件（`multipart/form-data`）
-- `scene`：检测场景（可选）
 
 #### 响应格式
 
@@ -163,23 +162,47 @@ python app.py
 
 ```bash
 mkdir -p services/new_scene
-mkdir -p routers
-mkdir -p schemas
 ```
 
 ### 2. 实现算法服务层
 
 在 `services/new_scene/` 目录下创建：
 
-- `__init__.py`：模块初始化文件  
+- `__init__.py`：模块初始化文件 
+- `detect.py`：onnx模型推理实现  
+  ```python
+  from ..yolo import YoloOnnxInfer
+
+  class NewSceneDetector(YoloOnnxInfer):
+      def __init__(self, model_path, confThreshold=0.5, nmsThreshold=0.5, task="det"):
+          super().__init__(model_path, nc=12, confThreshold=confThreshold, nmsThreshold=nmsThreshold, task=task)
+          self.id2name = {
+              0: "brass_plate_6",
+              ...
+          }
+
+  ``` 
 - `business_logic.py`：业务逻辑实现  
-- `yolo.py`：YOLO 模型推理实现  
+  ```python
+    @detection_factory.register("new_scene")
+    class new_sceneDetectorAPI(BusinessLogicBase):
+        def __init__(self, settings):
+            super().__init__(settings)
+            pass
 
-### 3. 定义数据模型
+        def _initialize_model(self, settings):
+          """初始化模型"""
+            pass
 
-在 `schemas/` 目录下创建 `new_scene_schemas.py`，定义请求和响应模型。
+        def business_logic_post_process(self, result: DetectResult, product_type: str) -> MoMResult:
+            """业务逻辑后处理"""
+            pass
+            return mom_result
+  ```
 
-### 4. 创建路由
+
+
+### 3. 创建路由
 
 在 `routers/` 目录下创建 `new_scene_routers.py`，实现路由处理：
 
@@ -198,7 +221,6 @@ class NewSceneRouter(BaseRouter):
         pass
 
 new_scene_router = NewSceneRouter()
-router = new_scene_router.get_router()
 ```
 
 ### 5. 添加配置
@@ -274,46 +296,9 @@ uvicorn app:app --host 0.0.0.0 --port 3007 --workers 4
 
 ---
 
-## 开发指南
-
-### 代码规范
-
-- 遵循 PEP 8 代码规范  
-- 使用类型注解  
-- 编写详细的文档字符串  
-
-### 测试
-
-使用 Postman 或 Swagger UI 测试 API 接口。
-
-### 调试
-
-开发环境中可以开启热重载功能：
-
-```bash
-python app.py
-```
-
----
-
-## 注意事项
-
-1. 生产环境中应配置具体的 CORS 允许域名，而不是使用通配符 `*`  
-2. 定期清理日志文件，避免磁盘空间不足  
-3. 模型文件应妥善保管，避免泄露  
-4. 高并发场景下建议使用多进程部署，并配置适当的 worker 数量  
-
----
-
-## 许可证
-
-Copyright (c) 2026.
-
----
-
 ## 联系方式
 
 如有问题或建议，请联系：
 
-- 作者：gongzhang4  
+- 作者：张弓  
 - 邮箱：zhanggong1@sungrowpower.com
