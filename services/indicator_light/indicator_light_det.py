@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:38:07
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-27 08:44:54
+@LastEditTime : 2026-02-03 03:01:58
 @FilePath     : indicator_light_det.py
 @Description  :
 '''
@@ -70,7 +70,7 @@ class IndicatorLightDetRec:
         for box, score in zip(det_result.boxes, det_result.scores):
             x1, y1, x2, y2 = map(int, box[:4])
             boxes.append([x1, y1, x2, y2, score])
-        sorted_boxes = np.array(sort_boxes(boxes))  # 按x1坐标排序
+        sorted_boxes = np.array(sort_boxes(boxes)[0])  # 按x1坐标排序
         embeddings = []
         for box in sorted_boxes:
             x_min, y_min, x_max, y_max, score = box
