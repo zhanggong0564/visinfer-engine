@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-19 08:25:59
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-27 06:53:44
+@LastEditTime : 2026-02-03 08:19:50
 @FilePath     : base_router.py
 @Description  :路由基类，封装所有路由共有的功能
 '''
@@ -19,6 +19,10 @@ from typing import Any
 import cv2
 import numpy as np
 import time
+import os
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(BASE_DIR, "data")
 
 
 class BaseRouter(ABC):
@@ -92,7 +96,21 @@ class BaseRouter(ABC):
         if image is None:
             vision_logger.error("图片读取失败")
             raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
+        h, w, _ = image.shape
+        is_rotate = w < h
+        if is_rotate:
+            # 向左旋转90度
+            image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
+        if image is None:
+            vision_logger.error("图片读取失败")
+            raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
+        try:
+            save_path, filename = file.filename.split("-")
+            os.makedirs(os.path.join(DATA_DIR, save_path), exist_ok=True)
+            cv2.imwrite(os.path.join(DATA_DIR, save_path, filename), image)
+        except Exception as e:
+            vision_logger.error(f"图片保存失败-{file.filename}-{str(e)}")
         return image
 
     def get_router(self):
