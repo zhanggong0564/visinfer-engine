@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 09:54:40
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-16 07:02:54
+@LastEditTime : 2026-02-03 00:59:25
 @FilePath     : pack.py
 @Description  : 批量加密多个文件夹的Python代码（适配模块内build结构）
 '''
@@ -105,7 +105,7 @@ def collect_encrypted_files_from_module_builds():
 
             # 对于services模块，还需要复制子目录的__init__.py文件
             if folder == "services":
-                for subdir in ["dc_fuse", "lap_surf", "plate_screw", "indicator_light"]:
+                for subdir in ["base", "dc_fuse", "lap_surf", "plate_screw", "indicator_light", "LineSqueeze", "utils"]:
                     subdir_init = module_dir / subdir / "__init__.py"
                     if subdir_init.exists():
                         target_subdir_init = encrypted_root / folder / subdir / "__init__.py"
