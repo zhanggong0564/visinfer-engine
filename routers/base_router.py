@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-19 08:25:59
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-04 01:31:46
+@LastEditTime : 2026-02-04 03:35:50
 @FilePath     : base_router.py
 @Description  :路由基类，封装所有路由共有的功能
 '''
@@ -70,7 +70,6 @@ class BaseRouter(ABC):
             w, h, _ = image.shape  ##注意这里是反向的
             result_info = rotate_points(result_info.to_dict(), w, h)
             vision_logger.info(f"旋转后的检测结果：{result_info}")
-        vision_logger.info(f"最终检测结果：{result_info.to_dict()}")
         result = CommonResponse(
             code=1, message="检测成功", result=result_info if isinstance(result_info, dict) else result_info.to_dict()
         )  # TODO
