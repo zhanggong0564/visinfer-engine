@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-21 06:34:07
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-03 10:05:58
+@LastEditTime : 2026-02-04 01:41:11
 @FilePath     : data_base.py
 @Description  :
 '''
@@ -48,7 +48,7 @@ class DetectionItem:
     coordinate: List[float] = field(default_factory=list)
     accuracy: float = 0.0
     name: str = ""
-    color = "#20ff4f"  # true #20ff4f false 颜色=#F74E5A
+    color: str = "#20ff4f"  # true #20ff4f false 颜色=#F74E5A
 
     def to_dict(self):
         return {
