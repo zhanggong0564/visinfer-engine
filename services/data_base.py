@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-21 06:34:07
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-04 01:41:11
+@LastEditTime : 2026-02-04 02:56:47
 @FilePath     : data_base.py
 @Description  :
 '''
@@ -57,7 +57,7 @@ class DetectionItem:
             "coordinate": self.coordinate,
             "accuracy": self.accuracy,
             "name": self.name,
-            "color": self.color if self.status else "#F74E5A",
+            "color": self.color if self.status else "#FFFF00",
         }
 
     @classmethod
