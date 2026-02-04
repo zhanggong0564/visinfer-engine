@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-19 08:25:59
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-03 08:19:50
+@LastEditTime : 2026-02-04 01:31:46
 @FilePath     : base_router.py
 @Description  :路由基类，封装所有路由共有的功能
 '''
@@ -20,6 +20,7 @@ import cv2
 import numpy as np
 import time
 import os
+from services import rotate_points
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -57,14 +58,22 @@ class BaseRouter(ABC):
         request_params = await self._validate_and_parse_params(json_data)
         vision_logger.info(f"校验参数：{request_params}")
 
-        image = await self._process_image(file)
+        image, is_rotate = await self._process_image(file)
         inputs = self.get_inputs(request_params, image)
         detector = self.get_detector_singleton()
         start = time.time()
         result_info = detector.detect(inputs)
         end = time.time()
         vision_logger.info(f"检测耗时：{end - start}秒")
-        result = CommonResponse(code=1, message="检测成功", result=result_info.to_dict())
+        vision_logger.info(f"原始检测结果：{result_info}")
+        if is_rotate:
+            w, h, _ = image.shape  ##注意这里是反向的
+            result_info = rotate_points(result_info.to_dict(), w, h)
+            vision_logger.info(f"旋转后的检测结果：{result_info}")
+        vision_logger.info(f"最终检测结果：{result_info.to_dict()}")
+        result = CommonResponse(
+            code=1, message="检测成功", result=result_info if isinstance(result_info, dict) else result_info.to_dict()
+        )  # TODO
         vision_logger.info("参数校验通过，返回检测结果")
         return result
 
@@ -111,7 +120,7 @@ class BaseRouter(ABC):
             cv2.imwrite(os.path.join(DATA_DIR, save_path, filename), image)
         except Exception as e:
             vision_logger.error(f"图片保存失败-{file.filename}-{str(e)}")
-        return image
+        return image, is_rotate
 
     def get_router(self):
         return self.router
