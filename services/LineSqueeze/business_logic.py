@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-17 06:45:33
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-28 07:38:33
+@LastEditTime : 2026-02-04 03:05:35
 @FilePath     : business_logic.py
 @Description  :
 '''
@@ -190,8 +190,17 @@ class LineSqueezeDetectApi(BusinessLogicBase):
         dc_boxes = [result.boxes[i] + [result.scores[i]] for i in sorted_indices if result.class_ids[i] == 1]
         fu_boxes = [result.boxes[i] + [result.scores[i]] for i in sorted_indices if result.class_ids[i] == 0]
 
-        dc_res = [result.text[i][2] for i in sorted_indices if result.class_ids[i] == 1]
-        fu_res = [result.text[i][2] for i in sorted_indices if result.class_ids[i] == 0]
+        dc_res = [
+            result.text[i][2] if i < len(result.text) and len(result.text[i]) > 2 else ""
+            for i in sorted_indices
+            if result.class_ids[i] == 1
+        ]
+        fu_res = [
+            result.text[i][2] if i < len(result.text) and len(result.text[i]) > 2 else ""
+            for i in sorted_indices
+            if result.class_ids[i] == 0
+        ]
+
         dc_res = self.check_infos(dc_res)
         fu_res = self.check_infos(fu_res)
         res, infos = self.ProductType[product_type](dc_res, fu_res, dc_boxes, fu_boxes)

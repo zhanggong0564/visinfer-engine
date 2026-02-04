@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-17 06:31:48
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-28 07:31:16
+@LastEditTime : 2026-02-04 02:09:32
 @FilePath     : yolo.py
 @Description  :
 '''
@@ -29,6 +29,6 @@ class LineSqueezePipeline:
         results = self.detector.infer(image)
 
         rois = [image[int(box[1]) + 10 : int(box[3]) - 10, int(box[0]) : int(box[2])] for box in results.boxes]
-
-        res = [res['rec_text'] for res in self.ocr.predict(input=rois) if len(res['rec_text']) > 2]
+        ocr_results = self.ocr.predict(input=rois)
+        res = [result['rec_text'] if len(result['rec_text']) > 2 else "" for result in ocr_results]
         return OCRResult(text=res, boxes=results.boxes, class_ids=results.class_ids, scores=results.scores)
