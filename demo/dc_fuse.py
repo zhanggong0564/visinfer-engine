@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 07:14:19
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-27 05:28:00
+@LastEditTime : 2026-02-03 10:20:17
 @FilePath     : dc_fuse.py
 @Description  :
 '''
@@ -28,16 +28,18 @@ from services import detection_factory
 
 
 if __name__ == '__main__':
-    image_path = "/data/zhanggong/workspace/project/move_vsion/mobile_vision_identification/src/test_image/debug_20251206/1/17617013726191983345470760165376.jpg"
+    image_path = "/data/zhanggong/workspace/project/move_vsion/mobile_vision/dc_fuse_rotate.jpg"
     type_name = "五路有熔丝盒无磁环"
-    image = cv2.imread(image_path)
-    is_rotate = image.shape[1] > image.shape[0]
+    image_src = cv2.imread(image_path)
+
+    h, w, _ = image_src.shape
+    is_rotate = w < h
 
     if is_rotate:
         # 向右旋转90度
         print("rotate image")
-        image_src = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
-        h, w, _ = image_src.shape
+        image = cv2.rotate(image_src, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
     print(detection_factory.list_scenarios())
 
     # detector = DCFuseDetectorAPI(settings)
@@ -60,6 +62,6 @@ if __name__ == '__main__':
         points = np.array([[[x1, y1], [x2, y2], [x3, y3], [x4, y4]]], dtype=np.int32)
         cv2.polylines(image_src, points, True, (0, 255, 0), 2)
         # cv2.polylines(image_src, np.array([[x1, y1], [x2, y2], [x3, y3], [x4, y4]]), True, (0, 255, 0), 2)
-    cv2.imwrite("dc_fuse_rotate.jpg", image_src)
+    cv2.imwrite("dc_fuse_rotate_res.jpg", image_src)
 
     # vision_logger.info(json.dumps(res, ensure_ascii=False, indent=2))
