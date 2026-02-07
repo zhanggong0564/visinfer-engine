@@ -2,8 +2,8 @@
 @Author       : gongzhang4
 @Date         : 2026-01-29 12:25:07
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-29 12:47:55
-@FilePath     : business_logic_v2.py
+@LastEditTime : 2026-02-07 08:06:00
+@FilePath     : business_logic.py
 @Description  :
 '''
 
@@ -12,7 +12,7 @@ from ..api import detection_factory
 from ..base import BusinessLogicBase
 from .plate_screw_detect import PlateScrewDetect
 from utils import vision_logger
-from ..data_base import MoMResult, DetectResult, DetectionItem
+from schemas.data_base import MoMResult, DetectResult, DetectionItem
 from collections import defaultdict
 
 

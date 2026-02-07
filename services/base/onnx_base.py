@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:16:55
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-27 03:07:28
+@LastEditTime : 2026-02-07 08:05:54
 @FilePath     : onnx_base.py
 @Description  :
 '''
@@ -12,7 +12,7 @@ import onnxruntime
 from ..utils.utils import *
 from utils import vision_logger
 import time
-from ..data_base import DetectResult
+from schemas.data_base import DetectResult
 
 # 设置onnxruntime日志级别
 onnxruntime.set_default_logger_severity(3)

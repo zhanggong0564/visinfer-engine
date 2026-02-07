@@ -2,13 +2,13 @@
 @Author       : gongzhang4
 @Date         : 2026-01-23 05:37:39
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-29 12:45:56
+@LastEditTime : 2026-02-07 08:04:21
 @FilePath     : business_logic_base.py
 @Description  : 业务逻辑基类
 '''
 
 import numpy as np
-from ..data_base import InputParamsBusiness, MoMResult, DetectResult, IndicatorLightEmbedding
+from schemas.data_base import InputParamsBusiness, MoMResult, DetectResult, IndicatorLightEmbedding
 
 
 class BusinessLogicBase:

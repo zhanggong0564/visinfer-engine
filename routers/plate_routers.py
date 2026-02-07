@@ -10,7 +10,7 @@
 from .base_router import BaseRouter
 from schemas import EmptyRequest
 import numpy as np
-from services.data_base import InputParamsBusiness
+from schemas.data_base import InputParamsBusiness
 
 
 class PlateScrewRouter(BaseRouter):

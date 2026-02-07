@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-27 02:06:28
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-27 03:09:34
+@LastEditTime : 2026-02-07 08:11:02
 @FilePath     : yolo.py
 @Description  :
 '''
@@ -10,7 +10,7 @@
 from .base import BaseOnnxInfer
 from .utils import *
 from collections import defaultdict
-from .data_base import DetectResult
+from schemas.data_base import DetectResult
 
 
 class YoloOnnxInfer(BaseOnnxInfer):

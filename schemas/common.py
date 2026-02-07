@@ -9,7 +9,7 @@
 
 from pydantic import BaseModel, Field
 from typing import List, Literal
-from services.data_base import DetectionItem
+from .data_base import DetectionItem
 
 
 class GuideLineItem(BaseModel):
