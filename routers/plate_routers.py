@@ -13,7 +13,7 @@ import numpy as np
 from services.data_base import InputParamsBusiness
 
 
-class DCFuseRouter(BaseRouter):
+class PlateScrewRouter(BaseRouter):
     def __init__(self, router_name, api_path, summary, description, detector_type):
         super().__init__(router_name, api_path, summary, description, detector_type)
 
@@ -25,7 +25,7 @@ class DCFuseRouter(BaseRouter):
         return input
 
 
-dc_router = DCFuseRouter(
+plate_screw_router = PlateScrewRouter(
     router_name="plate_router",
     api_path="/plate_screw_detect",
     summary="螺丝检测接口",
