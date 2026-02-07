@@ -7,15 +7,6 @@
 @Description  :
 '''
 
-# from .dc_fuse import DCFuseDetectorAPI
-# from .lap_surf import LapSurfJudgeApi
-# from .plate_screw import PlateScrewJudgeApi
-# from .indicator_light import IndicatorLightBusinessAPI
-# from .LineSqueeze import RoiDet, LineSqueezeRecognition
-from .dc_fuse import DCFuseDetectorAPI
-from .indicator_light import IndicatorLightBusinessAPI
-from .lap_surf import LapSurfJudgeApi
-from .LineSqueeze import LineSqueezeDetectApi
 from .plate_screw import PlateScrewJudgeApi
 from .utils import rotate_points
 from .api import detection_factory
