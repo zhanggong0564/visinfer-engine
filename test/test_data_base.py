@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, Path(__file__).resolve().parent.parent)
 print(Path(__file__).resolve().parent.parent)
 
-from services.data_base import DetectResult, DetectionItem
+from schemas.data_base import DetectResult, DetectionItem
 
 
 class TestDetectResult(unittest.TestCase):
