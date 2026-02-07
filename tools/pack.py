@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 09:54:40
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-03 00:59:25
+@LastEditTime : 2026-02-04 03:16:46
 @FilePath     : pack.py
 @Description  : 批量加密多个文件夹的Python代码（适配模块内build结构）
 '''
@@ -126,7 +126,7 @@ def organize_encrypted_structure():
         return
 
     # 复制必要的启动文件和配置文件
-    for file in ["app.py", "config.py", "requirements.txt", "start_app.sh"]:
+    for file in ["app.py", "requirements.txt", "start_app.sh"]:
         source_file = project_root / file
         if source_file.exists():
             shutil.copy2(source_file, encrypted_root)
@@ -139,7 +139,7 @@ def organize_encrypted_structure():
         print("📦 已复制权重文件")
 
     # 复制其他未加密的模块（保持目录结构）
-    modules_to_copy = ["schemas", "utils", "routers"]
+    modules_to_copy = ["schemas", "utils", "routers", "config"]
     for module in modules_to_copy:
         module_dir = project_root / module
         if module_dir.exists():
