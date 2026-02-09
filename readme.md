@@ -54,8 +54,7 @@ mobile_vision/
 ├── app.py                       # 应用入口文件
 ├── config/                      # 配置文件目录
 │   ├── config.py                # 主配置文件
-│   ├── dc_fuse_confg.py         # 直流熔丝检测配置
-│   └── indicator_light_config.py# 指示灯检测配置
+│   └── plate_screw_config.py    # 铁片螺丝检测配置
 ├── demo/                        # 演示示例
 │   ├── dc_fuse.py               # 直流熔丝检测演示
 │   ├── indicator_light.py       # 指示灯检测演示
@@ -63,18 +62,34 @@ mobile_vision/
 ├── logs/                        # 日志目录
 ├── routers/                     # 路由定义
 │   ├── base_router.py           # 基础路由类
-│   ├── dc_fuse.py               # 直流熔丝检测路由
-│   ├── indicator.py             # 指示灯检测路由
-│   ├── lap_surf.py              # 搭界面检测路由
-│   ├── plate.py                 # 铁片检测路由
+│   ├── plate_routers.py         # 铁片螺丝检测路由
 │   └── router_registry.py       # 路由注册器
 ├── schemas/                     # 数据模型定义
-│   ├── common.py                # 通用模型
-│   └── dc_fuse_schemas.py       # 直流熔丝检测模型
+│   ├── common.py                # 通用请求模型
+│   └── data_base.py             # 基础数据结构
 ├── services/                    # 算法服务层
-│   ├── dc_fuse/                 # 直流熔丝检测服务
-│   ├── indicator_light/         # 指示灯检测服务
-│   └── lap_surf/                # 搭界面检测服务
+│   ├── api.py                   # 服务工厂类
+│   ├── base                     
+│   │   ├── business_logic_base.py # 基础业务逻辑类
+│   │   ├── __init__.py
+│   │   └── onnx_base.py         # ONNX推理模型基础类
+│   ├── __init__.py
+│   ├── plate_screw              # 铁片螺丝检测服务层
+│   │   ├── business_logic.py
+│   │   ├── __init__.py
+│   │   ├── plate_screw_detect.py
+│   │   └── tools.py
+│   ├── utils                    # 工具函数
+│   │   ├── box.py
+│   │   ├── __init__.py
+│   │   └── utils.py
+│   └── yolo.py                  # YOLO ONNX推理模型类
+├── test/                       # 测试用例目录
+│   ├── test_base.py
+│   ├── test_config.py
+│   ├── test_data_base.py
+│   ├── test_plateResponse.py
+│   └── test_yolo.py
 ├── utils/                       # 工具函数
 │   └── logger.py                # 日志工具
 ├── weights/                     # 模型权重文件
