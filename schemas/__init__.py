@@ -8,5 +8,6 @@
 '''
 
 from .common import CommonResponse, EmptyRequest
+from .data_base import *
 
-__all__ = ["CommonResponse", "EmptyRequest"]
+__all__ = ["CommonResponse", "EmptyRequest", "DetectResult", "DetectionItem"]

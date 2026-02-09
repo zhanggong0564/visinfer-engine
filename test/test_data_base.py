@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-23 03:39:17
 @LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-23 05:06:49
+@LastEditTime : 2026-02-07 10:15:50
 @FilePath     : test_data_base.py
 @Description  : 测试数据基础类
 '''
@@ -75,6 +75,7 @@ class TestDetectionItem(unittest.TestCase):
                 "coordinate": [1, 2, 3, 4],
                 "accuracy": 0.8,
                 "name": "dc_1",
+                "color": "#20ff4f",
             },
         )
 
