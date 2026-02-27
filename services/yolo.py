@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-27 02:06:28
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-27 03:19:34
+@LastEditTime : 2026-02-27 03:22:56
 @FilePath     : yolo.py
 @Description  :
 '''
