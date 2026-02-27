@@ -1,8 +1,8 @@
 '''
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:20:56
-@LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-28 07:36:17
+@LastEditors  : 张弓 zhanggong1@sungrowpower.com
+@LastEditTime : 2026-02-27 02:28:38
 @FilePath     : utils.py
 @Description  :
 '''
@@ -13,6 +13,7 @@ import numpy as np
 import base64
 import numpy as np
 from typing import List, Tuple, Any
+from concurrent.futures import ThreadPoolExecutor
 
 
 def clip_boxes(boxes, shape):
@@ -263,12 +264,20 @@ def process_mask(protos, masks_in, bboxes, shape):
     downsampled_bboxes[:, 1] *= mh / ih
 
     masks = crop_mask(masks, downsampled_bboxes)  # CHW
-    mask_res = np.zeros(shape)
-    ###下面代码有坑，不能写成np.max(mask,0)
-    for mask in masks:
-        mask_res += cv2.resize(mask, (shape[1], shape[0]), interpolation=cv2.INTER_CUBIC)
-    masks = (mask_res > 0.5).astype(np.uint8)
-    return masks
+
+    def process_single_mask(mask):
+        resized_mask = cv2.resize(mask, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+        binary_mask = (resized_mask > 0.5).astype(np.uint8)
+        return binary_mask
+
+    with ThreadPoolExecutor() as executor:
+        final_masks = list(executor.map(process_single_mask, masks))
+    # final_masks = []
+    # for mask in masks:
+    #     resized_mask = cv2.resize(mask, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+    #     binary_mask = (resized_mask > 0.5).astype(np.uint8)
+    #     final_masks.append(binary_mask)
+    return final_masks
 
 
 def crop_mask(masks, boxes):
