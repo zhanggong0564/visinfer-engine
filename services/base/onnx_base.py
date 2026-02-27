@@ -1,8 +1,8 @@
 '''
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:16:55
-@LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-07 08:05:54
+@LastEditors  : 张弓 zhanggong1@sungrowpower.com
+@LastEditTime : 2026-02-27 02:44:33
 @FilePath     : onnx_base.py
 @Description  :
 '''
@@ -97,6 +97,7 @@ class BaseOnnxInfer:
             DetectResult: 推理结果
         """
         try:
+            self.ori_img = img.copy()
             self.image_src_shape = img.shape
             img = self.preprocess(img)
             outputs = self.session.run(self.output_names, {self.input_names[0]: img})
