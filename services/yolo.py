@@ -1,8 +1,8 @@
 '''
 @Author       : gongzhang4
 @Date         : 2026-01-27 02:06:28
-@LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-07 08:11:02
+@LastEditors  : 张弓 zhanggong1@sungrowpower.com
+@LastEditTime : 2026-02-27 03:19:34
 @FilePath     : yolo.py
 @Description  :
 '''
@@ -53,7 +53,13 @@ class YoloOnnxInfer(BaseOnnxInfer):
         )
         image_shape = self.image_src_shape[:2]
         input_shape = self.input_model_shape[2:]
-        res = defaultdict()
+        if self.task == "seg":
+            protos = preds[0][1] if isinstance(preds[0], tuple) else preds[1]
+            mask_in = p[0][:, 6:]
+            bboxes = p[0][:, :4]
+            masks = process_mask(protos, mask_in, bboxes, input_shape)
+            masks = [scale_masks(mask, (image_shape[1], image_shape[0]), self.r, self.dw, self.dh) for mask in masks]
+            mask_polygons = [segment for mask in masks for segment in masks2segments(mask)]
         pred = p[0]
         pred[:, :4] = scale_boxes(input_shape, pred[:, :4], image_shape, xywh=False)
         pred = np.concatenate([pred[:, :4], pred[:, -1:], pred[:, 4:6]], axis=-1)
@@ -63,6 +69,12 @@ class YoloOnnxInfer(BaseOnnxInfer):
         # else:
         #     bbox = xywh2xyxy(bbox)
         detect_result = DetectResult(
-            bbox.tolist(), pred[:, -2].tolist(), pred[:, -1].tolist(), [self.id2name[int(cls)] for cls in pred[:, -1]]
+            bbox.tolist(),
+            pred[:, -2].tolist(),
+            pred[:, -1].tolist(),
+            [self.id2name[int(cls)] for cls in pred[:, -1]],
+            masks=masks if self.task == "seg" else [],
+            mask_polygons=mask_polygons if self.task == "seg" else [],
+            ori_img=self.ori_img,
         )
         return detect_result
