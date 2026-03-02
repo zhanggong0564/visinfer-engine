@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:20:56
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-02 07:40:42
+@LastEditTime : 2026-03-02 08:35:35
 @FilePath     : panel_label_detect.py
 @Description  : 面板标签检测
 '''
@@ -15,6 +15,7 @@ from paddleocr import TextLineOrientationClassification, TextRecognition, Paddle
 from .utils import Points_to_Mask
 from typing import List
 from dataclasses import dataclass, field
+from itertools import chain
 
 
 @dataclass
@@ -44,8 +45,8 @@ class PanelLabelDetect(YoloOnnxInfer):
 
 
 class OCRPipeline:
-    def __init__(self, detect_model_path, orient_model_path, confThreshold=0.5, nmsThreshold=0.5, task="seg"):
-        self.detect_model = PanelLabelDetect(detect_model_path, confThreshold, nmsThreshold, task)
+    def __init__(self, detect_model_path, orient_model_path, confThreshold=0.5, nmsThreshold=0.5):
+        self.detect_model = PanelLabelDetect(detect_model_path, confThreshold, nmsThreshold, task="seg")
         self.ocr = PaddleOCR(
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
@@ -70,15 +71,15 @@ class OCRPipeline:
         texts = [pred['rec_texts'][0] for pred in rec_preds]
         positions = [np.int64(cv2.boxPoints(cv2.minAreaRect(mask_polygon))) for mask_polygon in mask_polygons]
         ori_index = [np.where(class_ids == 0)[0][sorted_idx] for sorted_idx in sorted_idxs]
-        positions = [positions[idx] for idx in ori_index]
+        positions = [list(chain.from_iterable(positions[idx].tolist())) for idx in ori_index]
         roi_classes_ids = class_ids[ori_index]
-        confidences = results.confidences[ori_index]
+        confidences = [results.scores[idx] for idx in ori_index]
         panel_label_item = PanellabelItem(
             Points=positions,
             index=ori_index,
             class_id=roi_classes_ids.tolist(),
             texts=texts,
-            confidence=confidences.tolist(),
+            confidence=confidences,
         )
 
         return panel_label_item
