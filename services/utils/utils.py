@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:20:56
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-27 02:28:38
+@LastEditTime : 2026-03-02 07:52:57
 @FilePath     : utils.py
 @Description  :
 '''
@@ -402,7 +402,7 @@ def masks2segments(masks):
 
 def segments2masks(points, mask_shape):
     h, w = mask_shape
-    gt = np.zeros(h, w, dtype=np.uint8)
+    gt = np.zeros((h, w), dtype=np.uint8)
     for p in points:
         cv2.fillPoly(gt, p.astype(np.int32)[np.newaxis, :, :], int(1))
     return gt
