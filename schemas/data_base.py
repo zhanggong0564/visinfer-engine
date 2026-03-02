@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-21 06:34:07
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-27 02:55:03
+@LastEditTime : 2026-03-02 07:46:27
 @FilePath     : data_base.py
 @Description  :
 '''
@@ -28,13 +28,15 @@ class DetectResult:
         '''
         可视化图像，将检测结果绘制在图像上
         '''
+        mask_img = self.ori_img.copy()
+        vis_img = self.ori_img.copy()
         if self.ori_img is not None:
             # 绘制检测框
-            for box, score, class_name in zip(self.boxes, self.scores, self.class_names):
+            for box, score, class_name, segment in zip(self.boxes, self.scores, self.class_names, self.mask_polygons):
                 x1, y1, x2, y2 = map(int, box)
-                cv2.rectangle(self.ori_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(vis_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(
-                    self.ori_img,
+                    vis_img,
                     f"{class_name}: {score:.2f}",
                     (x1, y1 - 5),
                     cv2.FONT_HERSHEY_SIMPLEX,
@@ -42,28 +44,10 @@ class DetectResult:
                     (0, 255, 0),
                     2,
                 )
-            # 绘制掩码
-            if len(self.masks) > 0:
-                # 初始化 new_mask，确保与 ori_img 的尺寸和通道一致
-                new_mask = np.zeros_like(self.ori_img, dtype=np.uint8)
-
-                for mask in self.masks:
-                    # 将 mask 转换为二值图像并调整尺寸
-                    mask = (mask > 0.5).astype(np.uint8) * 255
-                    resized_mask = cv2.resize(mask, (self.ori_img.shape[1], self.ori_img.shape[0]))
-
-                    # 如果 ori_img 是多通道图像，则需要将单通道 mask 转换为多通道
-                    if len(new_mask.shape) == 3:  # RGB or BGR image
-                        resized_mask = cv2.merge([resized_mask, resized_mask, resized_mask])
-
-                    # 累加 mask
-                    new_mask = cv2.add(new_mask, resized_mask)
-
-                # 将 ori_img 和 new_mask 进行加权合成
-                self.ori_img = cv2.addWeighted(self.ori_img, 0.5, new_mask, 0.5, 0)
-
+                cv2.fillPoly(mask_img, np.int32([segment]), (0, 255, 0))
+            vis_img = cv2.addWeighted(vis_img, 0.7, mask_img, 0.3, 0)
             # 保存结果图像
-            cv2.imwrite(save_path, self.ori_img)
+            cv2.imwrite(save_path, vis_img)
 
 
 @dataclass
