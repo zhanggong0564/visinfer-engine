@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-03-02 03:48:53
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-02 08:23:01
+@LastEditTime : 2026-03-02 11:55:29
 @FilePath     : business_logic.py
 @Description  :
 '''
@@ -89,16 +89,18 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             observed_result_points=observed_result.Points,
             class_id=observed_result.class_id,
         )
+        panel_info.result = True
+        panel_info.message = ErrorType.OK.value
         if len(observed_result.texts) != len(standard_result):
             panel_info.message = ErrorType.MISSING.value
             panel_info.result = False
             return panel_info
         for i, item in enumerate(observed_result.texts):
-            if item != standard_result[i]:
+            front3 = item[:3]
+            # 取后3位，并转小写字符
+            tail3 = item[-2:].lower()
+            if front3 != standard_result[i][:3] or tail3 != standard_result[i][-2:].lower():
                 panel_info.message = ErrorType.MISMATCH.value
                 panel_info.result = False
-                panel_info.error_indexs = [i]
-            return panel_info
-        panel_info.message = ErrorType.OK.value
-        panel_info.result = True
+                panel_info.error_indexs.append(i)
         return panel_info
