@@ -1,8 +1,8 @@
 '''
 @Author       : gongzhang4
 @Date         : 2026-01-23 05:37:39
-@LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-07 08:04:21
+@LastEditors  : 张弓 zhanggong1@sungrowpower.com
+@LastEditTime : 2026-03-02 08:33:51
 @FilePath     : business_logic_base.py
 @Description  : 业务逻辑基类
 '''
@@ -47,11 +47,15 @@ class BusinessLogicBase:
         detailList = result.detailList
         for item in detailList:
             coordinate = item.coordinate
-            ltx, lty, rbx, rby = coordinate
-            x1, y1 = ltx, lty
-            x2, y2 = rbx, lty
-            x3, y3 = rbx, rby
-            x4, y4 = ltx, rby
+            if len(coordinate) != 8:
+                ltx, lty, rbx, rby = coordinate
+                x1, y1 = ltx, lty
+                x2, y2 = rbx, lty
+                x3, y3 = rbx, rby
+                x4, y4 = ltx, rby
+            elif len(coordinate) == 8:
+                x1, y1, x2, y2, x3, y3, x4, y4 = coordinate
+
             item.coordinate = [
                 x1 / self.w,
                 y1 / self.h,
