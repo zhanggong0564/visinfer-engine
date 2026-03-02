@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-03-02 03:48:53
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-02 07:58:13
+@LastEditTime : 2026-03-02 08:23:01
 @FilePath     : business_logic.py
 @Description  :
 '''
@@ -31,13 +31,13 @@ class PanelInfo:
     result: bool = False
     product_type: str = ""
     # 标准ocr结果
-    standard_result: list[str] = None
+    standard_result: list[str] = field(default_factory=list)
     # 观察到的ocr结果
-    observed_result: list[str] = None
+    observed_result: list[str] = field(default_factory=list)
     # 观察到的ocr结果的点坐标
-    observed_result_points: list[list[float]] = None
+    observed_result_points: list[list[float]] = field(default_factory=list)
     message: str = ErrorType.UNKNOWN.value
-    error_indexs: list[int] = None
+    error_indexs: list[int] = field(default_factory=list)
     class_id: List[int] = field(default_factory=list)
 
 
@@ -54,7 +54,6 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 settings.orient_model_path,
                 settings.confThreshold,
                 settings.nmsThreshold,
-                settings.task,
             )
         except Exception as e:
             vision_logger.error(f"initialize model failed, error: {e}")
@@ -90,11 +89,11 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             observed_result_points=observed_result.Points,
             class_id=observed_result.class_id,
         )
-        if len(observed_result) != len(standard_result):
+        if len(observed_result.texts) != len(standard_result):
             panel_info.message = ErrorType.MISSING.value
             panel_info.result = False
             return panel_info
-        for i, item in enumerate(observed_result):
+        for i, item in enumerate(observed_result.texts):
             if item != standard_result[i]:
                 panel_info.message = ErrorType.MISMATCH.value
                 panel_info.result = False
