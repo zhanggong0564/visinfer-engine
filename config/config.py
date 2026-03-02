@@ -1,14 +1,15 @@
 '''
 @Author       : gongzhang4
 @Date         : 2026-01-23 06:35:58
-@LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-07 08:22:09
+@LastEditors  : 张弓 zhanggong1@sungrowpower.com
+@LastEditTime : 2026-03-02 08:02:27
 @FilePath     : config.py
 @Description  :
 '''
 
 from pydantic_settings import BaseSettings
 from .plate_screw_congfig import PlateScrewConfig
+from .panel_label_config import PanelLabelConfig
 
 
 class Settings(BaseSettings):
@@ -21,6 +22,7 @@ class Settings(BaseSettings):
     LOG_DIR: str = "logs"
     LOG_LEVEL: str = "INFO"
     plate_screw: PlateScrewConfig = PlateScrewConfig()
+    panel_label: PanelLabelConfig = PanelLabelConfig()
     WORKERS: int = 1
 
     class Config:
