@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-21 06:34:07
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-02 07:46:27
+@LastEditTime : 2026-03-16 08:16:01
 @FilePath     : data_base.py
 @Description  :
 '''
@@ -31,21 +31,43 @@ class DetectResult:
         mask_img = self.ori_img.copy()
         vis_img = self.ori_img.copy()
         if self.ori_img is not None:
-            # 绘制检测框
-            for box, score, class_name, segment in zip(self.boxes, self.scores, self.class_names, self.mask_polygons):
-                x1, y1, x2, y2 = map(int, box)
-                cv2.rectangle(vis_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(
-                    vis_img,
-                    f"{class_name}: {score:.2f}",
-                    (x1, y1 - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (0, 255, 0),
-                    2,
-                )
-                cv2.fillPoly(mask_img, np.int32([segment]), (0, 255, 0))
-            vis_img = cv2.addWeighted(vis_img, 0.7, mask_img, 0.3, 0)
+            if len(self.mask_polygons) > 0:
+                # 绘制检测框
+                for box, score, class_name in zip(self.boxes, self.scores, self.class_names):
+                    x1, y1, x2, y2 = map(int, box)
+                    cv2.rectangle(vis_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.putText(
+                        vis_img,
+                        f"{class_name}: {score:.2f}",
+                        (x1, y1 - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (0, 255, 0),
+                        2,
+                    )
+                for segment in self.mask_polygons:
+                    cv2.fillPoly(mask_img, np.int32([segment]), (0, 255, 0))
+                vis_img = cv2.addWeighted(vis_img, 0.7, mask_img, 0.3, 0)
+            else:
+                for box, score, class_name in zip(self.boxes, self.scores, self.class_names):
+                    # p1, p2 = (int(box[3][0]), int(box[3][1])), (int(box[2][0]), int(box[2][1]))
+                    vis_img = cv2.polylines(
+                        vis_img,
+                        [np.asarray(box, dtype=int)],
+                        True,
+                        (0, 255, 0),
+                        4,
+                    )
+                    # cv2.rectangle(vis_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    # cv2.putText(
+                    #     vis_img,
+                    #     f"{class_name}: {score:.2f}",
+                    #     (x1, y1 - 5),
+                    #     cv2.FONT_HERSHEY_SIMPLEX,
+                    #     0.5,
+                    #     (0, 255, 0),
+                    #     2,
+                    # )
             # 保存结果图像
             cv2.imwrite(save_path, vis_img)
 
