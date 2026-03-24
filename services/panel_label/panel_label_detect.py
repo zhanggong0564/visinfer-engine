@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:20:56
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-02 08:35:35
+@LastEditTime : 2026-03-23 12:59:59
 @FilePath     : panel_label_detect.py
 @Description  : 面板标签检测
 '''
@@ -53,6 +53,8 @@ class OCRPipeline:
             use_textline_orientation=True,
             textline_orientation_model_name="PP-LCNet_x1_0_textline_ori",
             textline_orientation_model_dir=orient_model_path,
+            text_recognition_model_name="PP-OCRv5_server_rec",
+            text_recognition_model_dir='/data/zhanggong/workspace/project/move_vsion/mobile_vision/weights/panel_label/PP-OCRv5_server_rec_plane_infer',
         )
 
     def infer(self, image, sort_by="xy") -> PanellabelItem:
