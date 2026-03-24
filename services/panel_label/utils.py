@@ -30,26 +30,98 @@ def sort_mask(
             cy = int(M["m01"] / M["m00"])
             centroids.append((cx, cy))
 
-    if sort_by == "y":
-        sorted_idx = np.argsort([cy for cx, cy in centroids])
-    elif sort_by == "xy":
-        # 先分上下，再分对上面的按x排序，对下面的按x排序
-        top_idx = np.where([cy < image_cy for cx, cy in centroids])[0]
-        bottom_idx = np.where([cy >= image_cy for cx, cy in centroids])[0]
-        sorted_idx = np.concatenate(
-            [
-                top_idx[np.argsort(np.array([cx for cx, cy in centroids])[top_idx])],
-                bottom_idx[np.argsort(np.array([cx for cx, cy in centroids])[bottom_idx])],
-            ]
-        )
-    elif sort_by == "x":
-        sorted_idx = np.argsort([cx for cx, cy in centroids])
-    return [points[idx] for idx in sorted_idx], sorted_idx
-    # print(sorted_idx)
-    # for i, idx in enumerate(sorted_idx):
-    #     cv2.circle(temp, (centroids[idx]), 5, (0, 255, 0), -1)
-    #     cv2.putText(temp, str(i), (centroids[idx][0], centroids[idx][1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-    # cv2.imwrite('temp.jpg', temp)
+#     if sort_by == "y":
+#         sorted_idx = np.argsort([cy for cx, cy in centroids])
+#     elif sort_by == "xy":
+#         # 先分上下，再分对上面的按x排序，对下面的按x排序
+#         top_idx = np.where([cy < image_cy for cx, cy in centroids])[0]
+#         bottom_idx = np.where([cy >= image_cy for cx, cy in centroids])[0]
+#         sorted_idx = np.concatenate(
+#             [
+#                 top_idx[np.argsort(np.array([cx for cx, cy in centroids])[top_idx])],
+#                 bottom_idx[np.argsort(np.array([cx for cx, cy in centroids])[bottom_idx])],
+#             ]
+#         )
+#     elif sort_by == "x":
+#         sorted_idx = np.argsort([cx for cx, cy in centroids])
+#     return [points[idx] for idx in sorted_idx], sorted_idx
+
+# print(sorted_idx)
+# for i, idx in enumerate(sorted_idx):
+#     cv2.circle(temp, (centroids[idx]), 5, (0, 255, 0), -1)
+#     cv2.putText(temp, str(i), (centroids[idx][0], centroids[idx][1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+# cv2.imwrite('temp.jpg', temp)
+from typing import List, Tuple
+import numpy as np
+import cv2
+
+
+def sort_mask(
+    ori_img: np.ndarray,
+    points: np.ndarray,
+) -> Tuple[List[np.ndarray], np.ndarray]:
+    """
+    统一排序规则：
+    1) 先按重心 y 分行（从上到下）
+    2) 行内按重心 x 排序（从左到右）
+
+    适配：
+    - 两行：第一行左->右，再第二行左->右
+    - 一列：上->下
+    - 一行：左->右
+    """
+    if points is None or len(points) == 0:
+        return [], np.array([], dtype=np.int64)
+
+    # 1) 计算每个 polygon 的重心
+    items = []  # (orig_idx, cx, cy, h)
+    for i, point in enumerate(points):
+        contour = np.array(point, dtype=np.int32).reshape((-1, 1, 2))
+        M = cv2.moments(contour)
+
+        arr = np.array(point, dtype=np.float32).reshape(-1, 2)
+        if M["m00"] != 0:
+            cx = float(M["m10"] / M["m00"])
+            cy = float(M["m01"] / M["m00"])
+        else:
+            # 兜底：退化轮廓用均值中心
+            cx = float(arr[:, 0].mean())
+            cy = float(arr[:, 1].mean())
+
+        h = float(arr[:, 1].max() - arr[:, 1].min() + 1e-6)  # 框高
+        items.append((i, cx, cy, h))
+
+    # 2) 先按 y 从上到下
+    items.sort(key=lambda t: t[2])
+
+    # 3) 按 y 聚类成“行”
+    # 阈值：行内允许的 y 浮动，取中位高度的一部分
+    heights = np.array([it[3] for it in items], dtype=np.float32)
+    row_thr = max(5.0, float(np.median(heights) * 0.5))
+
+    rows = []  # 每行是若干 item
+    for it in items:
+        if not rows:
+            rows.append([it])
+            continue
+
+        last_row = rows[-1]
+        row_cy = float(np.mean([x[2] for x in last_row]))
+
+        if abs(it[2] - row_cy) <= row_thr:
+            last_row.append(it)
+        else:
+            rows.append([it])
+
+    # 4) 行内按 x 从左到右
+    sorted_indices = []
+    for row in rows:
+        row.sort(key=lambda t: t[1])  # cx
+        sorted_indices.extend([x[0] for x in row])
+
+    sorted_idx = np.array(sorted_indices, dtype=np.int64)
+    sorted_points = [points[idx] for idx in sorted_idx]
+    return sorted_points, sorted_idx
 
 
 def points_to_mask(shape_hw, points):
