@@ -414,6 +414,67 @@ def masks2segments(masks):
     return segments
 
 
+import numpy as np
+import cv2
+
+
+def masks2segments_with_boxes(mask, box, min_area=10000, chain_mode="simple"):
+    """
+    mask: [H, W]，uint8/bool，值可为0/1或0/255
+    box:  [x1, y1, x2, y2]，原图坐标
+    min_area: 过滤小轮廓面积阈值（单位：像素）
+    chain_mode: "simple" 或 "tc89"
+
+    return:
+        segments: List[np.ndarray(K,2)]，float32，原图坐标
+    """
+    H, W = mask.shape[:2]
+    x1, y1, x2, y2 = map(int, box)
+
+    # 1) clip box 到图像边界
+    x1 = max(0, min(W, x1))
+    x2 = max(0, min(W, x2))
+    y1 = max(0, min(H, y1))
+    y2 = max(0, min(H, y2))
+    if x2 <= x1 or y2 <= y1:
+        return []
+
+    # 2) ROI裁剪（核心加速点）
+    roi = mask[y1:y2, x1:x2]
+    if roi.size == 0:
+        return []
+
+    # 3) 转 uint8 二值
+    if roi.dtype != np.uint8:
+        roi = roi.astype(np.uint8)
+    if roi.max() == 1:
+        roi = roi * 255
+
+    # 快速空判断
+    if cv2.countNonZero(roi) == 0:
+        return []
+
+    # 4) 轮廓提取（不做连通域）
+    if chain_mode == "tc89":
+        cm = cv2.CHAIN_APPROX_TC89_KCOS
+    else:
+        cm = cv2.CHAIN_APPROX_SIMPLE
+
+    contours = cv2.findContours(roi, cv2.RETR_EXTERNAL, cm)[0]
+
+    # 5) 面积过滤 + 坐标映射回原图
+    segments = []
+    for c in contours:  # TODO 动态选取面积，数量和box一致，选择最大的轮廓
+        if cv2.contourArea(c) < min_area:
+            continue
+        pts = c.reshape(-1, 2).astype("float32")
+        pts[:, 0] += x1
+        pts[:, 1] += y1
+        segments.append(pts)
+
+    return segments
+
+
 def segments2masks(points, mask_shape):
     h, w = mask_shape
     gt = np.zeros((h, w), dtype=np.uint8)
