@@ -92,6 +92,12 @@ class StatusCode(int, Enum):
     FAIL = 1
 
 
+class MessageType(str, Enum):
+    SUCCESS = "success"
+    FAIL = "fail"
+    PRODUCT_TYPE_ERROR = "product_type_error"
+
+
 @dataclass
 class DetectionItem:
     status: bool = False
