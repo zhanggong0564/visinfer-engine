@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-27 02:06:28
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-27 03:22:56
+@LastEditTime : 2026-03-27 10:58:12
 @FilePath     : yolo.py
 @Description  :
 '''
@@ -53,19 +53,38 @@ class YoloOnnxInfer(BaseOnnxInfer):
         )
         image_shape = self.image_src_shape[:2]
         input_shape = self.input_model_shape[2:]
+        pred = p[0].copy()
+        pred[:, :4] = scale_boxes(input_shape, pred[:, :4], image_shape, xywh=False)
         if self.task == "seg":
             protos = preds[0][1] if isinstance(preds[0], tuple) else preds[1]
             mask_in = p[0][:, 6:]
             bboxes = p[0][:, :4]
             masks = process_mask(protos, mask_in, bboxes, input_shape)
-            masks = [scale_masks(mask, (image_shape[1], image_shape[0]), self.r, self.dw, self.dh) for mask in masks]
-            mask_polygons = [segment for mask in masks for segment in masks2segments(mask)]
-        pred = p[0]
-        pred[:, :4] = scale_boxes(input_shape, pred[:, :4], image_shape, xywh=False)
+            end = time.time()
+            vision_logger.info(f"process_mask: {end - start:.4f}秒")
+            start = time.time()
+            # masks = [scale_mask_fast(m, target_shape, top, bottom, left, right) for m in masks]
+            masks = scale_masks(masks, (image_shape[1], image_shape[0]), self.r, self.dw, self.dh).transpose(2, 0, 1)
+            end = time.time()
+            vision_logger.info(f"scale_masks: {end - start:.4f}秒")
+
+            # masks = [scale_masks(mask, (image_shape[1], image_shape[0]), self.r, self.dw, self.dh) for mask in masks]
+            start = time.time()
+            mask_polygons = [
+                segment for mask, box in zip(masks, pred[:, :4]) for segment in masks2segments_with_boxes(mask, box)
+            ]
+            if len(mask_polygons) != len(pred[:, :4]):
+                vision_logger.error(f"mask_polygons len: {len(mask_polygons)}, pred len: {len(pred[:, :4])}")
+                return DetectResult()
+            # mask_polygons_gt = [segment for mask in masks for segment in masks2segments(mask)]
+
+            end = time.time()
+            vision_logger.info(f"masks2segments: {end - start:.4f}秒")
+
         pred = np.concatenate([pred[:, :4], pred[:, -1:], pred[:, 4:6]], axis=-1)
         bbox = pred[:, :4]  # xywh
         if self.task == "obb":
-            bbox = xywhr2xyxyxyxy(bbox)
+            bbox = xywhr2xyxyxyxy(pred[:, :5])
         # else:
         #     bbox = xywh2xyxy(bbox)
         detect_result = DetectResult(
