@@ -1,8 +1,8 @@
 '''
 @Author       : gongzhang4
 @Date         : 2026-01-23 09:11:23
-@LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-01-30 09:32:21
+@LastEditors  : 张弓 zhanggong1@sungrowpower.com
+@LastEditTime : 2026-03-27 11:45:45
 @FilePath     : plate_routers.py
 @Description  : 直流熔丝检测口
 '''
@@ -25,10 +25,10 @@ class PlateScrewRouter(BaseRouter):
         return input
 
 
-plate_screw_router = PlateScrewRouter(
-    router_name="plate_router",
-    api_path="/plate_screw_detect",
-    summary="螺丝检测接口",
-    description="根据输入的图像和产品类型，返回检测结果",
-    detector_type="plate_screw",
-)
+# plate_screw_router = PlateScrewRouter(
+#     router_name="plate_router",
+#     api_path="/plate_screw_detect",
+#     summary="螺丝检测接口",
+#     description="根据输入的图像和产品类型，返回检测结果",
+#     detector_type="plate_screw",
+# )
