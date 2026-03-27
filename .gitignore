@@ -12,3 +12,7 @@ encrypted
 **.tar
 weights
 **.jpeg
+*.bmp
+*.pt
+**.png
+**.zip
