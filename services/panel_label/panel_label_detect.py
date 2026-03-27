@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:20:56
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-26 13:00:40
+@LastEditTime : 2026-03-27 11:13:22
 @FilePath     : panel_label_detect.py
 @Description  : 面板标签检测
 '''
@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from itertools import chain
 import time
 from utils import vision_logger
+from .product_type import PRODUCT_guideline
 
 
 @dataclass
@@ -76,9 +77,6 @@ class OCRPipeline:
         end = time.time()
         vision_logger.info(f"Points_to_Mask: {end - start:.4f}秒")
         start = time.time()
-        for i, mask_roi in enumerate(mask_rois):
-            cv2.imwrite(f"./demo/vis/mask_roi_{i}.jpg", mask_roi)
-        start = time.time()
         rec_preds = self.ocr.predict(
             mask_rois,
             use_textline_orientation=True,
@@ -119,6 +117,16 @@ class OCRPipeline:
         )
 
         return panel_label_item
+
+    def filter_result(self, results):
+        index = []
+        for i, box in enumerate(results.boxes):
+            x1, y1, x2, y2 = map(int, box)
+            inside = cv2.pointPolygonTest(contour, (x1, y1), False) >= 0
+        if inside:
+            keep_idx.append(i)
+
+        pass
 
 
 class OCRPipelineCrop:

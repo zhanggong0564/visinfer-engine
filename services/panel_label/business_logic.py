@@ -50,16 +50,17 @@ class PanelLabelJudgeApi(BusinessLogicBase):
     def _initialize_model(self, settings):
         try:
             self.detector = OCRPipeline(
-                settings.model_path,
-                settings.orient_model_path,
-                settings.confThreshold,
-                settings.nmsThreshold,
+                settings.panel_label.model_path,
+                settings.panel_label.orient_model_path,
+                settings.panel_label.confThreshold,
+                settings.panel_label.nmsThreshold,
             )
         except Exception as e:
             vision_logger.error(f"initialize model failed, error: {e}")
             raise e
 
     def business_logic_post_process(self, results: PanellabelItem, product_type: str):
+        # TODO: 过滤结果，只保留roi内的结果
         panel_info = self.analyze(results, product_type)
         mom_result = MoMResult()
         mom_result.status = panel_info.result
