@@ -428,12 +428,21 @@ import numpy as np
 import cv2
 
 
-def masks2segments_with_boxes(mask, box, min_area=10000, chain_mode="simple"):
+def masks2segments_with_boxes(
+    mask,
+    box,
+    min_area=4000,
+    chain_mode="simple",
+    topk=1,  # 新增：返回前k个最大轮廓，默认1=只取最大
+    area_keep_ratio=0.05,  # 新增：动态阈值=最大面积*ratio
+):
     """
     mask: [H, W]，uint8/bool，值可为0/1或0/255
     box:  [x1, y1, x2, y2]，原图坐标
-    min_area: 过滤小轮廓面积阈值（单位：像素）
+    min_area: 绝对面积下限（像素）
     chain_mode: "simple" 或 "tc89"
+    topk: 返回面积最大的前k个轮廓（1表示只保留最大轮廓）
+    area_keep_ratio: 动态面积阈值比例，相对于最大轮廓面积
 
     return:
         segments: List[np.ndarray(K,2)]，float32，原图坐标
@@ -449,7 +458,7 @@ def masks2segments_with_boxes(mask, box, min_area=10000, chain_mode="simple"):
     if x2 <= x1 or y2 <= y1:
         return []
 
-    # 2) ROI裁剪（核心加速点）
+    # 2) ROI裁剪
     roi = mask[y1:y2, x1:x2]
     if roi.size == 0:
         return []
@@ -460,27 +469,39 @@ def masks2segments_with_boxes(mask, box, min_area=10000, chain_mode="simple"):
     if roi.max() == 1:
         roi = roi * 255
 
-    # 快速空判断
     if cv2.countNonZero(roi) == 0:
         return []
 
-    # 4) 轮廓提取（不做连通域）
-    if chain_mode == "tc89":
-        cm = cv2.CHAIN_APPROX_TC89_KCOS
-    else:
-        cm = cv2.CHAIN_APPROX_SIMPLE
-
+    # 4) 轮廓提取
+    cm = cv2.CHAIN_APPROX_TC89_KCOS if chain_mode == "tc89" else cv2.CHAIN_APPROX_SIMPLE
     contours = cv2.findContours(roi, cv2.RETR_EXTERNAL, cm)[0]
+    if len(contours) == 0:
+        return []
 
-    # 5) 面积过滤 + 坐标映射回原图
+    # 5) 动态选取：按面积排序，保留最大的 topk，且做动态面积过滤
+    areas = np.array([cv2.contourArea(c) for c in contours], dtype=np.float32)
+    order = np.argsort(-areas)  # 降序
+    max_area = float(areas[order[0]])
+
+    # 动态阈值：绝对阈值 与 相对最大面积阈值 取更严格者
+    dynamic_thr = max(float(min_area), max_area * float(area_keep_ratio))
+
     segments = []
-    for c in contours:  # TODO 动态选取面积，数量和box一致，选择最大的轮廓
-        if cv2.contourArea(c) < min_area:
+    kept = 0
+    for idx in order:
+        a = float(areas[idx])
+        if a < dynamic_thr:
             continue
-        pts = c.reshape(-1, 2).astype("float32")
+
+        c = contours[idx]
+        pts = c.reshape(-1, 2).astype(np.float32)
         pts[:, 0] += x1
         pts[:, 1] += y1
         segments.append(pts)
+
+        kept += 1
+        if topk is not None and topk > 0 and kept >= topk:
+            break
 
     return segments
 
