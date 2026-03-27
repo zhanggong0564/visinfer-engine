@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-28 07:32:47
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-28 07:43:23
+@LastEditTime : 2026-03-27 01:03:51
 @FilePath     : product_type.py
 @Description  :
 '''
@@ -41,28 +41,28 @@ PRODUCT_TYPE = {
         "T1-230V/FU37-1",
         "T1-n2/PD-J9-2",
         "T1-390V/FU38-1",
-        "Tl-nl/PE-J6-3",
+        "T1-n1/PE-J6-3",
         "T1-C2-660V/KM1-6",
         "T1-B2-660V/KM1-4",
         "T1-A2-660V/KM1-2",
     ],
     "PH": ["PH-J1-1/PD-J3-2", "PH-J1-3/PD-J3-5", "PH-J2/PD-J32"],
     "S1S2": ["S2-14/PD-J22-1", "S2-13/PD-J22-2", "S1-13/PD-J27-2", "S1-14/PD-J27-1"],
-    "D1": ["S1-13/PD-J27-2", "S1-14/PD-J27-1"],
+    "D1": ["D1-1/R2-2", "D1+/DC+", "D1-/DC-", "D1-3/R3-2"],
     "QF1L1": ["QF1-1/C2-L1", "QF1-1/C4-L1", "QF1-1/C1-L1", "QF1-1/C3-L1"],
     "QF1L2": ["QF1-3/C2-L2", "QF1-3/C4-L2", "QF1-3/C1-L2", "QF1-3/C3-L2"],
     "QF1L3": ["QF1-5/C4-L3", "QF1-5/C2-L3", "QF1-5/C3-L3", "QF1-5/C1-L3"],
-    "XD3": [
+    "XB3": [
         "FU31-1/DC+",
         "FU32-1/DC-",
         "FU37-1/T1-230V",
         "FU38-1/T1-390V",
+        "FU29-1/KM3-1",
+        "FU30-1/KM3-3",
         "XB3-1A/PE24V",
         "XB3-2A/PD-J1-8",
         "XB3-5A/PE-24VGND",
         "XB3-6A/PD0J1-4",
-        "FU29-1/KM3-1",
-        "FU30-1/KM3-3",
         "FU31-2/PD-J11-8",
         "FU32-2/PD-J11-1",
         "FU37-2/PD-J9-3",
