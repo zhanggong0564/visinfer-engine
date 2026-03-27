@@ -264,34 +264,44 @@ def process_mask(protos, masks_in, bboxes, shape):
     downsampled_bboxes[:, 1] *= mh / ih
 
     masks = crop_mask(masks, downsampled_bboxes)  # CHW
+    crop_time = time.time() - start - matrix_time
+    vision_logger.info(f"crop_time: {crop_time:.4f}秒")
 
-    def process_single_mask(mask):
-        resized_mask = cv2.resize(mask, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
-        # resized_mask = cv2.GaussianBlur(resized_mask, (5, 5), 0)
-        # resized_mask = cv2.GaussianBlur(resized_mask, (15, 15), 0.5)
-        binary_mask = (sigmoid(resized_mask) > 0.9).astype(np.uint8)
-        # mask_polygons = masks2segments(binary_mask)[0]
-        # x, y = mask_polygons[:, 0], mask_polygons[:, 1]
-        # tck, u = splprep([x, y], s=20)  # s 控制平滑程度
-        # new_points = splev(np.linspace(0, 1, 100), tck)
-        # # 将平滑后的点转换为整数
-        # smooth_contour = np.array(new_points).T.astype(np.int32)
-        # binary_mask = segments2masks([smooth_contour], binary_mask.shape)
+    # chw->hwc
+    masks = masks.transpose(1, 2, 0)
+    masks = cv2.resize(masks, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+    masks = (sigmoid(masks) > 0.9).astype(np.uint8) * 255
 
-        # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        # binary_mask = cv2.morphologyEx(binary_mask * 255, cv2.MORPH_OPEN, kernel, iterations=2)
-        # binary_mask = cv2.erode(binary_mask, kernel, iterations=1)
-        # binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel, iterations=3)
-        return binary_mask
+    # def process_single_mask(mask):
+    #     resized_mask = cv2.resize(mask, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+    #     # resized_mask = cv2.GaussianBlur(resized_mask, (5, 5), 0)
+    #     # resized_mask = cv2.GaussianBlur(resized_mask, (15, 15), 0.5)
+    #     binary_mask = (sigmoid(resized_mask) > 0.9).astype(np.uint8)
+    #     # mask_polygons = masks2segments(binary_mask)[0]
+    #     # x, y = mask_polygons[:, 0], mask_polygons[:, 1]
+    #     # tck, u = splprep([x, y], s=20)  # s 控制平滑程度
+    #     # new_points = splev(np.linspace(0, 1, 100), tck)
+    #     # # 将平滑后的点转换为整数
+    #     # smooth_contour = np.array(new_points).T.astype(np.int32)
+    #     # binary_mask = segments2masks([smooth_contour], binary_mask.shape)
 
-    with ThreadPoolExecutor() as executor:
-        final_masks = list(executor.map(process_single_mask, masks))
+    #     # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    #     # binary_mask = cv2.morphologyEx(binary_mask * 255, cv2.MORPH_OPEN, kernel, iterations=2)
+    #     # binary_mask = cv2.erode(binary_mask, kernel, iterations=1)
+    #     # binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel, iterations=3)
+    #     return binary_mask
+
+    # with ThreadPoolExecutor(max_workers=8) as executor:
+    #     final_masks = list(executor.map(process_single_mask, masks))
+    # process_time = time.time() - start - matrix_time - crop_time
+    # vision_logger.info(f"process_time: {process_time:.4f}秒")
+
     # final_masks = []
     # for mask in masks:
     #     resized_mask = cv2.resize(mask, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
     #     binary_mask = (resized_mask > 0.5).astype(np.uint8)
     #     final_masks.append(binary_mask)
-    return final_masks
+    return masks
 
 
 def crop_mask(masks, boxes):
@@ -326,13 +336,13 @@ def scale_masks(masks, shape, gain, dw, dh):
     if len(masks) == 0:
         return masks
     blur_size = (int(1 / gain), int(1 / gain))
-    mh, mw = masks.shape
+    mh, mw, _ = masks.shape
     pad = (dw, dh)
     top, left = (int(pad[1]), int(pad[0]))  # y, x
     bottom, right = (int(mh - pad[1]), int(mw - pad[0]))
     masks = masks[top:bottom, left:right]
     masks = cv2.resize(masks, shape)
-    masks = cv2.blur(masks, blur_size)
+    # masks = cv2.blur(masks, blur_size)
     return masks
 
 
