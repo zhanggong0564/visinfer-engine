@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-28 07:32:47
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-27 01:03:51
+@LastEditTime : 2026-03-27 11:13:46
 @FilePath     : product_type.py
 @Description  :
 '''
@@ -93,3 +93,8 @@ PRODUCT_TYPE = {
 
 with open("product_type.json", "w") as f:
     json.dump(PRODUCT_TYPE, f, ensure_ascii=False, indent=4)
+
+
+PRODUCT_guideline = {
+    "QF2": [48, 467, 5148, 7174],
+}
