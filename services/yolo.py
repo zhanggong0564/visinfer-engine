@@ -11,6 +11,8 @@ from .base import BaseOnnxInfer
 from .utils import *
 from collections import defaultdict
 from schemas.data_base import DetectResult
+import time
+from utils import vision_logger
 
 
 class YoloOnnxInfer(BaseOnnxInfer):
@@ -59,6 +61,7 @@ class YoloOnnxInfer(BaseOnnxInfer):
             protos = preds[0][1] if isinstance(preds[0], tuple) else preds[1]
             mask_in = p[0][:, 6:]
             bboxes = p[0][:, :4]
+            start = time.time()
             masks = process_mask(protos, mask_in, bboxes, input_shape)
             end = time.time()
             vision_logger.info(f"process_mask: {end - start:.4f}秒")
