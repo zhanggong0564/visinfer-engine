@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:16:55
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-27 02:44:33
+@LastEditTime : 2026-03-23 12:46:31
 @FilePath     : onnx_base.py
 @Description  :
 '''
@@ -13,6 +13,7 @@ from ..utils.utils import *
 from utils import vision_logger
 import time
 from schemas.data_base import DetectResult
+import time
 
 # 设置onnxruntime日志级别
 onnxruntime.set_default_logger_severity(3)
@@ -99,10 +100,19 @@ class BaseOnnxInfer:
         try:
             self.ori_img = img.copy()
             self.image_src_shape = img.shape
+            start = time.time()
             img = self.preprocess(img)
+            end = time.time()
+            vision_logger.info(f"YOLO预处理时间: {end - start:.4f}秒")
+            start = time.time()
             outputs = self.session.run(self.output_names, {self.input_names[0]: img})
+            end = time.time()
+            vision_logger.info(f"YOLO推理时间: {end - start:.4f}秒")
+            start = time.time()
             result = self.post_process(outputs)
+            end = time.time()
+            vision_logger.info(f"YOLO后处理时间: {end - start:.4f}秒")
             return result
         except Exception as e:
-            vision_logger.error(f"推理过程中发生错误: {e}")
+            vision_logger.error(f"YOLO推理过程中发生错误: {e}")
             return DetectResult()
