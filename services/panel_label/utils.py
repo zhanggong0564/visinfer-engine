@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-28 01:22:13
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-02 06:40:37
+@LastEditTime : 2026-03-27 01:16:55
 @FilePath     : utils.py
 @Description  :
 '''
@@ -12,23 +12,23 @@ import numpy as np
 from typing import List
 
 
-def sort_mask(
-    ori_img,
-    points: np.array,
-    sort_by: str = "y",
-) -> List[np.array]:
+# def sort_mask(
+#     ori_img,
+#     points: np.array,
+#     sort_by: str = "y",
+# ) -> List[np.array]:
 
-    # opencv求轮廓的重心
-    centroids = []
-    temp = np.zeros_like(ori_img)
-    image_cx, image_cy = ori_img.shape[1] // 2, ori_img.shape[0] // 2
-    for point in points:
-        point = np.array(point, dtype=np.int32).reshape((-1, 1, 2))
-        M = cv2.moments(point)
-        if M["m00"] != 0:
-            cx = int(M["m10"] / M["m00"])
-            cy = int(M["m01"] / M["m00"])
-            centroids.append((cx, cy))
+#     # opencv求轮廓的重心
+#     centroids = []
+#     temp = np.zeros_like(ori_img)
+#     image_cx, image_cy = ori_img.shape[1] // 2, ori_img.shape[0] // 2
+#     for point in points:
+#         point = np.array(point, dtype=np.int32).reshape((-1, 1, 2))
+#         M = cv2.moments(point)
+#         if M["m00"] != 0:
+#             cx = int(M["m10"] / M["m00"])
+#             cy = int(M["m01"] / M["m00"])
+#             centroids.append((cx, cy))
 
 #     if sort_by == "y":
 #         sorted_idx = np.argsort([cy for cx, cy in centroids])
@@ -245,7 +245,7 @@ def mask2roi(img: np.ndarray, points: np.array, smooth=21, sample_step=1, border
         bot = bot[::sample_step]
 
         W = len(top)
-        H = int(np.max(bot[:, 1] - top[:, 1]))
+        H = int(np.max(bot[:, 1] - top[:, 1]) * 0.8)
         # 固定H
         # H = 256
 
@@ -264,12 +264,12 @@ def mask2roi(img: np.ndarray, points: np.array, smooth=21, sample_step=1, border
         bm = cv2.BORDER_REPLICATE if border_mode == "replicate" else cv2.BORDER_REFLECT_101
         flat = cv2.remap(img_r, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=bm)
         rois.append(flat)
-        cv2.imwrite("roi.jpg", flat)
+        # cv2.imwrite("roi.jpg", flat)
 
     return rois
 
 
 def Points_to_Mask(image_src, points, sort_by="y"):
-    points_line, sorted_idx = sort_mask(image_src, points, sort_by=sort_by)
+    points_line, sorted_idx = sort_mask(image_src, points)
     mask_rois = mask2roi(image_src, points_line)
     return mask_rois, sorted_idx
