@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:20:56
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-23 12:59:59
+@LastEditTime : 2026-03-26 13:00:40
 @FilePath     : panel_label_detect.py
 @Description  : 面板标签检测
 '''
@@ -16,6 +16,8 @@ from .utils import Points_to_Mask
 from typing import List
 from dataclasses import dataclass, field
 from itertools import chain
+import time
+from utils import vision_logger
 
 
 @dataclass
@@ -57,20 +59,52 @@ class OCRPipeline:
             text_recognition_model_dir='/data/zhanggong/workspace/project/move_vsion/mobile_vision/weights/panel_label/PP-OCRv5_server_rec_plane_infer',
         )
 
-    def infer(self, image, sort_by="xy") -> PanellabelItem:
+    def infer(self, image) -> PanellabelItem:
         results = self.detect_model.infer(image)
         class_ids = np.array(results.class_ids)
         mask_polygons = np.array(results.mask_polygons, dtype=object)
-        points_qfu = mask_polygons[class_ids == 1]
-        points_line = mask_polygons[class_ids == 0]
+        points_line = []
+        points_qfu = []
+        if 1 in class_ids:
+            points_qfu = mask_polygons[class_ids == 1]
+        if 0 in class_ids:
+            points_line = mask_polygons[class_ids == 0]
 
         # panel_label_item = PanellabelItem()
-
-        mask_rois, sorted_idxs = Points_to_Mask(image, points_line, sort_by=sort_by)
+        start = time.time()
+        mask_rois, sorted_idxs = Points_to_Mask(image, points_line)
+        end = time.time()
+        vision_logger.info(f"Points_to_Mask: {end - start:.4f}秒")
+        start = time.time()
         for i, mask_roi in enumerate(mask_rois):
             cv2.imwrite(f"./demo/vis/mask_roi_{i}.jpg", mask_roi)
-        rec_preds = self.ocr.predict(mask_rois, use_textline_orientation=True, text_det_unclip_ratio=3)
-        texts = [pred['rec_texts'][0] for pred in rec_preds]
+        start = time.time()
+        rec_preds = self.ocr.predict(
+            mask_rois,
+            use_textline_orientation=True,
+            text_det_unclip_ratio=2.0,
+            text_det_box_thresh=0.4,
+            text_rec_score_thresh=0.9,
+        )
+        end = time.time()
+        vision_logger.info(f"ocr.predict: {end - start:.4f}秒")
+        # start = time.time()
+        # texts = [pred['rec_texts'][0] for pred in rec_preds]
+        texts = []
+        for pred in rec_preds:
+            rec_texts = pred.get('rec_texts') if len(pred.get('rec_texts')) > 0 else ['none']
+            rec_scores = pred.get('rec_scores') if len(pred.get('rec_scores')) > 0 else [0]
+            if not rec_texts or not rec_scores or len(rec_texts) != len(rec_scores):
+                continue
+
+            pairs = [(t, s) for t, s in zip(rec_texts, rec_scores) if isinstance(t, str) and t.strip() != ""]
+            if not pairs:
+                continue
+            # 取分数最高的文本
+            best_text, best_score = max(pairs, key=lambda x: float(x[1]))
+            texts.append(best_text)
+
+        # texts = [pred['rec_texts'][0] for pred in rec_preds if pred.get('rec_texts') and len(pred['rec_texts']) > 0]
         positions = [np.int64(cv2.boxPoints(cv2.minAreaRect(mask_polygon))) for mask_polygon in mask_polygons]
         ori_index = [np.where(class_ids == 0)[0][sorted_idx] for sorted_idx in sorted_idxs]
         positions = [list(chain.from_iterable(positions[idx].tolist())) for idx in ori_index]
@@ -85,3 +119,32 @@ class OCRPipeline:
         )
 
         return panel_label_item
+
+
+class OCRPipelineCrop:
+    def __init__(self, detect_model_path, orient_model_path, confThreshold=0.5, nmsThreshold=0.5):
+        self.detect_model = PanelLabelDetect(detect_model_path, confThreshold, nmsThreshold, task="seg")
+        self.ocr = PaddleOCR(
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=True,
+            textline_orientation_model_name="PP-LCNet_x1_0_textline_ori",
+            textline_orientation_model_dir=orient_model_path,
+            text_recognition_model_name="PP-OCRv5_server_rec",
+            text_recognition_model_dir='/data/zhanggong/workspace/project/move_vsion/mobile_vision/weights/panel_label/PP-OCRv5_server_rec_plane_infer',
+        )
+
+    def infer(self, image, sort_by="xy") -> PanellabelItem:
+        results = self.detect_model.infer(image)
+        class_ids = np.array(results.class_ids)
+        mask_polygons = np.array(results.mask_polygons, dtype=object)
+        points_qfu = mask_polygons[class_ids == 1]
+        points_line = mask_polygons[class_ids == 0]
+
+        # panel_label_item = PanellabelItem()
+        start = time.time()
+        mask_rois, sorted_idxs = Points_to_Mask(image, points_line, sort_by=sort_by)
+        end = time.time()
+        vision_logger.info(f"Points_to_Mask: {end - start:.4f}秒")
+        start = time.time()
+        return mask_rois
