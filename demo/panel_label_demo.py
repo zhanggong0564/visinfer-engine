@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:42:41
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-23 12:27:05
+@LastEditTime : 2026-03-27 02:31:46
 @FilePath     : panel_label_demo.py
 @Description  :
 '''
@@ -67,14 +67,17 @@ def visualize_results(image_src, results, dst_path):
 
 
 if __name__ == '__main__':
-    image_paths = list(Path("./demo/data/panel_label/QF2").glob("*.jpg"))
+    type = "QF2"
+    image_paths = list(Path(f"./demo/data/panel_label/{type}").glob("*.jpg"))
     positive_num = 0
     total_num = len(image_paths)
     detector = PanelLabelJudgeApi(settings.panel_label)
 
     for image_path in image_paths:
         # print(image_path)
-        # image_path = "/data/zhanggong/workspace/project/move_vsion/mobile_vision/demo/data/panel_label/QF2/IMG_20260127_150401_214.jpg"
+        image_path = Path(
+            "/data/zhanggong/workspace/project/move_vsion/mobile_vision/demo/data/panel_label/IMG_20260324_170601_689.jpg"
+        )
         image_src = cv2.imread(str(image_path))
         # model_path = "./weights/panel_label/best_v1.onnx"
         # orient_model_path = "./weights/panel_label/PP-LCNet_x1_0_textline_ori"
@@ -89,11 +92,11 @@ if __name__ == '__main__':
         #     print(f"rec_texts: {result['rec_texts']}->orientation: {result['textline_orientation_angles']}")
         input_params = InputParamsBusiness(
             image=image_src,
-            product_type="QF2",
+            product_type=type,
         )
         h, w, _ = image_src.shape
-
         results = detector.detect(input_params)
+        print(results.to_dict()["status"])
         dst_path = "./vis/" + image_path.stem + "_res.jpg"
 
         visualize_results(image_src, results, dst_path)
