@@ -1,8 +1,8 @@
 '''
 @Author       : gongzhang4
 @Date         : 2026-01-19 08:25:59
-@LastEditors  : zhanggong1 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-02-04 03:35:50
+@LastEditors  : 张弓 zhanggong1@sungrowpower.com
+@LastEditTime : 2026-03-27 11:42:47
 @FilePath     : base_router.py
 @Description  :路由基类，封装所有路由共有的功能
 '''
@@ -105,10 +105,10 @@ class BaseRouter(ABC):
             vision_logger.error("图片读取失败")
             raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
         h, w, _ = image.shape
-        is_rotate = w < h
-        if is_rotate:
-            # 向左旋转90度
-            image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        # is_rotate = w < h
+        # if is_rotate:
+        #     # 向左旋转90度
+        #     image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
         if image is None:
             vision_logger.error("图片读取失败")
@@ -119,7 +119,7 @@ class BaseRouter(ABC):
             cv2.imwrite(os.path.join(DATA_DIR, save_path, filename), image)
         except Exception as e:
             vision_logger.error(f"图片保存失败-{file.filename}-{str(e)}")
-        return image, is_rotate
+        return image
 
     def get_router(self):
         return self.router
