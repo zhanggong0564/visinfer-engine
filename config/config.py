@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-23 06:35:58
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-02 08:02:27
+@LastEditTime : 2026-03-27 11:53:17
 @FilePath     : config.py
 @Description  :
 '''
@@ -17,11 +17,11 @@ class Settings(BaseSettings):
     API_VERSION: str = "1.1.2"
 
     HOST: str = "0.0.0.0"
-    PORT: int = 3007
+    PORT: int = 3001
 
     LOG_DIR: str = "logs"
     LOG_LEVEL: str = "INFO"
-    plate_screw: PlateScrewConfig = PlateScrewConfig()
+    # plate_screw: PlateScrewConfig = PlateScrewConfig()
     panel_label: PanelLabelConfig = PanelLabelConfig()
     WORKERS: int = 1
 
