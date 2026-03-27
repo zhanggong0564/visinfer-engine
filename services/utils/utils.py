@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-07 06:20:56
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-02 07:52:57
+@LastEditTime : 2026-03-27 12:12:45
 @FilePath     : utils.py
 @Description  :
 '''
@@ -14,6 +14,8 @@ import base64
 import numpy as np
 from typing import List, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor
+import time
+from utils import vision_logger
 
 
 def clip_boxes(boxes, shape):
@@ -264,9 +266,6 @@ def process_mask(protos, masks_in, bboxes, shape):
     downsampled_bboxes[:, 1] *= mh / ih
 
     masks = crop_mask(masks, downsampled_bboxes)  # CHW
-    crop_time = time.time() - start - matrix_time
-    vision_logger.info(f"crop_time: {crop_time:.4f}秒")
-
     # chw->hwc
     masks = masks.transpose(1, 2, 0)
     masks = cv2.resize(masks, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
@@ -418,6 +417,9 @@ def masks2segments(masks):
     c = cv2.findContours(masks, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
     if c:
         for p in c:
+            # 过滤面积小的segment
+            if cv2.contourArea(p) < 1000:
+                continue
             segments.append(p.reshape(-1, 2).astype("float32"))
     else:
         segments = np.zeros((0, 2))  # no segments found
