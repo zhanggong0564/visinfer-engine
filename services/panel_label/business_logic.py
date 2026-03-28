@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-03-02 03:48:53
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-28 05:28:14
+@LastEditTime : 2026-03-28 05:37:23
 @FilePath     : business_logic.py
 @Description  :
 '''
@@ -56,6 +56,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             self.detector = OCRPipeline(
                 settings.panel_label.model_path,
                 settings.panel_label.orient_model_path,
+                settings.panel_label.text_recognition_model_path,
                 settings.panel_label.confThreshold,
                 settings.panel_label.nmsThreshold,
             )

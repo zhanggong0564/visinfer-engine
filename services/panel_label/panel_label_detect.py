@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:20:56
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-28 03:13:44
+@LastEditTime : 2026-03-28 05:36:49
 @FilePath     : panel_label_detect.py
 @Description  : 面板标签检测
 '''
@@ -48,7 +48,9 @@ class PanelLabelDetect(YoloOnnxInfer):
 
 
 class OCRPipeline:
-    def __init__(self, detect_model_path, orient_model_path, confThreshold=0.5, nmsThreshold=0.5):
+    def __init__(
+        self, detect_model_path, orient_model_path, text_recognition_model_path, confThreshold=0.5, nmsThreshold=0.5
+    ):
         self.detect_model = PanelLabelDetect(detect_model_path, confThreshold, nmsThreshold, task="seg")
         self.ocr = PaddleOCR(
             use_doc_orientation_classify=False,
@@ -57,7 +59,7 @@ class OCRPipeline:
             textline_orientation_model_name="PP-LCNet_x1_0_textline_ori",
             textline_orientation_model_dir=orient_model_path,
             text_recognition_model_name="PP-OCRv5_server_rec",
-            text_recognition_model_dir='/data/zhanggong/workspace/project/move_vsion/mobile_vision/weights/panel_label/PP-OCRv5_server_rec_plane_infer',
+            text_recognition_model_dir=text_recognition_model_path,
         )
 
     def infer(self, image) -> PanellabelItem:
