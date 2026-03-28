@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:20:56
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-27 11:13:22
+@LastEditTime : 2026-03-28 03:13:44
 @FilePath     : panel_label_detect.py
 @Description  : 面板标签检测
 '''
@@ -82,7 +82,7 @@ class OCRPipeline:
             use_textline_orientation=True,
             text_det_unclip_ratio=2.0,
             text_det_box_thresh=0.4,
-            text_rec_score_thresh=0.9,
+            text_rec_score_thresh=0.7,
         )
         end = time.time()
         vision_logger.info(f"ocr.predict: {end - start:.4f}秒")
