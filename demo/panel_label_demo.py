@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:42:41
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-27 02:31:46
+@LastEditTime : 2026-03-28 05:20:45
 @FilePath     : panel_label_demo.py
 @Description  :
 '''
@@ -67,44 +67,54 @@ def visualize_results(image_src, results, dst_path):
 
 
 if __name__ == '__main__':
-    type = "QF2"
-    image_paths = list(Path(f"./demo/data/panel_label/{type}").glob("*.jpg"))
-    positive_num = 0
-    total_num = len(image_paths)
-    detector = PanelLabelJudgeApi(settings.panel_label)
+    detector = PanelLabelJudgeApi(settings)
+    types = ["QF2", "PE1-A", "PE1-B", "T1", "PH", "S1S2", "D1", "QF1L1", "QF1L2", "QF1L3", "XB3", "J28J30", "J3", "J46"]
+    for type in types:
+        print(type)
+        # if type != "J28J30":
+        #     continue
+        image_paths = list(Path(f"./demo/data/panel_label/{type}").glob("*.jpg"))
+        positive_num = 0
+        total_num = len(image_paths)
 
-    for image_path in image_paths:
-        # print(image_path)
-        image_path = Path(
-            "/data/zhanggong/workspace/project/move_vsion/mobile_vision/demo/data/panel_label/IMG_20260324_170601_689.jpg"
-        )
-        image_src = cv2.imread(str(image_path))
-        # model_path = "./weights/panel_label/best_v1.onnx"
-        # orient_model_path = "./weights/panel_label/PP-LCNet_x1_0_textline_ori"
-        # confThreshold = 0.4
+        num = 0
 
-        # detector = OCRPipeline(model_path, orient_model_path, confThreshold)
-        # results = detector.infer(image_src)
-        # results.save_img(image_src, "./demo/data/panel_label_result.jpg")
+        for image_path in image_paths:
+            # print(image_path)
+            # image_path = Path(
+            #     "/data/zhanggong/workspace/project/move_vsion/mobile_vision/demo/data/panel_label/J28J30/IMG_20260127_153009_918.jpg"
+            # )
+            image_src = cv2.imread(str(image_path))
+            # model_path = "./weights/panel_label/best_v1.onnx"
+            # orient_model_path = "./weights/panel_label/PP-LCNet_x1_0_textline_ori"
+            # confThreshold = 0.4
 
-        # for result in results:
-        #     # result.print()
-        #     print(f"rec_texts: {result['rec_texts']}->orientation: {result['textline_orientation_angles']}")
-        input_params = InputParamsBusiness(
-            image=image_src,
-            product_type=type,
-        )
-        h, w, _ = image_src.shape
-        results = detector.detect(input_params)
-        print(results.to_dict()["status"])
-        dst_path = "./vis/" + image_path.stem + "_res.jpg"
+            # detector = OCRPipeline(model_path, orient_model_path, confThreshold)
+            # results = detector.infer(image_src)
+            # results.save_img(image_src, "./demo/data/panel_label_result.jpg")
 
-        visualize_results(image_src, results, dst_path)
+            # for result in results:
+            #     # result.print()
+            #     print(f"rec_texts: {result['rec_texts']}->orientation: {result['textline_orientation_angles']}")
+            input_params = InputParamsBusiness(
+                image=image_src,
+                product_type=type,
+            )
+            h, w, _ = image_src.shape
+            results = detector.detect(input_params)
+            print(results.to_dict()["status"])
+            dst_path = "./vis/" + image_path.stem + "_res.jpg"
 
-        # json_str = json.dumps(results.to_dict(), indent=4)
-        # print(results.to_dict()["status"])
-        if results.to_dict()["status"] == "true":
-            positive_num += 1
-        else:
-            print(f"false dst_path: {dst_path} ,path: {image_path}")
-    print(f"positive_num: {positive_num}, total_num: {total_num}, accuracy: {positive_num / total_num}")
+            visualize_results(image_src, results, dst_path)
+
+            # json_str = json.dumps(results.to_dict(), indent=4)
+            # print(results.to_dict()["status"])
+            if results.to_dict()["status"] == "true":
+                positive_num += 1
+            else:
+                print(f"false dst_path: {dst_path} ,path: {image_path}")
+            num += 1
+            if num > 5:
+                break
+
+        print(f"positive_num: {positive_num}, total_num: {6}, accuracy: {positive_num / 6}")
