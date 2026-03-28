@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-28 01:22:13
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-27 01:16:55
+@LastEditTime : 2026-03-28 05:19:01
 @FilePath     : utils.py
 @Description  :
 '''
@@ -56,72 +56,94 @@ import numpy as np
 import cv2
 
 
+import cv2
+import numpy as np
+from typing import List, Tuple
+import math
+
+
+def _rect_long_side_angle_deg(rect):
+    (_, _), (w, h), a = rect
+    if h > w:
+        a = a + 90.0
+    return a % 180.0  # [0,180)
+
+
+def _angle_to_vertical_distance(a_deg: float) -> float:
+    """
+    到竖直(90°)的最小角距离，范围 [0,90]
+    """
+    d = abs(a_deg - 90.0)
+    return min(d, 180.0 - d)
+
+
 def sort_mask(
     ori_img: np.ndarray,
     points: np.ndarray,
+    row_alpha: float = 0.6,  # 分行阈值系数
 ) -> Tuple[List[np.ndarray], np.ndarray]:
     """
-    统一排序规则：
-    1) 先按重心 y 分行（从上到下）
-    2) 行内按重心 x 排序（从左到右）
-
-    适配：
-    - 两行：第一行左->右，再第二行左->右
-    - 一列：上->下
-    - 一行：左->右
+    简化排序：
+    1) 先用整体布局宽高比 W/H 判断是否偏单列
+    2) 单列：按 y 排序
+    3) 否则：按 y 分行，行内按 x
     """
     if points is None or len(points) == 0:
         return [], np.array([], dtype=np.int64)
 
-    # 1) 计算每个 polygon 的重心
-    items = []  # (orig_idx, cx, cy, h)
-    for i, point in enumerate(points):
-        contour = np.array(point, dtype=np.int32).reshape((-1, 1, 2))
-        M = cv2.moments(contour)
+    items = []  # (idx, cx, cy, w,h, angle)
+    vertical_count = 0
+    for i, p in enumerate(points):
+        arr = np.array(p, dtype=np.float32).reshape(-1, 2)
+        rect = cv2.minAreaRect(arr)
+        angle = _rect_long_side_angle_deg(rect)
+        angle = _angle_to_vertical_distance(angle)  # 到竖直(90°)的最小角距离,越小越竖
+        if angle < 45.0:
+            vertical_count += 1
+        (cx, cy), (w, h), _ = rect
+        items.append((i, cx, cy, w, h, angle))
 
-        arr = np.array(point, dtype=np.float32).reshape(-1, 2)
-        if M["m00"] != 0:
-            cx = float(M["m10"] / M["m00"])
-            cy = float(M["m01"] / M["m00"])
-        else:
-            # 兜底：退化轮廓用均值中心
-            cx = float(arr[:, 0].mean())
-            cy = float(arr[:, 1].mean())
+    ratio = vertical_count / len(items)
+    # --- 2) 单列：上到下 ---
+    if ratio <= 0.5:
+        items_sorted = sorted(items, key=lambda t: (t[2], t[1]))  # cy, cx
+        sorted_idx = np.array([t[0] for t in items_sorted], dtype=np.int64)
+        return [points[i] for i in sorted_idx], sorted_idx
 
-        h = float(arr[:, 1].max() - arr[:, 1].min() + 1e-6)  # 框高
-        items.append((i, cx, cy, h))
+    # --- 3) 多行：先按 y 分行，再行内按 x ---
+    items.sort(key=lambda t: t[2])  # 按 cy
+    heights = np.array([t[4] for t in items], dtype=np.float32)
+    row_thr = max(5.0, float(np.median(heights) * row_alpha))
 
-    # 2) 先按 y 从上到下
-    items.sort(key=lambda t: t[2])
+    rows = []
+    row_cys = []
 
-    # 3) 按 y 聚类成“行”
-    # 阈值：行内允许的 y 浮动，取中位高度的一部分
-    heights = np.array([it[3] for it in items], dtype=np.float32)
-    row_thr = max(5.0, float(np.median(heights) * 0.5))
-
-    rows = []  # 每行是若干 item
     for it in items:
+        cy = it[2]
         if not rows:
             rows.append([it])
+            row_cys.append(cy)
             continue
 
-        last_row = rows[-1]
-        row_cy = float(np.mean([x[2] for x in last_row]))
-
-        if abs(it[2] - row_cy) <= row_thr:
-            last_row.append(it)
+        # 放入最近行（在阈值内）
+        ds = [abs(cy - rc) for rc in row_cys]
+        k = int(np.argmin(ds))
+        if ds[k] <= row_thr:
+            rows[k].append(it)
+            row_cys[k] = float(np.mean([x[2] for x in rows[k]]))
         else:
             rows.append([it])
+            row_cys.append(cy)
 
-    # 4) 行内按 x 从左到右
-    sorted_indices = []
-    for row in rows:
-        row.sort(key=lambda t: t[1])  # cx
-        sorted_indices.extend([x[0] for x in row])
+    # 行顺序上->下；行内左->右
+    order = np.argsort(row_cys)
+    out = []
+    for r in order:
+        row = sorted(rows[int(r)], key=lambda t: (t[1], t[2]))  # cx, cy
+        out.extend([t[0] for t in row])
 
-    sorted_idx = np.array(sorted_indices, dtype=np.int64)
-    sorted_points = [points[idx] for idx in sorted_idx]
-    return sorted_points, sorted_idx
+    sorted_idx = np.array(out, dtype=np.int64)
+    return [points[i] for i in sorted_idx], sorted_idx
 
 
 def points_to_mask(shape_hw, points):
