@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-19 08:25:59
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-27 11:42:47
+@LastEditTime : 2026-03-28 02:42:21
 @FilePath     : base_router.py
 @Description  :路由基类，封装所有路由共有的功能
 '''
@@ -118,8 +118,10 @@ class BaseRouter(ABC):
             os.makedirs(os.path.join(DATA_DIR, save_path), exist_ok=True)
             cv2.imwrite(os.path.join(DATA_DIR, save_path, filename), image)
         except Exception as e:
-            vision_logger.error(f"图片保存失败-{file.filename}-{str(e)}")
-        return image
+            vision_logger.error(f"图片格式不对-{file.filename}-{str(e)}采用其他方式保存")
+            cv2.imwrite(os.path.join(DATA_DIR, file.filename), image)
+
+        return image, False
 
     def get_router(self):
         return self.router
