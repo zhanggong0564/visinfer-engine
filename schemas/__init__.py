@@ -8,6 +8,7 @@
 '''
 
 from .common import CommonResponse, EmptyRequest
+from .panel_label_schemas import PanelLabelRequest
 from .data_base import *
 
-__all__ = ["CommonResponse", "EmptyRequest", "DetectResult", "DetectionItem"]
+__all__ = ["CommonResponse", "EmptyRequest", "DetectResult", "DetectionItem", "PanelLabelRequest"]

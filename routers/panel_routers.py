@@ -2,13 +2,13 @@
 @Author       : gongzhang4
 @Date         : 2026-03-27 11:22:29
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-27 11:47:42
+@LastEditTime : 2026-03-27 12:20:03
 @FilePath     : panel_routers.py
 @Description  : 线标检测接口
 '''
 
 from .base_router import BaseRouter
-from schemas import EmptyRequest
+from schemas import PanelLabelRequest
 import numpy as np
 from schemas.data_base import InputParamsBusiness
 
@@ -18,10 +18,11 @@ class PanelLabelRouter(BaseRouter):
         super().__init__(router_name, api_path, summary, description, detector_type)
 
     def request_schema(self, json_dict):
-        return EmptyRequest(**json_dict)
+        return PanelLabelRequest(**json_dict)
 
-    def get_inputs(self, request_params: EmptyRequest, image: np.ndarray):
-        input = InputParamsBusiness(image=image)
+    def get_inputs(self, request_params: PanelLabelRequest, image: np.ndarray):
+        product_type = request_params.modelParams.product_type
+        input = InputParamsBusiness(image=image, product_type=product_type)
         return input
 
 
