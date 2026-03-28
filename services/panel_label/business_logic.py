@@ -101,10 +101,10 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             panel_info.result = False
             return panel_info
         for i, item in enumerate(observed_result.texts):
-            front4 = item[:4]
+            front4 = item.split("/")[0]
             # 取后3位，并转小写字符
             # tail3 = item[-2:].lower()
-            if front4 != standard_result[i][:4]:
+            if front4 != standard_result[i].split("/")[0]:
                 panel_info.message = ErrorType.MISMATCH.value
                 panel_info.result = False
                 panel_info.error_indexs.append(i)
