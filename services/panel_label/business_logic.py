@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-03-02 03:48:53
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-16 08:33:18
+@LastEditTime : 2026-03-28 05:28:14
 @FilePath     : business_logic.py
 @Description  :
 '''
@@ -46,6 +46,10 @@ class PanelLabelJudgeApi(BusinessLogicBase):
 
     def __init__(self, settings):
         super().__init__(settings)
+        self.class_name = {
+            0: "line",
+            1: "QFU",
+        }
 
     def _initialize_model(self, settings):
         try:
@@ -73,7 +77,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             data_list.append(
                 DetectionItem(
                     status=status,
-                    scene=panel_info.class_id[i],
+                    scene=self.class_name[panel_info.class_id[i]],
                     coordinate=panel_info.observed_result_points[i],
                     accuracy=results.confidence[i],
                     name=observed_item,
