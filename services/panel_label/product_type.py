@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-28 07:32:47
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-27 11:13:46
+@LastEditTime : 2026-03-28 05:12:00
 @FilePath     : product_type.py
 @Description  :
 '''
@@ -21,8 +21,8 @@ PRODUCT_TYPE = {
         "QF2-4/T1-38V-b",
         "QF2-6/T1-38V-c",
         "FU34-1/QS2-OUT+2",
-        "FU35-2/QS2-OUT-3",
-        "FU36-2/QS2-OUT+3",
+        "FU35-1/QS2-OUT-3",
+        "FU36-1/QS2-OUT+3",
     ],
     "PE1-A": ["PE1-J6/QF2-5", "PE1-J5/QF2-5", "PE1-J4/QF2-3", "PE1-J3/QF2-3", "PE1-J2/QF2-1", "PE1-J1/QF2-1"],
     "PE1-B": [
@@ -89,6 +89,7 @@ PRODUCT_TYPE = {
         "PD-J46-4/PW1-J2-5",
         "PD-J46-5/PW1-J2-4",
     ],
+    "FU1": ["FU111-1/QF1-1", "FU112-1/QF1-3", "FU113-1/QF1-5"],
 }
 
 with open("product_type.json", "w") as f:
