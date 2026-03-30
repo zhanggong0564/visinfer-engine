@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:42:41
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-28 05:20:45
+@LastEditTime : 2026-03-30 09:47:07
 @FilePath     : panel_label_demo.py
 @Description  :
 '''
@@ -47,6 +47,24 @@ def visualize_results(image_src, results, dst_path):
     cv2.imwrite(dst_path, image_src)
 
 
+def visualize_rotate_results(image_src, res):
+    res_new = rotate_points(res.to_dict(), w, h)
+    for detail in res_new.get("detailList", []):
+        x1, y1, x2, y2, x3, y3, x4, y4 = detail.get("coordinate", [])
+        x1 = int(x1 * w)
+        y1 = int(y1 * h)
+        x2 = int(x2 * w)
+        y2 = int(y2 * h)
+        x3 = int(x3 * w)
+        y3 = int(y3 * h)
+        x4 = int(x4 * w)
+        y4 = int(y4 * h)
+        points = np.array([[[x1, y1], [x2, y2], [x3, y3], [x4, y4]]], dtype=np.int32)
+        cv2.polylines(image_src, points, True, (0, 255, 0), 2)
+        # cv2.polylines(image_src, np.array([[x1, y1], [x2, y2], [x3, y3], [x4, y4]]), True, (0, 255, 0), 2)
+    cv2.imwrite("rotate_res.jpg", image_src)
+
+
 # for detail in results.to_dict().get("detailList", []):
 #     x1, y1, x2, y2, x3, y3, x4, y4 = detail.get("coordinate", [])
 #     x1 = int(x1 * w)
@@ -73,6 +91,7 @@ if __name__ == '__main__':
         print(type)
         # if type != "J28J30":
         #     continue
+        type = "XB3"
         image_paths = list(Path(f"./demo/data/panel_label/{type}").glob("*.jpg"))
         positive_num = 0
         total_num = len(image_paths)
@@ -81,9 +100,7 @@ if __name__ == '__main__':
 
         for image_path in image_paths:
             # print(image_path)
-            # image_path = Path(
-            #     "/data/zhanggong/workspace/project/move_vsion/mobile_vision/demo/data/panel_label/J28J30/IMG_20260127_153009_918.jpg"
-            # )
+            image_path = Path("/data/zhanggong/workspace/project/move_vsion/mobile_vision/demo/1774855620108.jpg")
             image_src = cv2.imread(str(image_path))
             # model_path = "./weights/panel_label/best_v1.onnx"
             # orient_model_path = "./weights/panel_label/PP-LCNet_x1_0_textline_ori"
@@ -105,7 +122,8 @@ if __name__ == '__main__':
             print(results.to_dict()["status"])
             dst_path = "./vis/" + image_path.stem + "_res.jpg"
 
-            visualize_results(image_src, results, dst_path)
+            # visualize_results(image_src, results, dst_path)
+            visualize_rotate_results(image_src, results)
 
             # json_str = json.dumps(results.to_dict(), indent=4)
             # print(results.to_dict()["status"])
