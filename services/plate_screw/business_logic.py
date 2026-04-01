@@ -14,6 +14,7 @@ from .plate_screw_detect import PlateScrewDetect
 from utils import vision_logger
 from schemas.data_base import MoMResult, DetectResult, DetectionItem
 from collections import defaultdict
+from schemas import MessageType
 
 
 def select_box(box_info, image_width, image_height):
@@ -101,7 +102,7 @@ class PlateScrewJudgeApi(BusinessLogicBase):
                         )
                         if return_box:
                             judge_result_info.detailList.append(temp)
-            judge_result_info.message = "检测成功"
+            judge_result_info.message = MessageType.SUCCESS.value
         except Exception as e:
             judge_result_info.status = False
             judge_result_info.error_msg = str(e)
