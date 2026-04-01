@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-21 06:34:07
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-16 08:16:01
+@LastEditTime : 2026-04-01 03:40:48
 @FilePath     : data_base.py
 @Description  :
 '''
@@ -93,9 +93,9 @@ class StatusCode(int, Enum):
 
 
 class MessageType(str, Enum):
-    SUCCESS = "success"
-    FAIL = "fail"
-    PRODUCT_TYPE_ERROR = "product_type_error"
+    SUCCESS = "检测成功"
+    FAIL = "检测失败"
+    PRODUCT_TYPE_ERROR = "产品类型错误"
 
 
 @dataclass
