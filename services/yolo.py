@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-01-27 02:06:28
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-27 10:58:12
+@LastEditTime : 2026-04-01 03:15:56
 @FilePath     : yolo.py
 @Description  :
 '''
@@ -66,8 +66,11 @@ class YoloOnnxInfer(BaseOnnxInfer):
             end = time.time()
             vision_logger.info(f"process_mask: {end - start:.4f}秒")
             start = time.time()
-            # masks = [scale_mask_fast(m, target_shape, top, bottom, left, right) for m in masks]
-            masks = scale_masks(masks, (image_shape[1], image_shape[0]), self.r, self.dw, self.dh).transpose(2, 0, 1)
+            if len(masks) != 0:
+                # masks = [scale_mask_fast(m, target_shape, top, bottom, left, right) for m in masks]
+                masks = scale_masks(masks, (image_shape[1], image_shape[0]), self.r, self.dw, self.dh).transpose(
+                    2, 0, 1
+                )
             end = time.time()
             vision_logger.info(f"scale_masks: {end - start:.4f}秒")
 
