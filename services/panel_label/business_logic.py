@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-03-02 03:48:53
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-28 05:37:23
+@LastEditTime : 2026-04-01 03:32:37
 @FilePath     : business_logic.py
 @Description  :
 '''
@@ -72,7 +72,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         mom_result.message = panel_info.message
         data_list = []
         for i, observed_item in enumerate(panel_info.observed_result):
-            status = True
+            status = True if panel_info.message != ErrorType.MISSING.value else False
             if i in panel_info.error_indexs:
                 status = False
             data_list.append(
