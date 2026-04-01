@@ -117,7 +117,9 @@ class BaseRouter(ABC):
             vision_logger.error("图片读取失败")
             raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
         try:
-            save_path, filename = file.filename.split("-")
+            info_list = file.filename.split("-")
+            save_path = info_list[0]
+            filename = info_list[-1]
             os.makedirs(os.path.join(DATA_DIR, save_path), exist_ok=True)
             cv2.imwrite(os.path.join(DATA_DIR, save_path, filename), image)
         except Exception as e:
