@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:42:41
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-30 09:47:07
+@LastEditTime : 2026-04-01 05:09:21
 @FilePath     : panel_label_demo.py
 @Description  :
 '''
@@ -91,7 +91,7 @@ if __name__ == '__main__':
         print(type)
         # if type != "J28J30":
         #     continue
-        type = "XB3"
+        type = "QF1L1"
         image_paths = list(Path(f"./demo/data/panel_label/{type}").glob("*.jpg"))
         positive_num = 0
         total_num = len(image_paths)
@@ -100,8 +100,15 @@ if __name__ == '__main__':
 
         for image_path in image_paths:
             # print(image_path)
-            image_path = Path("/data/zhanggong/workspace/project/move_vsion/mobile_vision/demo/1774855620108.jpg")
+            image_path = Path("/data/zhanggong/workspace/project/move_vsion/mobile_vision/1774153389667.jpg")
             image_src = cv2.imread(str(image_path))
+            h, w, _ = image_src.shape
+            is_rotate = w < h
+
+            if is_rotate:
+                # 向右旋转90度
+                print("rotate image")
+                image = cv2.rotate(image_src, cv2.ROTATE_90_COUNTERCLOCKWISE)
             # model_path = "./weights/panel_label/best_v1.onnx"
             # orient_model_path = "./weights/panel_label/PP-LCNet_x1_0_textline_ori"
             # confThreshold = 0.4
