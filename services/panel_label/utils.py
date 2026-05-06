@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-28 01:22:13
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-28 05:19:01
+@LastEditTime : 2026-04-22 10:03:50
 @FilePath     : utils.py
 @Description  :
 '''
@@ -292,6 +292,15 @@ def mask2roi(img: np.ndarray, points: np.array, smooth=21, sample_step=1, border
 
 
 def Points_to_Mask(image_src, points, sort_by="y"):
-    points_line, sorted_idx = sort_mask(image_src, points)
+    points_line, sorted_idx = sort_mask(image_src, points, 0.8)
     mask_rois = mask2roi(image_src, points_line)
     return mask_rois, sorted_idx
+
+
+def rect_contains(rect, pt, include_border=True):
+    x, y, w, h = rect
+    px, py = pt
+    if include_border:
+        return (x <= px <= x + w) and (y <= py <= y + h)
+    else:
+        return (x < px < x + w) and (y < py < y + h)
