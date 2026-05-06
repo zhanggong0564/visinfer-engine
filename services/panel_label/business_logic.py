@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-03-02 03:48:53
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-04-01 03:32:37
+@LastEditTime : 2026-05-06 06:25:46
 @FilePath     : business_logic.py
 @Description  :
 '''
@@ -12,11 +12,12 @@ from schemas import MoMResult, DetectResult, DetectionItem
 from ..api import detection_factory
 from ..base import BusinessLogicBase
 from utils import vision_logger
-from .product_type import PRODUCT_TYPE
+from .product_type import PRODUCT_TYPE, PRODUCT_guideline
 from dataclasses import dataclass
 from typing import List, Dict
 from enum import Enum
 from dataclasses import field
+from .utils import rect_contains
 
 
 class ErrorType(str, Enum):
@@ -64,8 +65,33 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             vision_logger.error(f"initialize model failed, error: {e}")
             raise e
 
+    def guideline_filter(self, results: PanellabelItem, product_type: str):
+        norm_rect = PRODUCT_guideline[product_type]
+        x_norm, y_norm, w_norm, h_norm = norm_rect
+        rect = (int(x_norm * self.w), int(y_norm * self.h), int(w_norm * self.w), int(h_norm * self.h))
+        boxes = results.Points
+        keep_indices = []
+        for i, box in enumerate(boxes):
+            all_points_inside = True
+            for j in range(0, len(box), 2):
+                px, py = box[j], box[j + 1]
+                if not rect_contains(rect, (px, py)):
+                    all_points_inside = False
+                    break
+            if all_points_inside:
+                keep_indices.append(i)
+        filtered_results = PanellabelItem(
+            Points=[results.Points[i] for i in keep_indices],
+            index=[results.index[i] for i in keep_indices],
+            class_id=[results.class_id[i] for i in keep_indices],
+            texts=[results.texts[i] for i in keep_indices],
+            confidence=[results.confidence[i] for i in keep_indices],
+        )
+        return filtered_results
+
     def business_logic_post_process(self, results: PanellabelItem, product_type: str):
         # TODO: 过滤结果，只保留roi内的结果
+        # results = self.guideline_filter(results, product_type)
         panel_info = self.analyze(results, product_type)
         mom_result = MoMResult()
         mom_result.status = panel_info.result
