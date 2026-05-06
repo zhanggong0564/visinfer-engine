@@ -85,6 +85,7 @@ class OCRPipeline:
             text_det_unclip_ratio=2.0,
             text_det_box_thresh=0.4,
             text_rec_score_thresh=0.7,
+            text_det_limit_side_len=320,
         )
         end = time.time()
         vision_logger.info(f"ocr.predict: {end - start:.4f}秒")
