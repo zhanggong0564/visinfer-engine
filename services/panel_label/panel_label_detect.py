@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:20:56
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-28 05:36:49
+@LastEditTime : 2026-05-06 07:15:45
 @FilePath     : panel_label_detect.py
 @Description  : 面板标签检测
 '''
@@ -105,7 +105,10 @@ class OCRPipeline:
             texts.append(best_text)
 
         # texts = [pred['rec_texts'][0] for pred in rec_preds if pred.get('rec_texts') and len(pred['rec_texts']) > 0]
-        positions = [np.int64(cv2.boxPoints(cv2.minAreaRect(mask_polygon))) for mask_polygon in mask_polygons]
+        positions = [
+            np.int64(cv2.boxPoints(cv2.minAreaRect(np.array(mask_polygon, dtype=np.float32))))
+            for mask_polygon in mask_polygons
+        ]
         ori_index = [np.where(class_ids == 0)[0][sorted_idx] for sorted_idx in sorted_idxs]
         positions = [list(chain.from_iterable(positions[idx].tolist())) for idx in ori_index]
         roi_classes_ids = class_ids[ori_index]
@@ -119,16 +122,6 @@ class OCRPipeline:
         )
 
         return panel_label_item
-
-    def filter_result(self, results):
-        index = []
-        for i, box in enumerate(results.boxes):
-            x1, y1, x2, y2 = map(int, box)
-            inside = cv2.pointPolygonTest(contour, (x1, y1), False) >= 0
-        if inside:
-            keep_idx.append(i)
-
-        pass
 
 
 class OCRPipelineCrop:
