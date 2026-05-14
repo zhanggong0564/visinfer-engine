@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-28 01:22:13
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-04-22 10:03:50
+@LastEditTime : 2026-05-14 01:54:13
 @FilePath     : utils.py
 @Description  :
 '''
@@ -112,7 +112,7 @@ def sort_mask(
 
     # --- 3) 多行：先按 y 分行，再行内按 x ---
     items.sort(key=lambda t: t[2])  # 按 cy
-    heights = np.array([t[4] for t in items], dtype=np.float32)
+    heights = np.array([max(t[3], t[4]) for t in items], dtype=np.float32)
     row_thr = max(5.0, float(np.median(heights) * row_alpha))
 
     rows = []
