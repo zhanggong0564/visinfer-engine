@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-28 07:32:47
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-28 05:12:00
+@LastEditTime : 2026-05-06 09:23:26
 @FilePath     : product_type.py
 @Description  :
 '''
@@ -131,8 +131,8 @@ PRODUCT_TYPE = {
         "101FU7/2-L1",
         "101FU8/2-L2",
         "101FU9/2-L3",
-        "601FU2/2-V",
-        "601FU1/2-U",
+        "601FU1/2-V",
+        "601FU2/2-U",
         "601FU3/2-W",
     ],
     "401A1": [
