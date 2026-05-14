@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-03-02 03:48:53
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-05-06 06:25:46
+@LastEditTime : 2026-05-06 07:48:57
 @FilePath     : business_logic.py
 @Description  :
 '''
@@ -128,10 +128,10 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             panel_info.result = False
             return panel_info
         for i, item in enumerate(observed_result.texts):
-            front4 = item.split("/")[0]
+            front4 = item.split("/")[0].lower()
             # 取后3位，并转小写字符
             # tail3 = item[-2:].lower()
-            if front4 != standard_result[i].split("/")[0]:
+            if front4 != standard_result[i].split("/")[0].lower():
                 panel_info.message = ErrorType.MISMATCH.value
                 panel_info.result = False
                 panel_info.error_indexs.append(i)
