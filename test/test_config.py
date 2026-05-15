@@ -14,13 +14,13 @@ import pytest
 from unittest.mock import patch
 from config import settings
 from config.config import Settings
-from config.plate_screw_congfig import PlateScrewConfig
+from config.panel_label_config import PanelLabelConfig
 import os
 
 
-def test_plate_screw_config_defaults():
-    assert settings.plate_screw.model_path == "./weights/mobile_vision_plate_v2.onnx"
-    assert settings.plate_screw.confThreshold == 0.25
+def test_panel_label_config_defaults():
+    assert settings.panel_label.model_path == "./weights/panel_label/best_v2.onnx"
+    assert settings.panel_label.confThreshold == 0.72
 
 
 def test_settings_defaults():
@@ -28,12 +28,12 @@ def test_settings_defaults():
         assert settings.API_TITLE == "Mobile Vision alg API"
         assert settings.API_VERSION == "1.1.2"
         assert settings.HOST == "0.0.0.0"
-        assert settings.PORT == 3007
+        assert settings.PORT == 3001
         assert settings.LOG_DIR == "logs"
         assert settings.LOG_LEVEL == "INFO"
         assert settings.WORKERS == 1
 
-        assert isinstance(settings.plate_screw, PlateScrewConfig)
+        assert isinstance(settings.panel_label, PanelLabelConfig)
 
 
 def test_settings_env_file():

@@ -31,6 +31,7 @@ class TestYoloOnnxInfer:
             model._input_model_shape = (1, 3, 640, 640)
             model.image_src_shape = (480, 640, 3)
             model.id2name = {i: f"class_{i}" for i in range(80)}
+            model.ori_img = np.zeros((480, 640, 3), dtype=np.uint8)
 
             return model
 
