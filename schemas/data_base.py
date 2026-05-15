@@ -139,7 +139,7 @@ class MoMResult:
 
     @classmethod
     def from_dict(cls, data: dict):
-        detailList = [DetectionItem.from_dict(item) for item in data["detailList"]]
+        detailList = [DetectionItem.from_dict(item) for item in data.pop("detailList")]
         return cls(detailList=detailList, **data)
 
 
