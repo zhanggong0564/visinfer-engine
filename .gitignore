@@ -16,3 +16,8 @@ weights
 *.pt
 **.png
 **.zip
+demo/data/panel_label/*
+temp_data
+demo/data/test
+**/docs
+CLAUDE.md
