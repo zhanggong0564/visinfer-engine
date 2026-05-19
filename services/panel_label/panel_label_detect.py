@@ -90,6 +90,8 @@ class OCRPipeline:
         )
         end = time.time()
         vision_logger.info(f"ocr.predict: {end - start:.4f}秒")
+        # for i, mask_roi in enumerate(mask_rois):
+        #     cv2.imwrite(f"./demo/vis/mask_roi_{i}.jpg", mask_roi)
         # start = time.time()
         # texts = [pred['rec_texts'][0] for pred in rec_preds]
         texts = []
