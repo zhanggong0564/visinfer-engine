@@ -58,7 +58,7 @@ TYPES = [
     "901X2",
 ]
 
-DATA_DIR = Path("./demo/data/test")
+DATA_DIR = Path("./demo/data/panel_label/wind_power")
 VIS_DIR = Path("./demo/test/vis")
 
 
@@ -169,4 +169,4 @@ if __name__ == "__main__":
         level="WARNING",
         colorize=True,
     )
-    run(types=["1019U1_2"])
+    run(types=None)
