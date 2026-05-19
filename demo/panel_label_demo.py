@@ -66,13 +66,12 @@ def visualize_results(image_src, results, product_type, dst_path):
     """在图像上绘制 guideline 矩形和检测结果多边形"""
     h, w, _ = image_src.shape
 
-    # 绘制 guideline 参考矩形
     if product_type in PRODUCT_guideline:
-        x, y, w_, h_ = PRODUCT_guideline[product_type]
+        gx, gy, gw, gh = PRODUCT_guideline[product_type]
         cv2.rectangle(
             image_src,
-            (int(x * w), int(y * h)),
-            (int(x * w + w_ * w), int(y * h + h_ * h)),
+            (int(gx * w), int(gy * h)),
+            (int(gx * w + gw * w), int(gy * h + gh * h)),
             (0, 255, 0),
             2,
         )
