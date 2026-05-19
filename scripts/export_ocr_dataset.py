@@ -68,7 +68,6 @@ def process_image(image_src, stem, detectors, output_dirs):
         if h < 10 or w < 10:
             continue
 
-        # Stage 1: TextDetection → 文字区域检测
         det_results = text_det.predict(mask_roi)
         dt_polys = det_results[0].get("dt_polys")
         if dt_polys is None or len(dt_polys) == 0:
@@ -83,12 +82,11 @@ def process_image(image_src, stem, detectors, output_dirs):
             crop_name = f"{stem}_{roi_idx}_{dt_idx}.jpg"
             cv2.imwrite(str(output_dirs["ocrdet"] / crop_name), crop_img)
 
-            # Stage 2: TextLineOrientation → 方向分类
             cls_results = text_cls.predict(crop_img)
             label_name = cls_results[0].get("label_names", ["0_degree"])[0]
 
             # 保存 crop_cls（按方向分类分文件夹）
-            cls_subdir = label_name  # "0_degree" or "180_degree"
+            cls_subdir = label_name
             cv2.imwrite(str(output_dirs["cls"] / cls_subdir / crop_name), crop_img)
 
             # 方向校正
@@ -98,7 +96,6 @@ def process_image(image_src, stem, detectors, output_dirs):
             # 保存 crop_ocr（识别模型输入）
             cv2.imwrite(str(output_dirs["ocr"] / crop_name), crop_img)
 
-            # Stage 3: TextRecognition → 识别（仅用于终端输出）
             rec_results = text_rec.predict(crop_img)
             rec_text = rec_results[0].get("rec_texts", ["?"])[0]
             print(f"  [{crop_name}]: cls={label_name}, rec={rec_text}")
