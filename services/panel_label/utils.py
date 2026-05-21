@@ -7,59 +7,11 @@
 @Description  :
 '''
 
-import cv2
-import numpy as np
-from typing import List
-
-
-# def sort_mask(
-#     ori_img,
-#     points: np.array,
-#     sort_by: str = "y",
-# ) -> List[np.array]:
-
-#     # opencv求轮廓的重心
-#     centroids = []
-#     temp = np.zeros_like(ori_img)
-#     image_cx, image_cy = ori_img.shape[1] // 2, ori_img.shape[0] // 2
-#     for point in points:
-#         point = np.array(point, dtype=np.int32).reshape((-1, 1, 2))
-#         M = cv2.moments(point)
-#         if M["m00"] != 0:
-#             cx = int(M["m10"] / M["m00"])
-#             cy = int(M["m01"] / M["m00"])
-#             centroids.append((cx, cy))
-
-#     if sort_by == "y":
-#         sorted_idx = np.argsort([cy for cx, cy in centroids])
-#     elif sort_by == "xy":
-#         # 先分上下，再分对上面的按x排序，对下面的按x排序
-#         top_idx = np.where([cy < image_cy for cx, cy in centroids])[0]
-#         bottom_idx = np.where([cy >= image_cy for cx, cy in centroids])[0]
-#         sorted_idx = np.concatenate(
-#             [
-#                 top_idx[np.argsort(np.array([cx for cx, cy in centroids])[top_idx])],
-#                 bottom_idx[np.argsort(np.array([cx for cx, cy in centroids])[bottom_idx])],
-#             ]
-#         )
-#     elif sort_by == "x":
-#         sorted_idx = np.argsort([cx for cx, cy in centroids])
-#     return [points[idx] for idx in sorted_idx], sorted_idx
-
-# print(sorted_idx)
-# for i, idx in enumerate(sorted_idx):
-#     cv2.circle(temp, (centroids[idx]), 5, (0, 255, 0), -1)
-#     cv2.putText(temp, str(i), (centroids[idx][0], centroids[idx][1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-# cv2.imwrite('temp.jpg', temp)
-from typing import List, Tuple
-import numpy as np
-import cv2
-
-
-import cv2
-import numpy as np
-from typing import List, Tuple
 import math
+
+import cv2
+import numpy as np
+from typing import List, Tuple
 
 
 def _rect_long_side_angle_deg(rect):
@@ -105,7 +57,7 @@ def sort_mask(
 
     ratio = vertical_count / len(items)
     # --- 2) 单列：上到下 ---
-    if ratio <= 0.5:
+    if ratio < 0.5:
         items_sorted = sorted(items, key=lambda t: (t[2], t[1]))  # cy, cx
         sorted_idx = np.array([t[0] for t in items_sorted], dtype=np.int64)
         return [points[i] for i in sorted_idx], sorted_idx
