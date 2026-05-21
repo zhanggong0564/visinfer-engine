@@ -19,47 +19,25 @@ from services.panel_label import OCRPipeline, PanelLabelJudgeApi, PRODUCT_guidel
 from config import settings
 from schemas import InputParamsBusiness
 
-# 按需测试的产品类型列表
-TYPES = [
-    "QF2",
-    "PE1-A",
-    "PE1-B",
-    "T1",
-    "PH",
-    "S1S2",
-    "D1",
-    "QF1L1",
-    "QF1L2",
-    "QF1L3",
-    "XB3",
-    "J28J30",
-    "J3",
-    "J46",
-    "1017KM1_1",
-    "1017KM1_2",
-    "1017KM3_1",
-    "1017KM3_2",
-    "201Q1",
-    "201X1_1",
-    "201X1_2",
-    "101FU601FU_1",
-    "101FU601FU_2",
-    "401A1",
-    "401A2",
-    "401A4",
-    "401A6",
-    "1020U1_1",
-    "1020U1_2",
-    "1022U1_1",
-    "1022U1_2",
-    "1019U1_1",
-    "1019U1_2",
-    "901X1",
-    "901X2",
-]
-
-DATA_DIR = Path("./demo/data/panel_label/wind_power")
+# 数据目录配置
+DATA_DIR = Path("./demo/data/panel_label/charging_pile")
 VIS_DIR = Path("./demo/test/vis")
+
+
+def auto_detect_product_types(data_dir):
+    """自动从数据目录中检测产品类型（子文件夹名）"""
+    if not data_dir.is_dir():
+        print(f"错误: 数据目录不存在: {data_dir}")
+        return []
+
+    product_types = []
+    for item in sorted(data_dir.iterdir()):
+        if item.is_dir():
+            # 检查是否有 jpg 图片
+            if list(item.glob("*.jpg")):
+                product_types.append(item.name)
+
+    return product_types
 
 
 def visualize_results(image_src, results, product_type, dst_path):
@@ -109,14 +87,25 @@ def visualize_results(image_src, results, product_type, dst_path):
 
 
 def run(types=None):
-    """批量推理给定的产品类型"""
-    if types is None:
-        types = TYPES
-
-    detector = PanelLabelJudgeApi(settings)
+    """批量推理给定的产品类型，最后输出所有型号的正确率汇总"""
     VIS_DIR.mkdir(parents=True, exist_ok=True)
 
-    for product_type in types:
+    # 自动检测产品类型
+    if types is None:
+        product_types = auto_detect_product_types(DATA_DIR)
+        if not product_types:
+            print("未检测到任何产品类型")
+            return
+        print(f"检测到的产品类型 ({len(product_types)} 个): {', '.join(product_types)}")
+    else:
+        product_types = types
+
+    detector = PanelLabelJudgeApi(settings)
+
+    # 用于存储所有型号的正确率
+    accuracy_summary = {}
+
+    for product_type in product_types:
         image_dir = DATA_DIR / product_type
         if not image_dir.is_dir():
             print(f"[跳过] 无数据目录: {image_dir}")
@@ -133,8 +122,6 @@ def run(types=None):
 
         positive = 0
         for image_path in image_paths:
-            # print(f"  {image_path}")
-            # image_path = Path("demo/data/panel_label/wind_power/1017KM3_1/IMG_20260311_191322_919.jpg")
             image_src = cv2.imread(str(image_path))
             if image_src is None:
                 print(f"  无法读取: {image_path.name}")
@@ -157,8 +144,36 @@ def run(types=None):
             if not is_ok:
                 print(f"    FAIL: vis_path: {dst_path}, src_path: {image_path}")
 
-        accuracy = positive / len(image_paths)
-        print(f"  positive_num: {positive}, total_num: {len(image_paths)}, accuracy: {accuracy:.2%}")
+        accuracy = positive / len(image_paths) if len(image_paths) > 0 else 0
+        accuracy_summary[product_type] = {
+            "positive": positive,
+            "total": len(image_paths),
+            "accuracy": accuracy,
+        }
+        print(f"  正确数: {positive}, 总数: {len(image_paths)}, 正确率: {accuracy:.2%}")
+
+    # 输出所有型号的正确率汇总
+    print(f"\n\n{'='*80}")
+    print(f"所有型号正确率汇总 (共 {len(accuracy_summary)} 个型号)")
+    print(f"{'='*80}")
+    print(f"{'型号':<20} {'正确数':>8} {'总数':>8} {'正确率':>10}")
+    print(f"{'-'*80}")
+
+    total_positive = 0
+    total_all = 0
+    for product_type, stats in sorted(accuracy_summary.items()):
+        print(
+            f"{product_type:<20} {stats['positive']:>8} {stats['total']:>8} {stats['accuracy']:>9.2%}"
+        )
+        total_positive += stats["positive"]
+        total_all += stats["total"]
+
+    overall_accuracy = total_positive / total_all if total_all > 0 else 0
+    print(f"{'-'*80}")
+    print(
+        f"{'总计':<20} {total_positive:>8} {total_all:>8} {overall_accuracy:>9.2%}"
+    )
+    print(f"{'='*80}")
 
 
 if __name__ == "__main__":
