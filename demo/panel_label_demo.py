@@ -133,8 +133,8 @@ def run(types=None):
 
         positive = 0
         for image_path in image_paths:
-            print(f"  {image_path}")
-
+            # print(f"  {image_path}")
+            # image_path = Path("demo/data/panel_label/wind_power/1017KM3_1/IMG_20260311_191322_919.jpg")
             image_src = cv2.imread(str(image_path))
             if image_src is None:
                 print(f"  无法读取: {image_path.name}")
