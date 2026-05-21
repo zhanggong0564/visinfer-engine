@@ -11,7 +11,8 @@ from ..yolo import YoloOnnxInfer
 from ..utils import *
 import numpy as np
 from schemas.data_base import DetectResult
-from paddleocr import TextLineOrientationClassification, TextRecognition, PaddleOCR
+from paddleocr import TextDetection, TextLineOrientationClassification, TextRecognition
+from paddlex.inference.pipelines.components import CropByPolys
 from .utils import Points_to_Mask
 from typing import List
 from dataclasses import dataclass, field
@@ -49,18 +50,47 @@ class PanelLabelDetect(YoloOnnxInfer):
 
 class OCRPipeline:
     def __init__(
-        self, detect_model_path, orient_model_path, text_recognition_model_path, confThreshold=0.5, nmsThreshold=0.5
+        self,
+        detect_model_path,
+        orient_model_path,
+        text_recognition_model_path,
+        confThreshold=0.5,
+        nmsThreshold=0.5,
+        text_rec_score_thresh=0.7,
+        text_rec_input_shape=None,
+        text_det_limit_side_len=128,
+        text_det_limit_type="min",
+        text_det_thresh=0.3,
+        text_det_box_thresh=0.4,
+        text_det_unclip_ratio=2.0,
     ):
         self.detect_model = PanelLabelDetect(detect_model_path, confThreshold, nmsThreshold, task="seg")
-        self.ocr = PaddleOCR(
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=True,
-            textline_orientation_model_name="PP-LCNet_x1_0_textline_ori",
-            textline_orientation_model_dir=orient_model_path,
-            text_recognition_model_name="PP-OCRv5_server_rec",
-            text_recognition_model_dir=text_recognition_model_path,
+
+        # Stage 1: Text Detection
+        self.text_det_model = TextDetection(
+            model_name="PP-OCRv5_server_det",
+            limit_side_len=text_det_limit_side_len,
+            limit_type=text_det_limit_type,
+            thresh=text_det_thresh,
+            box_thresh=text_det_box_thresh,
+            unclip_ratio=text_det_unclip_ratio,
         )
+
+        # Stage 2: Text Line Orientation
+        self.text_orient_model = TextLineOrientationClassification(
+            model_name="PP-LCNet_x1_0_textline_ori",
+            model_dir=orient_model_path,
+        )
+
+        # Stage 3: Text Recognition
+        self.text_rec_model = TextRecognition(
+            model_name="PP-OCRv5_server_rec",
+            model_dir=text_recognition_model_path,
+            input_shape=text_rec_input_shape,
+        )
+
+        self.text_rec_score_thresh = text_rec_score_thresh
+        self._crop_by_polys = CropByPolys(det_box_type="quad")
 
     def infer(self, image) -> PanellabelItem:
         results = self.detect_model.infer(image)
@@ -79,34 +109,72 @@ class OCRPipeline:
         end = time.time()
         vision_logger.info(f"Points_to_Mask: {end - start:.4f}秒")
         start = time.time()
-        rec_preds = self.ocr.predict(
-            mask_rois,
-            use_textline_orientation=True,
-            text_det_unclip_ratio=2.0,
-            text_det_box_thresh=0.4,
-            text_rec_score_thresh=0.7,
-            text_det_limit_side_len=64 * 2,
-            # max_side_limit=40000,
-        )
-        end = time.time()
-        vision_logger.info(f"ocr.predict: {end - start:.4f}秒")
-        # for i, mask_roi in enumerate(mask_rois):
-        #     cv2.imwrite(f"./demo/vis/mask_roi_{i}.jpg", mask_roi)
-        # start = time.time()
-        # texts = [pred['rec_texts'][0] for pred in rec_preds]
-        texts = []
-        for pred in rec_preds:
-            rec_texts = pred.get('rec_texts') if len(pred.get('rec_texts')) > 0 else ['none']
-            rec_scores = pred.get('rec_scores') if len(pred.get('rec_scores')) > 0 else [0]
-            if not rec_texts or not rec_scores or len(rec_texts) != len(rec_scores):
-                continue
 
-            pairs = [(t, s) for t, s in zip(rec_texts, rec_scores) if isinstance(t, str) and t.strip() != ""]
-            if not pairs:
+        # Stage 1: Text Detection on each mask_roi
+        # 每张 roi 只有一个文本行，检测出多个则为误检测，只保留面积最大的
+        all_dt_polys = []
+        roi_to_idx = []
+        for i, roi in enumerate(mask_rois):
+            det_result = self.text_det_model.predict(roi)
+            dt_polys = det_result[0]["dt_polys"]
+            if len(dt_polys) == 0:
                 continue
-            # 取分数最高的文本
-            best_text, best_score = max(pairs, key=lambda x: float(x[1]))
-            texts.append(best_text)
+            areas = [cv2.contourArea(np.array(poly, dtype=np.float32).reshape(-1, 2)) for poly in dt_polys]
+            best_poly = dt_polys[int(np.argmax(areas))]
+            all_dt_polys.append([best_poly])
+            roi_to_idx.append(i)
+        det_end = time.time()
+        vision_logger.info(f"Text Detection: {det_end - start:.4f}秒")
+
+        # Crop detected text regions
+        all_crops = []
+        crop_roi_map = []
+        for i, dt_polys in enumerate(all_dt_polys):
+            roi_idx = roi_to_idx[i]
+            roi = mask_rois[roi_idx]
+            crops = list(self._crop_by_polys(roi, dt_polys))
+            if crops:
+                all_crops.append(crops[0])
+                crop_roi_map.append(roi_idx)
+
+        # Stage 2: Text Line Orientation
+        texts = [""] * len(mask_rois)
+        best_scores = [0.0] * len(mask_rois)
+        if all_crops:
+            orient_results = self.text_orient_model.predict(all_crops)
+            angles = [int(r["class_ids"][0]) for r in orient_results]
+            orient_end = time.time()
+            vision_logger.info(f"Text Orientation: {orient_end - det_end:.4f}秒")
+
+            # Stage 3: Rotate + Text Recognition
+            rotated_crops = [
+                cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop for crop, angle in zip(all_crops, angles)
+            ]
+            for j, crop in enumerate(rotated_crops):
+                cv2.imwrite(f"./demo/debug/rotated_crop_{j}.jpg", crop)
+            rec_results = self.text_rec_model.predict(rotated_crops)
+            rec_end = time.time()
+            vision_logger.info(f"Text Recognition: {rec_end - orient_end:.4f}秒")
+
+            for crop_idx, rec_res in enumerate(rec_results):
+                roi_idx = crop_roi_map[crop_idx]
+                rec_text = rec_res["rec_text"]
+                rec_score = rec_res["rec_score"]
+                if isinstance(rec_text, list):
+                    rec_text = rec_text[0] if rec_text else ""
+                if rec_text and rec_text.strip() and rec_score >= self.text_rec_score_thresh:
+                    texts[roi_idx] = rec_text
+                    best_scores[roi_idx] = rec_score
+
+        # Filter to valid results
+        valid_pairs = [(t, s) for t, s in zip(texts, best_scores) if t and t.strip()]
+        texts = [t for t, s in valid_pairs]
+        confidences = [s for t, s in valid_pairs]
+
+        end = time.time()
+        vision_logger.info(f"OCR 三阶段总耗时: {end - start:.4f}秒")
+        for i, mask_roi in enumerate(mask_rois):
+            cv2.imwrite(f"./demo/vis/mask_roi_{i}.jpg", mask_roi)
 
         # texts = [pred['rec_texts'][0] for pred in rec_preds if pred.get('rec_texts') and len(pred['rec_texts']) > 0]
         positions = [
@@ -131,15 +199,6 @@ class OCRPipeline:
 class OCRPipelineCrop:
     def __init__(self, detect_model_path, orient_model_path, confThreshold=0.5, nmsThreshold=0.5):
         self.detect_model = PanelLabelDetect(detect_model_path, confThreshold, nmsThreshold, task="seg")
-        self.ocr = PaddleOCR(
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=True,
-            textline_orientation_model_name="PP-LCNet_x1_0_textline_ori",
-            textline_orientation_model_dir=orient_model_path,
-            text_recognition_model_name="PP-OCRv5_server_rec",
-            text_recognition_model_dir='/data/zhanggong/workspace/project/move_vsion/mobile_vision/weights/panel_label/PP-OCRv5_server_rec_plane_infer',
-        )
 
     def infer(self, image, sort_by="xy") -> PanellabelItem:
         results = self.detect_model.infer(image)

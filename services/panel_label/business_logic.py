@@ -60,6 +60,13 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 settings.panel_label.text_recognition_model_path,
                 settings.panel_label.confThreshold,
                 settings.panel_label.nmsThreshold,
+                settings.panel_label.text_rec_score_thresh,
+                settings.panel_label.text_rec_input_shape,
+                settings.panel_label.text_det_limit_side_len,
+                settings.panel_label.text_det_limit_type,
+                settings.panel_label.text_det_thresh,
+                settings.panel_label.text_det_box_thresh,
+                settings.panel_label.text_det_unclip_ratio,
             )
         except Exception as e:
             vision_logger.error(f"initialize model failed, error: {e}")
@@ -129,8 +136,6 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             return panel_info
         for i, item in enumerate(observed_result.texts):
             front4 = item.split("/")[0].lower()
-            # 取后3位，并转小写字符
-            # tail3 = item[-2:].lower()
             if front4 != standard_result[i].split("/")[0].lower():
                 panel_info.message = ErrorType.MISMATCH.value
                 panel_info.result = False
