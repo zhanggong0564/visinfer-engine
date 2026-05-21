@@ -14,3 +14,12 @@ class PanelLabelConfig:
     text_recognition_model_path = "./weights/panel_label/PP-OCRv5_server_rec_plane_infer_v3"
     confThreshold = 0.75
     nmsThreshold = 0.8
+    # TextDetection
+    text_det_limit_side_len = 480
+    text_det_limit_type = "max"
+    text_det_thresh = 0.3
+    text_det_box_thresh = 0.4
+    text_det_unclip_ratio = 2.0
+    # TextRecognition
+    text_rec_score_thresh = 0.7
+    text_rec_input_shape = [3, 48, 320]
