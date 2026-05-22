@@ -48,13 +48,13 @@ class BusinessLogicBase:
         detailList = result.detailList
         for item in detailList:
             coordinate = item.coordinate
-            if len(coordinate) != 8:
+            if len(coordinate) == 4:
                 ltx, lty, rbx, rby = coordinate
                 x1, y1 = ltx, lty
                 x2, y2 = rbx, lty
                 x3, y3 = rbx, rby
                 x4, y4 = ltx, rby
-            elif len(coordinate) == 8:
+            else:
                 x1, y1, x2, y2, x3, y3, x4, y4 = coordinate
 
             item.coordinate = [
