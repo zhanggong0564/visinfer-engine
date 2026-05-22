@@ -40,18 +40,14 @@ class RouterRegistry:
             return routers
 
         for importer, module_name, ispkg in pkgutil.iter_modules(package_path):
-            if module_name == 'router_registry' or module_name == 'base_router' or "routers" not in module_name:
+            if module_name in ('router_registry', 'base_router') or "routers" not in module_name:
                 continue
             try:
                 module = importlib.import_module(f"{package_name}.{module_name}")
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
                     if isinstance(attr, APIRouter):
-                        config = {
-                            "name": module_name,
-                            'tags': [self._get_tag_from_filename(module_name)],
-                            "prefix": '/api/v1',
-                        }
+                        config = self._make_router_config(module_name)
                         routers.append((module_name, attr, config))
                         self.router_configs[module_name] = config
                         vision_logger.info(f"发现路由模块 {module_name}，标签为 {config['tags']}")
@@ -65,17 +61,20 @@ class RouterRegistry:
 
                         router = attr.get_router()
                         if isinstance(router, APIRouter):
-                            config = {
-                                "name": module_name,
-                                'tags': [self._get_tag_from_filename(module_name)],
-                                "prefix": '/api/v1',
-                            }
+                            config = self._make_router_config(module_name)
                             routers.append((module_name, router, config))
                             self.router_configs[module_name] = config
                             vision_logger.info(f"发现路由模块 {module_name}，标签为 {config['tags']}")
             except ImportError as e:
                 vision_logger.warning(f"导入模块 {module_name} 失败: {e}")
         return routers
+
+    def _make_router_config(self, module_name: str) -> Dict:
+        return {
+            "name": module_name,
+            "tags": [self._get_tag_from_filename(module_name)],
+            "prefix": "/api/v1",
+        }
 
     def _get_tag_from_filename(self, filename: str) -> str:
         """根据文件名生成标签"""
