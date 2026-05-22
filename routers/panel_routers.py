@@ -22,7 +22,8 @@ class PanelLabelRouter(BaseRouter):
 
     def get_inputs(self, request_params: PanelLabelRequest, image: np.ndarray):
         product_type = request_params.modelParams.product_type
-        input = InputParamsBusiness(image=image, product_type=product_type)
+        rule = request_params.modelParams.rule
+        input = InputParamsBusiness(image=image, product_type=product_type, rule=rule)
         return input
 
 
