@@ -67,6 +67,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 settings.panel_label.text_det_thresh,
                 settings.panel_label.text_det_box_thresh,
                 settings.panel_label.text_det_unclip_ratio,
+                settings.panel_label.text_det_input_shape,
             )
         except Exception as e:
             vision_logger.error(f"initialize model failed, error: {e}")
@@ -96,16 +97,16 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         )
         return filtered_results
 
-    def business_logic_post_process(self, results: PanellabelItem, product_type: str):
+    def business_logic_post_process(self, results: PanellabelItem, product_type: str, rule: str = "all"):
         # TODO: 过滤结果，只保留roi内的结果
         # results = self.guideline_filter(results, product_type)
-        panel_info = self.analyze(results, product_type)
+        panel_info = self.analyze(results, product_type, rule)
         mom_result = MoMResult()
         mom_result.status = panel_info.result
         mom_result.message = panel_info.message
         data_list = []
         for i, observed_item in enumerate(panel_info.observed_result):
-            status = True if panel_info.message != ErrorType.MISSING.value else False
+            status = panel_info.message != ErrorType.MISSING.value
             if i in panel_info.error_indexs:
                 status = False
             data_list.append(
@@ -120,7 +121,17 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         mom_result.detailList = data_list
         return mom_result
 
-    def analyze(self, observed_result: PanellabelItem, product_type: str) -> PanelInfo:
+    @staticmethod
+    def _compare_key(text: str, rule: str) -> str:
+        parts = text.split("/", 1)
+        if rule == "front":
+            return parts[0].lower()
+        elif rule == "back":
+            return parts[-1].lower()
+        else:  # "all"
+            return text.lower()
+
+    def analyze(self, observed_result: PanellabelItem, product_type: str, rule: str = "all") -> PanelInfo:
         standard_result = PRODUCT_TYPE[product_type]
         panel_info = PanelInfo(
             standard_result=standard_result,
@@ -135,8 +146,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             panel_info.result = False
             return panel_info
         for i, item in enumerate(observed_result.texts):
-            front4 = item.split("/")[0].lower()
-            if front4 != standard_result[i].split("/")[0].lower():
+            if self._compare_key(item, rule) != self._compare_key(standard_result[i], rule):
                 panel_info.message = ErrorType.MISMATCH.value
                 panel_info.result = False
                 panel_info.error_indexs.append(i)
