@@ -172,20 +172,18 @@ def box_iou(box1, box2):
 
 
 def numpy_nms(boxes, scores, iou_threshold):
-    idxs = scores.argsort()
+    if len(boxes) == 0:
+        return np.empty((0,), dtype=np.int64)
+    order = scores.argsort()[::-1]
+    iou_matrix = box_iou(boxes, boxes)
+    suppressed = np.zeros(len(boxes), dtype=bool)
     keep = []
-    while idxs.size > 0:
-        max_score_index = idxs[-1]
-        max_score_box = boxes[max_score_index][None, :]
-        keep.append(max_score_index)
-        if idxs.size == 1:
-            break
-        idxs = idxs[:-1]
-        other_boxes = boxes[idxs]
-        ious = box_iou(max_score_box, other_boxes)
-        idxs = idxs[ious[0] <= iou_threshold]
-    keep = np.array(keep)
-    return keep
+    for i in order:
+        if suppressed[i]:
+            continue
+        keep.append(i)
+        suppressed |= iou_matrix[i] > iou_threshold
+    return np.array(keep)
 
 
 def numpy_nms_rotated(boxes, scores, iou_threshold):

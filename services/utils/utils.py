@@ -11,7 +11,6 @@ import cv2
 import random
 import numpy as np
 import base64
-import numpy as np
 from typing import List, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor
 import time
@@ -347,7 +346,7 @@ def scale_masks(masks, shape, gain, dw, dh):
 
 def xywh2xyxy(x):
     # Convert bounding box (x, y, w, h) to bounding box (x1, y1, x2, y2)
-    y = np.copy(x)
+    y = np.empty_like(x)
     y[..., 0] = x[..., 0] - x[..., 2] / 2
     y[..., 1] = x[..., 1] - x[..., 3] / 2
     y[..., 2] = x[..., 0] + x[..., 2] / 2
@@ -424,10 +423,6 @@ def masks2segments(masks):
     else:
         segments = np.zeros((0, 2))  # no segments found
     return segments
-
-
-import numpy as np
-import cv2
 
 
 def masks2segments_with_boxes(
@@ -524,16 +519,9 @@ def rotate_points(res, src_w, src_h):
     for detail in detailList:
         # 归一化坐标还原,并限制wh
         x1, y1, x2, y2, x3, y3, x4, y4 = detail.get("coordinate", [])
-        x1, y1, x2, y2, x3, y3, x4, y4 = (
-            min(w, max(0, int(x1 * w))),
-            min(h, max(0, int(y1 * h))),
-            min(w, max(0, int(x2 * w))),
-            min(h, max(0, int(y2 * h))),
-            min(w, max(0, int(x3 * w))),
-            min(h, max(0, int(y3 * h))),
-            min(w, max(0, int(x4 * w))),
-            min(h, max(0, int(y4 * h))),
-        )
+        pts = np.array([x1 * w, y1 * h, x2 * w, y2 * h, x3 * w, y3 * h, x4 * w, y4 * h])
+        pts = np.clip(pts.astype(int), 0, np.array([w, h, w, h, w, h, w, h]))
+        x1, y1, x2, y2, x3, y3, x4, y4 = pts
 
         x2 = x3
         y2 = y3
