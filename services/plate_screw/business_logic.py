@@ -67,7 +67,7 @@ class PlateScrewJudgeApi(BusinessLogicBase):
             vision_logger.error(f"加载模型失败: {e}")
             raise e
 
-    def business_logic_post_process(self, result: DetectResult, product_type: str) -> MoMResult:
+    def business_logic_post_process(self, result: DetectResult, product_type: str, rule: str = "all") -> MoMResult:
         res = defaultdict(list)
         for box, cls, score, name in zip(result.boxes, result.class_ids, result.scores, result.class_names):
             info = []
