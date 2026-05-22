@@ -20,6 +20,7 @@ class PanelLabelConfig:
     text_det_thresh = 0.3
     text_det_box_thresh = 0.4
     text_det_unclip_ratio = 2.0
+    text_det_input_shape = [3, 128, 640]
     # TextRecognition
     text_rec_score_thresh = 0.7
     text_rec_input_shape = [3, 48, 320]
