@@ -163,27 +163,19 @@ def contour_top_bottom(mask):
     ys = cnt[:, 1]
     x_min, x_max = int(xs.min()), int(xs.max())
 
-    minY = {}
-    maxY = {}
-    for x, y in zip(xs, ys):
-        x = int(x)
-        y = float(y)
-        if x not in minY:
-            minY[x] = y
-            maxY[x] = y
-        else:
-            if y < minY[x]:
-                minY[x] = y
-            if y > maxY[x]:
-                maxY[x] = y
+    width = x_max - x_min + 1
+    xi = xs.astype(np.int32) - x_min
+    ys_f = ys.astype(np.float32)
+    minY_arr = np.full(width, np.inf, dtype=np.float32)
+    maxY_arr = np.full(width, -np.inf, dtype=np.float32)
+    np.minimum.at(minY_arr, xi, ys_f)
+    np.maximum.at(maxY_arr, xi, ys_f)
+    minY_arr[minY_arr == np.inf] = np.nan
+    maxY_arr[maxY_arr == -np.inf] = np.nan
 
-    x_all = np.arange(x_min, x_max + 1, dtype=np.int32)
-    top = np.stack(
-        [x_all.astype(np.float32), np.array([minY.get(x, np.nan) - 10 for x in x_all], dtype=np.float32)], axis=1
-    )
-    bot = np.stack(
-        [x_all.astype(np.float32), np.array([maxY.get(x, np.nan) + 10 for x in x_all], dtype=np.float32)], axis=1
-    )
+    x_all = np.arange(x_min, x_max + 1, dtype=np.float32)
+    top = np.stack([x_all, minY_arr - 10], axis=1)
+    bot = np.stack([x_all, maxY_arr + 10], axis=1)
 
     def fill_nan(y):
         n = len(y)
@@ -227,13 +219,9 @@ def mask2roi(img: np.ndarray, points: np.array, smooth=21, sample_step=1, border
         map_x = np.empty((H, W), dtype=np.float32)
         map_y = np.empty((H, W), dtype=np.float32)
 
-        # 逐列线性插值（从 top 到 bot）
-        for i in range(W):
-            x_t, y_t = top[i]
-            x_b, y_b = bot[i]
-            a = np.linspace(0.0, 1.0, H, dtype=np.float32)
-            map_x[:, i] = x_t + a * (x_b - x_t)
-            map_y[:, i] = y_t + a * (y_b - y_t)
+        a = np.linspace(0.0, 1.0, H, dtype=np.float32)[:, np.newaxis]  # (H, 1)
+        map_x = top[:, 0] + a * (bot[:, 0] - top[:, 0])  # (H, W)
+        map_y = top[:, 1] + a * (bot[:, 1] - top[:, 1])
 
         bm = cv2.BORDER_REPLICATE if border_mode == "replicate" else cv2.BORDER_REFLECT_101
         flat = cv2.remap(img_r, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=bm)

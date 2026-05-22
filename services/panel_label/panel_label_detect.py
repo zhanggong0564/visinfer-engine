@@ -16,7 +16,7 @@ from paddlex.inference.pipelines.components import CropByPolys
 from .utils import Points_to_Mask
 from typing import List
 from dataclasses import dataclass, field
-from itertools import chain
+
 import time
 from utils import vision_logger
 from .product_type import PRODUCT_guideline
@@ -63,6 +63,7 @@ class OCRPipeline:
         text_det_thresh=0.3,
         text_det_box_thresh=0.4,
         text_det_unclip_ratio=2.0,
+        text_det_input_shape=None,
     ):
         self.detect_model = PanelLabelDetect(detect_model_path, confThreshold, nmsThreshold, task="seg")
 
@@ -74,6 +75,7 @@ class OCRPipeline:
             thresh=text_det_thresh,
             box_thresh=text_det_box_thresh,
             unclip_ratio=text_det_unclip_ratio,
+            input_shape=text_det_input_shape,
         )
 
         # Stage 2: Text Line Orientation
@@ -96,14 +98,7 @@ class OCRPipeline:
         results = self.detect_model.infer(image)
         class_ids = np.array(results.class_ids)
         mask_polygons = np.array(results.mask_polygons, dtype=object)
-        points_line = []
-        points_qfu = []
-        if 1 in class_ids:
-            points_qfu = mask_polygons[class_ids == 1]
-        if 0 in class_ids:
-            points_line = mask_polygons[class_ids == 0]
-
-        # panel_label_item = PanellabelItem()
+        points_line = mask_polygons[class_ids == 0] if 0 in class_ids else []
         start = time.time()
         mask_rois, sorted_idxs = Points_to_Mask(image, points_line)
         end = time.time()
@@ -150,8 +145,6 @@ class OCRPipeline:
             rotated_crops = [
                 cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop for crop, angle in zip(all_crops, angles)
             ]
-            for j, crop in enumerate(rotated_crops):
-                cv2.imwrite(f"./demo/debug/rotated_crop_{j}.jpg", crop)
             rec_results = self.text_rec_model.predict(rotated_crops)
             rec_end = time.time()
             vision_logger.info(f"Text Recognition: {rec_end - orient_end:.4f}秒")
@@ -166,23 +159,15 @@ class OCRPipeline:
                     texts[roi_idx] = rec_text
                     best_scores[roi_idx] = rec_score
 
-        # Filter to valid results
-        valid_pairs = [(t, s) for t, s in zip(texts, best_scores) if t and t.strip()]
-        texts = [t for t, s in valid_pairs]
-        confidences = [s for t, s in valid_pairs]
+        texts = [t for t, s in zip(texts, best_scores) if t and t.strip()]
 
         end = time.time()
         vision_logger.info(f"OCR 三阶段总耗时: {end - start:.4f}秒")
-        for i, mask_roi in enumerate(mask_rois):
-            cv2.imwrite(f"./demo/vis/mask_roi_{i}.jpg", mask_roi)
-
-        # texts = [pred['rec_texts'][0] for pred in rec_preds if pred.get('rec_texts') and len(pred['rec_texts']) > 0]
-        positions = [
-            np.int64(cv2.boxPoints(cv2.minAreaRect(np.array(mask_polygon, dtype=np.float32))))
-            for mask_polygon in mask_polygons
-        ]
         ori_index = [np.where(class_ids == 0)[0][sorted_idx] for sorted_idx in sorted_idxs]
-        positions = [list(chain.from_iterable(positions[idx].tolist())) for idx in ori_index]
+        positions = [
+            np.int64(cv2.boxPoints(cv2.minAreaRect(np.array(mask_polygons[idx], dtype=np.float32)))).flatten().tolist()
+            for idx in ori_index
+        ]
         roi_classes_ids = class_ids[ori_index]
         confidences = [results.scores[idx] for idx in ori_index]
         panel_label_item = PanellabelItem(
@@ -204,13 +189,9 @@ class OCRPipelineCrop:
         results = self.detect_model.infer(image)
         class_ids = np.array(results.class_ids)
         mask_polygons = np.array(results.mask_polygons, dtype=object)
-        points_qfu = mask_polygons[class_ids == 1]
         points_line = mask_polygons[class_ids == 0]
-
-        # panel_label_item = PanellabelItem()
         start = time.time()
         mask_rois, sorted_idxs = Points_to_Mask(image, points_line, sort_by=sort_by)
         end = time.time()
         vision_logger.info(f"Points_to_Mask: {end - start:.4f}秒")
-        start = time.time()
         return mask_rois
