@@ -18,6 +18,7 @@ class ModelParams(BaseModel):
     guide_line: Optional[List[GuideLineItem]] = Field(default_factory=list, description="参考线图片列表")
     example_images: Optional[List[ExampleImageItem]] = Field(default_factory=list, description="示例图片列表")
     product_type: str = Field(..., description="产品型号(例如:QF2)")
+    rule: Literal["front", "back", "all"] = Field(default="all", description="字符比较规则：front=斜杠前，back=斜杠后，all=全检")
 
 
 class PanelLabelRequest(BaseModel):

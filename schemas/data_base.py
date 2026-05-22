@@ -149,3 +149,4 @@ class InputParamsBusiness:
     SN: str = ""
     product_type: str = ""
     is_registered: bool = False
+    rule: str = "all"
