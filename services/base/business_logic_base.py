@@ -28,15 +28,16 @@ class BusinessLogicBase:
         self.h, self.w, _ = image.shape
         is_registered = InputParams.is_registered
         product_type = InputParams.product_type
+        rule = InputParams.rule
         result = self.detector.infer(image)
         if is_registered:
             return self.registered_post_process(result, product_type)
-        result = self.business_logic_post_process(result, product_type)
+        result = self.business_logic_post_process(result, product_type, rule)
         result = self.result_post_process(result)
 
         return result
 
-    def business_logic_post_process(self, result: DetectResult, product_type: str) -> MoMResult:
+    def business_logic_post_process(self, result: DetectResult, product_type: str, rule: str = "all") -> MoMResult:
         raise NotImplementedError
 
     def registered_post_process(self, result: IndicatorLightEmbedding, product_type: str) -> bool:
