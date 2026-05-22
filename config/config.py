@@ -8,7 +8,6 @@
 '''
 
 from pydantic_settings import BaseSettings
-from .plate_screw_congfig import PlateScrewConfig
 from .panel_label_config import PanelLabelConfig
 
 
