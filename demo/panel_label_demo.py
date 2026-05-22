@@ -20,7 +20,7 @@ from config import settings
 from schemas import InputParamsBusiness
 
 # 数据目录配置
-DATA_DIR = Path("./demo/data/panel_label/charging_pile")
+DATA_DIR = Path("./demo/data/charging_pile_test")
 VIS_DIR = Path("./demo/test/vis")
 
 
@@ -142,8 +142,8 @@ def run(types=None, rule="all"):
             dst_path = VIS_DIR / f"{product_type}_{image_path.stem}_res.jpg"
             visualize_results(image_src, results, product_type, dst_path)
 
-            if not is_ok:
-                print(f"    FAIL: vis_path: {dst_path}, src_path: {image_path}")
+            # if not is_ok:
+            print(f"    FAIL: vis_path: {dst_path}, src_path: {image_path}")
 
         accuracy = positive / len(image_paths) if len(image_paths) > 0 else 0
         accuracy_summary[product_type] = {
