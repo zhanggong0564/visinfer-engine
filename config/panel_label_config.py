@@ -18,7 +18,7 @@ class PanelLabelConfig:
     text_det_limit_side_len = 480
     text_det_limit_type = "max"
     text_det_thresh = 0.3
-    text_det_box_thresh = 0.4
+    text_det_box_thresh = 0.3
     text_det_unclip_ratio = 2.0
     text_det_input_shape = [3, 128, 640]
     # TextRecognition
