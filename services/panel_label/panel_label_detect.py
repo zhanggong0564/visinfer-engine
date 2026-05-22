@@ -133,8 +133,7 @@ class OCRPipeline:
                 crop_roi_map.append(roi_idx)
 
         # Stage 2: Text Line Orientation
-        texts = [""] * len(mask_rois)
-        best_scores = [0.0] * len(mask_rois)
+        text_map: dict = {}
         if all_crops:
             orient_results = self.text_orient_model.predict(all_crops)
             angles = [int(r["class_ids"][0]) for r in orient_results]
@@ -156,10 +155,9 @@ class OCRPipeline:
                 if isinstance(rec_text, list):
                     rec_text = rec_text[0] if rec_text else ""
                 if rec_text and rec_text.strip() and rec_score >= self.text_rec_score_thresh:
-                    texts[roi_idx] = rec_text
-                    best_scores[roi_idx] = rec_score
+                    text_map[roi_idx] = rec_text
 
-        texts = [t for t, s in zip(texts, best_scores) if t and t.strip()]
+        texts = [text_map[i] for i in range(len(mask_rois)) if i in text_map]
 
         end = time.time()
         vision_logger.info(f"OCR 三阶段总耗时: {end - start:.4f}秒")
