@@ -13,7 +13,6 @@ from ..utils.utils import *
 from utils import vision_logger
 import time
 from schemas.data_base import DetectResult
-import time
 
 # 设置onnxruntime日志级别
 onnxruntime.set_default_logger_severity(3)
