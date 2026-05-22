@@ -106,9 +106,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         mom_result.message = panel_info.message
         data_list = []
         for i, observed_item in enumerate(panel_info.observed_result):
-            status = panel_info.message != ErrorType.MISSING.value
-            if i in panel_info.error_indexs:
-                status = False
+            status = panel_info.message != ErrorType.MISSING.value and i not in panel_info.error_indexs
             data_list.append(
                 DetectionItem(
                     status=status,
