@@ -7,6 +7,7 @@
 @Description  :
 '''
 
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -86,7 +87,7 @@ async def root():
 @app.get("/health", tags=["健康检查"])
 async def health_check():
     """健康检查接口"""
-    return {"code": 1, "message": "服务健康", "result": {"status": "healthy", "timestamp": "2026-01-07T08:30:00Z"}}
+    return {"code": 1, "message": "服务健康", "result": {"status": "healthy", "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}}
 
 
 # API文档自定义配置
