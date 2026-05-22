@@ -34,7 +34,7 @@ def auto_detect_product_types(data_dir):
     for item in sorted(data_dir.iterdir()):
         if item.is_dir():
             # 检查是否有 jpg 图片
-            if list(item.glob("*.jpg")):
+            if next(item.glob("*.jpg"), None) is not None:
                 product_types.append(item.name)
 
     return product_types
@@ -86,7 +86,7 @@ def visualize_results(image_src, results, product_type, dst_path):
     cv2.imwrite(str(dst_path), image_src)
 
 
-def run(types=None):
+def run(types=None, rule="all"):
     """批量推理给定的产品类型，最后输出所有型号的正确率汇总"""
     VIS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -130,6 +130,7 @@ def run(types=None):
             input_params = InputParamsBusiness(
                 image=image_src,
                 product_type=product_type,
+                rule=rule,
             )
             results = detector.detect(input_params)
             status = results.to_dict()["status"]
@@ -162,26 +163,28 @@ def run(types=None):
     total_positive = 0
     total_all = 0
     for product_type, stats in sorted(accuracy_summary.items()):
-        print(
-            f"{product_type:<20} {stats['positive']:>8} {stats['total']:>8} {stats['accuracy']:>9.2%}"
-        )
+        print(f"{product_type:<20} {stats['positive']:>8} {stats['total']:>8} {stats['accuracy']:>9.2%}")
         total_positive += stats["positive"]
         total_all += stats["total"]
 
     overall_accuracy = total_positive / total_all if total_all > 0 else 0
     print(f"{'-'*80}")
-    print(
-        f"{'总计':<20} {total_positive:>8} {total_all:>8} {overall_accuracy:>9.2%}"
-    )
+    print(f"{'总计':<20} {total_positive:>8} {total_all:>8} {overall_accuracy:>9.2%}")
     print(f"{'='*80}")
 
 
 if __name__ == "__main__":
-    # 屏蔽 vision_logger 的控制台 INFO/DEBUG 输出，终端只显示 WARNING 及以上
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rule", choices=["front", "back", "all"], default="all", help="字符比较规则")
+    parser.add_argument("--types", nargs="*", default=None, help="指定产品类型，不填则自动检测")
+    args = parser.parse_args()
+
     logger.remove()
     logger.add(
         sink=lambda msg: print(msg, end=""),
         level="WARNING",
         colorize=True,
     )
-    run(types=None)
+    run(types=args.types, rule=args.rule)
