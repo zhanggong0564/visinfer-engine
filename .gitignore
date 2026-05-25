@@ -19,5 +19,7 @@ weights
 demo/data/panel_label/*
 temp_data
 demo/data/test
+demo/data/charging_pile_test
+demo/data/ng
 **/docs
 CLAUDE.md
