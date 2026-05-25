@@ -40,6 +40,7 @@ class PanelInfo:
     message: str = ErrorType.UNKNOWN.value
     error_indexs: list[int] = field(default_factory=list)
     class_id: List[int] = field(default_factory=list)
+    confidence: list[float] = field(default_factory=list)
 
 
 @detection_factory.register("panel_label")
@@ -112,7 +113,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                     status=status,
                     scene=self.class_name[panel_info.class_id[i]],
                     coordinate=panel_info.observed_result_points[i],
-                    accuracy=results.confidence[i],
+                    accuracy=panel_info.confidence[i],
                     name=observed_item,
                 )
             )
@@ -136,6 +137,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             observed_result=observed_result.texts,
             observed_result_points=observed_result.Points,
             class_id=observed_result.class_id,
+            confidence=observed_result.confidence,
         )
         panel_info.result = True
         panel_info.message = ErrorType.OK.value

@@ -157,11 +157,13 @@ class OCRPipeline:
                 if rec_text and rec_text.strip() and rec_score >= self.text_rec_score_thresh:
                     text_map[roi_idx] = rec_text
 
-        texts = [text_map[i] for i in range(len(mask_rois)) if i in text_map]
+        recognized_rois = [i for i in range(len(mask_rois)) if i in text_map]
+        texts = [text_map[i] for i in recognized_rois]
 
         end = time.time()
         vision_logger.info(f"OCR 三阶段总耗时: {end - start:.4f}秒")
-        ori_index = [np.where(class_ids == 0)[0][sorted_idx] for sorted_idx in sorted_idxs]
+        line_indices = np.where(class_ids == 0)[0]
+        ori_index = [line_indices[sorted_idxs[i]] for i in recognized_rois]
         positions = [
             np.int64(cv2.boxPoints(cv2.minAreaRect(np.array(mask_polygons[idx], dtype=np.float32)))).flatten().tolist()
             for idx in ori_index
