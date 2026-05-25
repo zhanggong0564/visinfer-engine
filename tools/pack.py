@@ -124,11 +124,24 @@ def build_encrypted():
             shutil.rmtree(dst)
         shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 
-    # 5. 复制启动文件
+    # 5. 复制启动文件（app.py 切换为生产模式：关闭 reload）
     for f in COPY_FILES:
         src = PROJECT_ROOT / f
-        if src.exists():
-            shutil.copy2(src, encrypted / src.name)
+        if not src.exists():
+            continue
+        dst = encrypted / src.name
+        if src.name == "app.py":
+            content = src.read_text(encoding="utf-8")
+            prod_content = content.replace(
+                "reload=True,  # 开发模式开启热重载",
+                "reload=False,  # 生产模式关闭热重载",
+            )
+            if prod_content == content:
+                print("警告: app.py 未找到 reload=True 标记，未做生产模式替换")
+            dst.write_text(prod_content, encoding="utf-8")
+            shutil.copystat(src, dst)
+        else:
+            shutil.copy2(src, dst)
 
     so_count = sum(1 for _ in encrypted.rglob("*.so"))
     print(f"已生成 encrypted/ 目录，包含 {so_count} 个 .so 文件")
