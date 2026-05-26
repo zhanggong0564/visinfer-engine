@@ -87,11 +87,6 @@ class OCRResult:
     scores: List[float] = field(default_factory=list)
 
 
-class StatusCode(int, Enum):
-    SUCCESS = 0
-    FAIL = 1
-
-
 class MessageType(str, Enum):
     SUCCESS = "检测成功"
     FAIL = "检测失败"

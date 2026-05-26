@@ -47,7 +47,7 @@ class ResultResponse(BaseModel):
 class CommonResponse(BaseModel):
     """接口顶层返回模型（完全匹配示例）"""
 
-    code: Literal[0, 1] = Field(..., description="0=识别失败，1=识别成功（整数类型）")
+    code: int = Field(..., description="错误码，1=成功，其它见 ErrorCode 定义")
     message: str = Field(..., description="返回消息（如“成功”）")
     result: ResultResponse = Field(..., description="检测结果详情对象")
 

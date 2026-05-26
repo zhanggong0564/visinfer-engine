@@ -8,7 +8,6 @@ from schemas.data_base import (
     InputParamsBusiness,
     OCRResult,
     IndicatorLightEmbedding,
-    StatusCode,
     MessageType,
 )
 from schemas.common import CommonResponse, ResultResponse, EmptyRequest
@@ -170,12 +169,6 @@ class TestIndicatorLightEmbedding:
         assert e.scores == []
 
 
-class TestStatusCode:
-    def test_values(self):
-        assert StatusCode.SUCCESS == 0
-        assert StatusCode.FAIL == 1
-
-
 class TestMessageType:
     def test_values(self):
         assert MessageType.SUCCESS == "检测成功"
@@ -213,3 +206,20 @@ class TestEmptyRequest:
     def test_creation(self):
         req = EmptyRequest()
         assert isinstance(req, EmptyRequest)
+
+
+class TestCommonResponseCodeIsInt:
+    """code 字段必须接受多档 int 取值"""
+
+    def test_accepts_success(self):
+        from schemas.common import CommonResponse, ResultResponse
+        result = ResultResponse(detailList=[], status="true", error_msg="", message="ok")
+        resp = CommonResponse(code=1, message="成功", result=result)
+        assert resp.code == 1
+
+    def test_accepts_multi_digit_codes(self):
+        from schemas.common import CommonResponse, ResultResponse
+        result = ResultResponse(detailList=[], status="false", error_msg="x", message="x")
+        for c in (1001, 1002, 1003, 5000, 5001):
+            resp = CommonResponse(code=c, message="x", result=result)
+            assert resp.code == c
