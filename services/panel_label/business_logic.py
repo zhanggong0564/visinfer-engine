@@ -23,6 +23,7 @@ from .utils import rect_contains
 
 class ErrorType(str, Enum):
     MISSING = "missing"
+    EXTRA = "extra"
     MISMATCH = "mismatch"
     UNKNOWN = "unknown"
     OK = "ok"
@@ -113,7 +114,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         mom_result.message = panel_info.message
         data_list = []
         for i, observed_item in enumerate(panel_info.observed_result):
-            status = panel_info.message != ErrorType.MISSING.value and i not in panel_info.error_indexs
+            status = panel_info.result or i not in panel_info.error_indexs
             data_list.append(
                 DetectionItem(
                     status=status,
@@ -147,10 +148,19 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         )
         panel_info.result = True
         panel_info.message = ErrorType.OK.value
-        if len(observed_result.texts) != len(standard_result):
+
+        observed_count = len(observed_result.texts)
+        standard_count = len(standard_result)
+
+        if observed_count < standard_count:
             panel_info.message = ErrorType.MISSING.value
             panel_info.result = False
             return panel_info
+        elif observed_count > standard_count:
+            panel_info.message = ErrorType.EXTRA.value
+            panel_info.result = False
+            return panel_info
+
         for i, item in enumerate(observed_result.texts):
             if self._compare_key(item, rule) != self._compare_key(standard_result[i], rule):
                 panel_info.message = ErrorType.MISMATCH.value
