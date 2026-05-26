@@ -13,6 +13,7 @@ from ..base import BusinessLogicBase
 from .plate_screw_detect import PlateScrewDetect
 from utils import vision_logger
 from schemas.data_base import MoMResult, DetectResult, DetectionItem
+from schemas.exceptions import ModelInferenceError
 from collections import defaultdict
 from schemas import MessageType
 
@@ -65,7 +66,11 @@ class PlateScrewJudgeApi(BusinessLogicBase):
             self.detector = PlateScrewDetect(settings.plate_screw.model_path, settings.plate_screw.confThreshold)
         except Exception as e:
             vision_logger.error(f"加载模型失败: {e}")
-            raise e
+            raise ModelInferenceError(
+                "plate_screw 模型加载失败",
+                scenario="plate_screw",
+                original_error=e,
+            )
 
     def business_logic_post_process(self, result: DetectResult, product_type: str, rule: str = "all") -> MoMResult:
         res = defaultdict(list)
