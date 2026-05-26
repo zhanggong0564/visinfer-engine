@@ -38,6 +38,59 @@ def judge():
 
 
 class TestPanelLabelAnalyze:
+    def test_fix_slash_misrecognition_paired_brackets(self, judge):
+        """成对括号不做修改"""
+        assert judge._fix_slash_misrecognition("QF2-1(53)") == "QF2-1(53)"
+        assert judge._fix_slash_misrecognition("((PE1))") == "((PE1))"
+        assert judge._fix_slash_misrecognition("QF(PE)3") == "QF(PE)3"
+
+    def test_fix_slash_misrecognition_single_left_bracket(self, judge):
+        """单个左括号修正为 / """
+        assert judge._fix_slash_misrecognition("QF2-1(PE1") == "QF2-1/PE1"
+        assert judge._fix_slash_misrecognition("(PE1-J1") == "/PE1-J1"
+
+    def test_fix_slash_misrecognition_single_right_bracket(self, judge):
+        """单个右括号修正为 / """
+        assert judge._fix_slash_misrecognition("QF2-1)PE1") == "QF2-1/PE1"
+        assert judge._fix_slash_misrecognition("PE1-J1)") == "PE1-J1/"
+
+    def test_fix_slash_misrecognition_all_left_brackets(self, judge):
+        """全部左括号（不成对）全部修正为 / """
+        assert judge._fix_slash_misrecognition("((PE1-J1") == "//PE1-J1"
+        assert judge._fix_slash_misrecognition("QF(PE(3") == "QF/PE/3"
+
+    def test_fix_slash_misrecognition_all_right_brackets(self, judge):
+        """全部右括号（不成对）全部修正为 / """
+        assert judge._fix_slash_misrecognition("PE1-J1))") == "PE1-J1//"
+        assert judge._fix_slash_misrecognition("QF)PE)3") == "QF/PE/3"
+
+    def test_fix_slash_misrecognition_no_brackets(self, judge):
+        """无括号文本原样返回"""
+        assert judge._fix_slash_misrecognition("QF2-1/PE1") == "QF2-1/PE1"
+        assert judge._fix_slash_misrecognition("ABCD") == "ABCD"
+
+    def test_fix_slash_misrecognition_in_analyze(self, judge, mock_product_type):
+        """OCR 误识别括号为斜杠后，analyze 仍能正确匹配"""
+        with patch(
+            "services.panel_label.business_logic.PRODUCT_TYPE", mock_product_type
+        ):
+            # 标准：LINE1/xxx，OCR 识别为 LINE1(xxx（左括号误判）
+            observed = PanellabelItem(
+                Points=[
+                    [10, 20, 30, 40, 50, 60, 70, 80],
+                    [100, 200, 300, 400, 500, 600, 700, 800],
+                    [10, 200, 300, 200, 300, 400, 10, 400],
+                ],
+                index=[0, 1, 2],
+                class_id=[0, 0, 0],
+                texts=["LINE1(xxx", "LINE2/yyy", "LINE3/zzz"],
+                confidence=[0.95, 0.88, 0.72],
+            )
+            result = judge.analyze(observed, "TYPE1")
+            assert result.result is True
+            # 确认修正后的 observed_result 中括号已被替换
+            assert result.observed_result[0] == "LINE1/xxx"
+
     def test_perfect_match(self, judge, mock_product_type):
         with patch(
             "services.panel_label.business_logic.PRODUCT_TYPE", mock_product_type
