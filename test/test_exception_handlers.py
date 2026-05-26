@@ -123,3 +123,30 @@ class TestExceptionHandlers:
         body = resp.json()
         assert set(body.keys()) == {"code", "message", "result"}
         assert set(body["result"].keys()) == {"detailList", "status", "error_msg", "message"}
+
+
+class TestBaseRouterExceptionTranslation:
+    """验证 base_router 抛出的异常被全局 handler 正确翻译"""
+
+    @pytest.fixture
+    def real_app_client(self):
+        from app import app
+        return TestClient(app, raise_server_exceptions=False)
+
+    def test_invalid_json_data(self, real_app_client):
+        """传入非法 JSON 字符串 → code=1001"""
+        files = {"file": ("test.jpg", b"\xff\xd8\xff\xe0fake_jpeg", "image/jpeg")}
+        data = {"json_data": "this is not json"}
+        resp = real_app_client.post("/api/v1/panel_label_detect", files=files, data=data)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["code"] == int(ErrorCode.INVALID_PARAMS)
+
+    def test_invalid_image_bytes(self, real_app_client):
+        """图片字节不可解码 → code=1002"""
+        files = {"file": ("test.jpg", b"definitely_not_an_image", "image/jpeg")}
+        data = {"json_data": '{"product": "wind_power", "type": "1017KM1_1", "modelParams": {"product_type": "1017KM1_1"}}'}
+        resp = real_app_client.post("/api/v1/panel_label_detect", files=files, data=data)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["code"] == int(ErrorCode.INVALID_IMAGE)

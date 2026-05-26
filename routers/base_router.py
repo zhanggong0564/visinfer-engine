@@ -18,10 +18,11 @@ from typing import Any, Optional, Tuple
 
 import cv2
 import numpy as np
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
 
 from config import settings
-from schemas import CommonResponse, MessageType
+from schemas import CommonResponse, ErrorCode, ERROR_CODE_MESSAGES
+from schemas.exceptions import InvalidParamsError, InvalidImageError, InternalError
 from services import detection_factory, rotate_points
 from utils import vision_logger
 
@@ -53,7 +54,10 @@ class BaseRouter(ABC):
         if self.instance is None:
             detector = detection_factory.get_scenarios(self.detector_type)
             if not detector:
-                raise HTTPException(status_code=500, detail=f"未找到{self.detector_type}检测器")
+                raise InternalError(
+                    f"未找到 {self.detector_type} 检测器",
+                    detector_type=self.detector_type,
+                )
             self.instance = detector
         return self.instance
 
@@ -84,8 +88,8 @@ class BaseRouter(ABC):
             vision_logger.info(f"旋转后的检测结果：{result_info}")
         result_dict = result_info if isinstance(result_info, dict) else result_info.to_dict()
         result = CommonResponse(
-            code=1,
-            message=MessageType.SUCCESS.value,
+            code=int(ErrorCode.SUCCESS),
+            message=ERROR_CODE_MESSAGES[ErrorCode.SUCCESS],
             result=result_dict,
         )
         vision_logger.info("参数校验通过，返回检测结果")
@@ -121,9 +125,9 @@ class BaseRouter(ABC):
             request_params = self.request_schema(json_dict)
             return request_params
         except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="json_data格式非法，需传入标准JSON字符串")
+            raise InvalidParamsError("json_data 格式非法，需传入标准 JSON 字符串")
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=f"参数校验失败：{str(e)}")
+            raise InvalidParamsError(f"参数校验失败: {e}")
 
     def request_schema(self, json_dict) -> Any:
         """请求参数校验模式"""
@@ -136,7 +140,7 @@ class BaseRouter(ABC):
         image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
         if image is None:
             vision_logger.error("图片读取失败")
-            raise HTTPException(status_code=400, detail="图片读取失败，请检查文件格式")
+            raise InvalidImageError("图片读取失败，请检查文件格式")
         # h, w, _ = image.shape
         # is_rotate = w < h
         # if is_rotate:
