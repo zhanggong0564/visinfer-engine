@@ -132,6 +132,34 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         return mom_result
 
     @staticmethod
+    def _fix_slash_misrecognition(text: str) -> str:
+        """将不成对的括号修正为 / ，解决OCR将 / 误识别成 ( 或 ) 的问题"""
+        left_count = text.count("(")
+        right_count = text.count(")")
+        if left_count == right_count:
+            return text
+        if left_count > right_count:
+            excess = left_count - right_count
+            chars = list(text)
+            for i in range(len(chars) - 1, -1, -1):
+                if chars[i] == "(":
+                    chars[i] = "/"
+                    excess -= 1
+                    if excess == 0:
+                        break
+            return "".join(chars)
+        else:
+            excess = right_count - left_count
+            chars = list(text)
+            for i in range(len(chars)):
+                if chars[i] == ")":
+                    chars[i] = "/"
+                    excess -= 1
+                    if excess == 0:
+                        break
+            return "".join(chars)
+
+    @staticmethod
     def _compare_key(text: str, rule: str) -> str:
         parts = text.split("/", 1)
         if rule == "front":
@@ -143,9 +171,10 @@ class PanelLabelJudgeApi(BusinessLogicBase):
 
     def analyze(self, observed_result: PanellabelItem, product_type: str, rule: str = "all") -> PanelInfo:
         standard_result = PRODUCT_TYPE[product_type]
+        corrected_texts = [self._fix_slash_misrecognition(t) for t in observed_result.texts]
         panel_info = PanelInfo(
             standard_result=standard_result,
-            observed_result=observed_result.texts,
+            observed_result=corrected_texts,
             observed_result_points=observed_result.Points,
             class_id=observed_result.class_id,
             confidence=observed_result.confidence,
@@ -153,7 +182,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         panel_info.result = True
         panel_info.message = ErrorType.OK.value
 
-        observed_count = len(observed_result.texts)
+        observed_count = len(panel_info.observed_result)
         standard_count = len(standard_result)
 
         if observed_count < standard_count:
@@ -165,7 +194,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             panel_info.result = False
             return panel_info
 
-        for i, item in enumerate(observed_result.texts):
+        for i, item in enumerate(panel_info.observed_result):
             if self._compare_key(item, rule) != self._compare_key(standard_result[i], rule):
                 panel_info.message = ErrorType.MISMATCH.value
                 panel_info.result = False
