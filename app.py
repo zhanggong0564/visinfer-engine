@@ -15,6 +15,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_swagger_ui_html
 from config import settings
 from utils import vision_logger
+from schemas.error_codes import ErrorCode, ERROR_CODE_MESSAGES
+from schemas.exceptions import VisionAPIError
 from routers import RouterRegistry
 import uvicorn
 from services import detection_factory
@@ -44,31 +46,52 @@ router_registry.register_all_routers(app, "routers")
 
 
 # 全局异常处理
+def _build_error_response(code: ErrorCode, error_msg: str) -> dict:
+    """统一错误响应体，保持 CommonResponse 完整 schema"""
+    public_message = ERROR_CODE_MESSAGES[code]
+    return {
+        "code": int(code),
+        "message": public_message,
+        "result": {
+            "detailList": [],
+            "status": "false",
+            "error_msg": error_msg,
+            "message": public_message,
+        },
+    }
+
+
+@app.exception_handler(VisionAPIError)
+async def vision_api_exception_handler(request: Request, exc: VisionAPIError):
+    """业务层主动抛出的异常 → 翻译为 CommonResponse"""
+    vision_logger.error(
+        f"业务异常 code={int(exc.code)} msg={exc.error_msg} context={exc.context}"
+    )
+    return JSONResponse(
+        status_code=200,
+        content=_build_error_response(exc.code, exc.error_msg),
+    )
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """处理请求参数验证异常"""
-    vision_logger.error(f"参数验证失败: {exc.errors()}")
+    """Pydantic / FastAPI 自带的参数校验失败 → INVALID_PARAMS"""
+    vision_logger.error(f"参数校验失败: {exc.errors()}")
     return JSONResponse(
-        status_code=422, content={"code": 0, "message": "请求参数格式错误", "result": {"errors": exc.errors()}}
+        status_code=200,
+        content=_build_error_response(
+            ErrorCode.INVALID_PARAMS, f"参数校验失败: {exc.errors()}"
+        ),
     )
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """处理全局异常"""
-    vision_logger.error(f"服务器内部错误: {str(exc)}")
+    """未捕获服务端异常 → INTERNAL_ERROR 兜底"""
+    vision_logger.exception(f"未捕获异常: {exc}")
     return JSONResponse(
-        status_code=500,
-        content={
-            "code": 0,
-            "message": "算法内部错误",
-            "result": {
-                "detailList": [{"status": False, "scene": "", "accuracy": 0, "coordinate": []}],
-                "status": False,
-                "error_msg": str(exc),
-                "message": "算法内部错误",
-            },
-        },
+        status_code=200,
+        content=_build_error_response(ErrorCode.INTERNAL_ERROR, str(exc)),
     )
 
 
