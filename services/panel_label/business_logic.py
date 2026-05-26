@@ -9,6 +9,7 @@
 
 from .panel_label_detect import OCRPipeline, PanellabelItem
 from schemas import MoMResult, DetectResult, DetectionItem
+from schemas.exceptions import ProductNotRegisteredError
 from ..api import detection_factory
 from ..base import BusinessLogicBase
 from utils import vision_logger
@@ -99,8 +100,13 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         return filtered_results
 
     def business_logic_post_process(self, results: PanellabelItem, product_type: str, rule: str = "all"):
-        # TODO: 过滤结果，只保留roi内的结果
-        # results = self.guideline_filter(results, product_type)
+        if product_type not in PRODUCT_TYPE or product_type not in PRODUCT_guideline:
+            raise ProductNotRegisteredError(
+                f"产品型号 '{product_type}' 未在 panel_label PRODUCT_TYPE 中注册",
+                product_type=product_type,
+                scenario="panel_label",
+            )
+        results = self.guideline_filter(results, product_type)
         panel_info = self.analyze(results, product_type, rule)
         mom_result = MoMResult()
         mom_result.status = panel_info.result
