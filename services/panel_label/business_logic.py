@@ -9,7 +9,7 @@
 
 from .panel_label_detect import OCRPipeline, PanellabelItem
 from schemas import MoMResult, DetectResult, DetectionItem
-from schemas.exceptions import ProductNotRegisteredError
+from schemas.exceptions import ProductNotRegisteredError, ModelInferenceError
 from ..api import detection_factory
 from ..base import BusinessLogicBase
 from utils import vision_logger
@@ -74,7 +74,11 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             )
         except Exception as e:
             vision_logger.error(f"initialize model failed, error: {e}")
-            raise e
+            raise ModelInferenceError(
+                "panel_label 模型加载失败",
+                scenario="panel_label",
+                original_error=e,
+            )
 
     def guideline_filter(self, results: PanellabelItem, product_type: str):
         norm_rect = PRODUCT_guideline[product_type]
