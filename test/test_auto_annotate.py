@@ -76,3 +76,27 @@ class TestBuildLabelmeJson:
         ]
         result = _build_labelme_json(shapes=shapes, image_filename="x.jpg", image_height=50, image_width=100)
         assert result["shapes"][0]["description"] == ""
+
+
+class TestAutoAnnotatorInit:
+    """AutoAnnotator 初始化测试（mock PaddleOCR）"""
+
+    def test_init_loads_three_models(self):
+        """初始化时应加载 TextDetection、TextLineOrientationClassification、TextRecognition"""
+        with (
+            patch("tools.auto_annotate.TextDetection") as mock_det,
+            patch("tools.auto_annotate.TextLineOrientationClassification") as mock_ori,
+            patch("tools.auto_annotate.TextRecognition") as mock_rec,
+            patch("tools.auto_annotate.CropByPolys") as mock_crop,
+        ):
+            from tools.auto_annotate import AutoAnnotator
+            ann = AutoAnnotator(
+                orient_model_path="fake/orient",
+                rec_model_path="fake/rec",
+                score_thresh=0.8,
+            )
+            mock_det.assert_called_once()
+            mock_ori.assert_called_once()
+            mock_rec.assert_called_once()
+            mock_crop.assert_called_once_with(det_box_type="quad")
+            assert ann.score_thresh == 0.8
