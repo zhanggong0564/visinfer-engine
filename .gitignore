@@ -23,3 +23,8 @@ demo/data/charging_pile_test
 demo/data/ng
 **/docs
 CLAUDE.md
+
+# 测试数据目录（含可视化图像、报告、PDF 等大型二进制文件）
+demo/test/
+# 临时草稿文件
+test.md
