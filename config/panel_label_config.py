@@ -12,7 +12,7 @@ class PanelLabelConfig:
     model_path = "./weights/panel_label/best_v3.onnx"
     orient_model_path = "./weights/panel_label/PP-LCNet_x1_0_textline_ori_v3"
     text_recognition_model_path = "./weights/panel_label/PP-OCRv5_server_rec_plane_infer_v3"
-    confThreshold = 0.75
+    confThreshold = 0.7
     nmsThreshold = 0.8
     # TextDetection
     text_det_limit_side_len = 480
