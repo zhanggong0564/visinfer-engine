@@ -154,6 +154,32 @@ class TestAutoAnnotatorInferImage:
         assert shape["score"] == pytest.approx(0.95)
         assert shape["points"] == [[10.0, 20.0], [50.0, 20.0], [50.0, 40.0], [10.0, 40.0]]
 
+    def test_multiple_polys_keeps_largest_area(self, annotator):
+        """检测出多个框时，只保留面积最大的一个"""
+        # small_poly: 10×10 = 100；large_poly: 100×50 = 5000
+        small_poly = [[0, 0], [10, 0], [10, 10], [0, 10]]
+        large_poly = [[0, 0], [100, 0], [100, 50], [0, 50]]
+        annotator.text_det.predict = MagicMock(
+            return_value=[{"dt_polys": [small_poly, large_poly]}]
+        )
+
+        crop_img = np.zeros((50, 100, 3), dtype=np.uint8)
+        annotator._crop = MagicMock(return_value=iter([crop_img]))
+
+        annotator.text_ori.predict = MagicMock(return_value=[{"class_ids": [0]}])
+        annotator.text_rec.predict = MagicMock(
+            return_value=[{"rec_text": "PE1-J5", "rec_score": 0.95}]
+        )
+
+        image = np.zeros((100, 200, 3), dtype=np.uint8)
+        result = annotator.infer_image(image, "img.jpg")
+
+        # 只应输出1条 shape，且对应面积最大的 large_poly
+        assert len(result["shapes"]) == 1
+        assert result["shapes"][0]["points"] == [
+            [0.0, 0.0], [100.0, 0.0], [100.0, 50.0], [0.0, 50.0]
+        ]
+
     def test_low_score_gives_empty_description(self, annotator):
         """OCR 识别分数低于阈值时，description 为空字符串，框仍保留"""
         dt_poly = [[10, 20], [50, 20], [50, 40], [10, 40]]
