@@ -238,3 +238,63 @@ class AutoAnnotator:
 
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(labelme_dict, f, ensure_ascii=False, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# CLI 入口
+# ---------------------------------------------------------------------------
+
+def _parse_args():
+    parser = argparse.ArgumentParser(
+        description="自动推理转标注工具：对 images/ 目录中的图片运行 PaddleOCR，输出 LabelMe JSON 到 jsons/",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--input", "-i",
+        required=True,
+        type=Path,
+        help="输入图片目录（如 PE1_A/crop_ocr/images/）",
+    )
+    parser.add_argument(
+        "--score-thresh",
+        type=float,
+        default=0.7,
+        help="OCR 识别置信度阈值，低于此值的文字置为空字符串",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        default=False,
+        help="覆盖已存在的 JSON 文件（默认跳过）",
+    )
+    # 模型路径（高级选项，通常使用默认值）
+    parser.add_argument(
+        "--orient-model-path",
+        default=AutoAnnotator._DEFAULT_ORIENT_PATH,
+        help="TextLineOrientationClassification 模型目录",
+    )
+    parser.add_argument(
+        "--rec-model-path",
+        default=AutoAnnotator._DEFAULT_REC_PATH,
+        help="TextRecognition 模型目录",
+    )
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = _parse_args()
+
+    if not args.input.is_dir():
+        print(f"[ERROR] 输入目录不存在：{args.input}")
+        sys.exit(1)
+
+    print(f"[INFO] 初始化模型（首次运行可能自动下载）...")
+    annotator = AutoAnnotator(
+        orient_model_path=args.orient_model_path,
+        rec_model_path=args.rec_model_path,
+        score_thresh=args.score_thresh,
+    )
+
+    print(f"[INFO] 开始处理：{args.input}")
+    annotator.process_dir(args.input, overwrite=args.overwrite)
+    print(f"[INFO] 完成！JSON 已写入：{args.input.parent / 'jsons'}")
