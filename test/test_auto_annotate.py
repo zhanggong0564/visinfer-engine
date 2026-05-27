@@ -100,3 +100,75 @@ class TestAutoAnnotatorInit:
             mock_rec.assert_called_once()
             mock_crop.assert_called_once_with(det_box_type="quad")
             assert ann.score_thresh == 0.8
+
+
+class TestAutoAnnotatorInferImage:
+    """infer_image 测试：mock 全部 PaddleOCR 调用"""
+
+    @pytest.fixture
+    def annotator(self):
+        """构造 AutoAnnotator，绕过真实模型加载"""
+        with (
+            patch("tools.auto_annotate.TextDetection"),
+            patch("tools.auto_annotate.TextLineOrientationClassification"),
+            patch("tools.auto_annotate.TextRecognition"),
+            patch("tools.auto_annotate.CropByPolys"),
+        ):
+            from tools.auto_annotate import AutoAnnotator
+            ann = AutoAnnotator(orient_model_path="x", rec_model_path="y", score_thresh=0.7)
+        return ann
+
+    def test_no_text_detected_returns_empty_shapes(self, annotator):
+        """文本检测无结果时，返回 shapes 为空列表的 LabelMe JSON"""
+        # TextDetection 返回空 dt_polys
+        annotator.text_det.predict = MagicMock(return_value=[{"dt_polys": []}])
+
+        image = np.zeros((100, 200, 3), dtype=np.uint8)
+        result = annotator.infer_image(image, "img.jpg")
+
+        assert result["shapes"] == []
+        assert result["imagePath"] == "img.jpg"
+        assert result["imageHeight"] == 100
+        assert result["imageWidth"] == 200
+
+    def test_one_text_recognized(self, annotator):
+        """检测到1个文本框且 OCR 分数达标时，shapes 有1条记录"""
+        dt_poly = [[10, 20], [50, 20], [50, 40], [10, 40]]
+        annotator.text_det.predict = MagicMock(return_value=[{"dt_polys": [dt_poly]}])
+
+        crop_img = np.zeros((20, 40, 3), dtype=np.uint8)
+        annotator._crop = MagicMock(return_value=iter([crop_img]))
+
+        annotator.text_ori.predict = MagicMock(return_value=[{"class_ids": [0]}])
+        annotator.text_rec.predict = MagicMock(
+            return_value=[{"rec_text": "PE1-J5", "rec_score": 0.95}]
+        )
+
+        image = np.zeros((100, 200, 3), dtype=np.uint8)
+        result = annotator.infer_image(image, "img.jpg")
+
+        assert len(result["shapes"]) == 1
+        shape = result["shapes"][0]
+        assert shape["description"] == "PE1-J5"
+        assert shape["score"] == pytest.approx(0.95)
+        assert shape["points"] == [[10.0, 20.0], [50.0, 20.0], [50.0, 40.0], [10.0, 40.0]]
+
+    def test_low_score_gives_empty_description(self, annotator):
+        """OCR 识别分数低于阈值时，description 为空字符串，框仍保留"""
+        dt_poly = [[10, 20], [50, 20], [50, 40], [10, 40]]
+        annotator.text_det.predict = MagicMock(return_value=[{"dt_polys": [dt_poly]}])
+
+        crop_img = np.zeros((20, 40, 3), dtype=np.uint8)
+        annotator._crop = MagicMock(return_value=iter([crop_img]))
+
+        annotator.text_ori.predict = MagicMock(return_value=[{"class_ids": [0]}])
+        annotator.text_rec.predict = MagicMock(
+            return_value=[{"rec_text": "BLURRY", "rec_score": 0.3}]  # 低于 0.7
+        )
+
+        image = np.zeros((100, 200, 3), dtype=np.uint8)
+        result = annotator.infer_image(image, "img.jpg")
+
+        assert len(result["shapes"]) == 1
+        assert result["shapes"][0]["description"] == ""
+        assert result["shapes"][0]["score"] == pytest.approx(0.3)

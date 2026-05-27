@@ -120,3 +120,75 @@ class AutoAnnotator:
             input_shape=text_rec_input_shape,
         )
         self._crop = CropByPolys(det_box_type="quad")
+
+    def infer_image(self, image: np.ndarray, image_filename: str) -> dict:
+        """
+        对单张图片执行 PaddleOCR 三阶段推理，返回 LabelMe JSON dict。
+
+        Args:
+            image:          BGR 格式 numpy 数组
+            image_filename: 仅文件名（如 "img.jpg"），写入 JSON imagePath 字段
+
+        Returns:
+            LabelMe 格式 dict（可直接 json.dump）
+        """
+        h, w = image.shape[:2]
+
+        # Stage 1: Text Detection
+        det_result = self.text_det.predict(image)
+        dt_polys = det_result[0]["dt_polys"] if det_result else []
+
+        if not dt_polys:
+            return _build_labelme_json(
+                shapes=[], image_filename=image_filename,
+                image_height=h, image_width=w,
+            )
+
+        # Crop detected text regions
+        crops = []
+        valid_polys = []
+        for poly in dt_polys:
+            cropped = list(self._crop(image, [poly]))
+            if cropped:
+                crops.append(cropped[0])
+                valid_polys.append(poly)
+
+        if not crops:
+            return _build_labelme_json(
+                shapes=[], image_filename=image_filename,
+                image_height=h, image_width=w,
+            )
+
+        # Stage 2: Text Line Orientation
+        orient_results = self.text_ori.predict(crops)
+        angles = [int(r["class_ids"][0]) for r in orient_results]
+
+        # 旋转修正（angle == 1 → 180°）
+        rotated_crops = [
+            cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop
+            for crop, angle in zip(crops, angles)
+        ]
+
+        # Stage 3: Text Recognition
+        rec_results = self.text_rec.predict(rotated_crops)
+
+        shapes = []
+        for poly, rec in zip(valid_polys, rec_results):
+            rec_text  = rec.get("rec_text", "")
+            rec_score = float(rec.get("rec_score", 0.0))
+
+            # 分数低于阈值则置空字符串
+            description = rec_text if rec_score >= self.score_thresh else ""
+
+            points = [[float(p[0]), float(p[1])] for p in poly]
+            shapes.append({
+                "label": "text",
+                "score": rec_score,
+                "points": points,
+                "description": description,
+            })
+
+        return _build_labelme_json(
+            shapes=shapes, image_filename=image_filename,
+            image_height=h, image_width=w,
+        )
