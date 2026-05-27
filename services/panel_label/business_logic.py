@@ -134,6 +134,8 @@ class PanelLabelJudgeApi(BusinessLogicBase):
     @staticmethod
     def _fix_slash_misrecognition(text: str) -> str:
         """将不成对的括号修正为 / ，解决OCR将 / 误识别成 ( 或 ) 的问题"""
+        if text is None:
+            return None
         left_count = text.count("(")
         right_count = text.count(")")
         if left_count == right_count:
@@ -161,6 +163,8 @@ class PanelLabelJudgeApi(BusinessLogicBase):
 
     @staticmethod
     def _compare_key(text: str, rule: str) -> str:
+        if text is None:
+            return None
         parts = text.split("/", 1)
         if rule == "front":
             return parts[0].lower()

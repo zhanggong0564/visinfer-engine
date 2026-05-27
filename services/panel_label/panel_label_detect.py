@@ -157,13 +157,14 @@ class OCRPipeline:
                 if rec_text and rec_text.strip() and rec_score >= self.text_rec_score_thresh:
                     text_map[roi_idx] = rec_text
 
-        recognized_rois = [i for i in range(len(mask_rois)) if i in text_map]
-        texts = [text_map[i] for i in recognized_rois]
+        # 所有 YOLO 检测到的线标均进入结果，OCR 未识别的给 None
+        all_rois = list(range(len(mask_rois)))
+        texts = [text_map.get(i) for i in all_rois]
 
         end = time.time()
         vision_logger.info(f"OCR 三阶段总耗时: {end - start:.4f}秒")
         line_indices = np.where(class_ids == 0)[0]
-        ori_index = [line_indices[sorted_idxs[i]] for i in recognized_rois]
+        ori_index = [line_indices[sorted_idxs[i]] for i in all_rois]
         positions = [
             np.int64(cv2.boxPoints(cv2.minAreaRect(np.array(mask_polygons[idx], dtype=np.float32)))).flatten().tolist()
             for idx in ori_index
