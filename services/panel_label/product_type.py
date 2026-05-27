@@ -77,9 +77,9 @@ PRODUCT_TYPE = {
         "PD-J30-3/L-3",
     ],
     "J3": [
-        "PD-J3-6/PWI-J1-3",
+        "PD-J3-6/PW1-J1-3",
         "PD-J3-5/PH-J1-3",
-        "PD-J3-3/PWI-J1-4",
+        "PD-J3-3/PW1-J1-4",
         "PD-J3-2/PH-J1-1",
         "PD-J3-1/KMI-A2",
     ],
@@ -131,8 +131,8 @@ PRODUCT_TYPE = {
         "101FU7/2-L1",
         "101FU8/2-L2",
         "101FU9/2-L3",
-        "601FU1/2-V",
-        "601FU2/2-U",
+        "601FU1/2-U",
+        "601FU2/2-V",
         "601FU3/2-W",
     ],
     "401A1": [
@@ -186,18 +186,18 @@ PRODUCT_TYPE = {
         "1019U1/J7.3",
     ],
     "901X1": [
-        "901X1/5",
+        "901X1/1-L1",
+        "901X1/2-L2",
+        "901X1/3-L3",
         "901X1/4",
-        "901X1/3",
-        "901X1/2",
-        "901X1/1",
+        "901X1/5",
     ],
     "901X2": [
-        "901X2/5",
+        "901X2/1-L1",
+        "901X2/2-L2",
+        "901X2/3-L3",
         "901X2/4",
-        "901X2/3",
-        "901X2/2",
-        "901X2/1",
+        "901X2/5",
     ],
     # 充电桩型号 / Charging pile models
     "TCU": [
@@ -391,12 +391,6 @@ PRODUCT_TYPE = {
         "QF3-6(L3)",
     ],
 }
-
-if __name__ == "__main__":
-    with open("product_type.json", "w") as f:
-        json.dump(PRODUCT_TYPE, f, ensure_ascii=False, indent=4)
-
-
 PRODUCT_guideline = {
     "QF2": [0.086, 0.03925, 0.820333333333333, 0.8625],
     "PE1-A": [0.252666666666667, 0.2495, 0.562666666666667, 0.70775],
@@ -451,3 +445,10 @@ PRODUCT_guideline = {
     "HTR2": [0.325333333333333, 0.30875, 0.477333333333333, 0.52125],
     "SPD": [0.01675, 0.173, 0.98075, 0.529],
 }
+
+if __name__ == "__main__":
+    with open("product_type.json", "w") as f:
+        json.dump(PRODUCT_TYPE, f, ensure_ascii=False, indent=4)
+
+    with open("PRODUCT_guideline.json", "w") as f:
+        json.dump(PRODUCT_guideline, f, ensure_ascii=False, indent=4)
