@@ -7,7 +7,11 @@
 @Description  : 面板标签检测 Demo — 批量推理并可视化
 '''
 
+import os
 import sys
+
+# WSL2/headless 环境下 PaddlePaddle/OpenCV-Qt 无法连接 X11，需要在所有 import 之前设置
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 sys.path.append("..")
 
@@ -20,7 +24,7 @@ from config import settings
 from schemas import InputParamsBusiness
 
 # 数据目录配置
-DATA_DIR = Path("./demo/data/ng")
+DATA_DIR = Path("./demo/data/test")
 VIS_DIR = Path("./demo/test/vis")
 
 
@@ -75,7 +79,7 @@ def visualize_results(image_src, results, product_type, dst_path):
         cv2.polylines(image_src, points, True, color, 2)
         cv2.putText(
             image_src,
-            detail.get("name", ""),
+            detail.get("name") or "",
             (int(x1 * w), int(y1 * h)),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
@@ -122,6 +126,7 @@ def run(types=None, rule="all"):
 
         positive = 0
         for image_path in image_paths:
+            # image_path = Path("./demo/data/test/T1/20260525142534_5jdqfpbz.jpg")
             image_src = cv2.imread(str(image_path))
             if image_src is None:
                 print(f"  无法读取: {image_path.name}")
@@ -142,8 +147,8 @@ def run(types=None, rule="all"):
             dst_path = VIS_DIR / f"{product_type}_{image_path.stem}_res.jpg"
             visualize_results(image_src, results, product_type, dst_path)
 
-            # if not is_ok:
-            print(f"    FAIL: vis_path: {dst_path}, src_path: {image_path}")
+            if not is_ok:
+                print(f"    FAIL: vis_path: {dst_path}, src_path: {image_path}")
 
         accuracy = positive / len(image_paths) if len(image_paths) > 0 else 0
         accuracy_summary[product_type] = {
