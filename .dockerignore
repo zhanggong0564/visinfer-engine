@@ -1,0 +1,72 @@
+# =========================================================
+# Docker 构建忽略清单
+# 任何不应进入镜像 build context 的文件都列在这里
+# =========================================================
+
+# --- Git / IDE ---
+.git
+.gitignore
+.gitattributes
+.github
+.vscode
+.idea
+*.swp
+*.swo
+
+# --- Python 缓存 ---
+__pycache__
+**/__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+.tox
+
+# --- 虚拟环境 ---
+.venv
+venv
+env
+.env
+.env.*
+
+# --- 日志与运行时产物 ---
+logs
+**/logs
+*.log
+encrypted/logs
+
+# --- 测试与本地调试 ---
+test
+tests
+demo
+encrypted/demo
+**/data
+encrypted/data
+
+# --- 文档与说明 ---
+*.md
+docs
+
+# --- Docker 自身 ---
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# --- 操作系统垃圾 ---
+.DS_Store
+Thumbs.db
+
+# --- 临时文件 ---
+*.tmp
+*.bak
+*.orig
+tmp
+temp
+
+# --- 不需要的根目录文件 ---
+test.md
