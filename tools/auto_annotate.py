@@ -138,7 +138,7 @@ class AutoAnnotator:
         det_result = self.text_det.predict(image)
         dt_polys = det_result[0]["dt_polys"] if det_result else []
 
-        if not dt_polys:
+        if dt_polys is None or len(dt_polys) == 0:
             return _build_labelme_json(
                 shapes=[], image_filename=image_filename,
                 image_height=h, image_width=w,
