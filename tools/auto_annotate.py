@@ -125,12 +125,15 @@ class AutoAnnotator:
         """
         对单张图片执行 PaddleOCR 三阶段推理，返回 LabelMe JSON dict。
 
+        每张裁剪图片只有一个文本行。若 TextDetection 检测出多个框，则为误检测，
+        只保留面积最大的一个（与 OCRPipeline 策略一致）。
+
         Args:
             image:          BGR 格式 numpy 数组
             image_filename: 仅文件名（如 "img.jpg"），写入 JSON imagePath 字段
 
         Returns:
-            LabelMe 格式 dict（可直接 json.dump）
+            LabelMe 格式 dict（可直接 json.dump），shapes 最多含 1 条记录
         """
         h, w = image.shape[:2]
 
@@ -144,49 +147,49 @@ class AutoAnnotator:
                 image_height=h, image_width=w,
             )
 
-        # Crop detected text regions
-        crops = []
-        valid_polys = []
-        for poly in dt_polys:
-            cropped = list(self._crop(image, [poly]))
-            if cropped:
-                crops.append(cropped[0])
-                valid_polys.append(poly)
+        # 每张图片只有一个文本行，检测出多个则为误检测，只保留面积最大的
+        if len(dt_polys) > 1:
+            areas = [
+                cv2.contourArea(np.array(poly, dtype=np.float32).reshape(-1, 2))
+                for poly in dt_polys
+            ]
+            dt_polys = [dt_polys[int(np.argmax(areas))]]
 
+        poly = dt_polys[0]
+
+        # Crop detected text region
+        crops = list(self._crop(image, [poly]))
         if not crops:
             return _build_labelme_json(
                 shapes=[], image_filename=image_filename,
                 image_height=h, image_width=w,
             )
 
+        crop = crops[0]
+
         # Stage 2: Text Line Orientation
-        orient_results = self.text_ori.predict(crops)
-        angles = [int(r["class_ids"][0]) for r in orient_results]
+        orient_results = self.text_ori.predict([crop])
+        angle = int(orient_results[0]["class_ids"][0])
 
         # 旋转修正（angle == 1 → 180°）
-        rotated_crops = [
-            cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop
-            for crop, angle in zip(crops, angles)
-        ]
+        rotated_crop = cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop
 
         # Stage 3: Text Recognition
-        rec_results = self.text_rec.predict(rotated_crops)
+        rec_results = self.text_rec.predict([rotated_crop])
+        rec       = rec_results[0]
+        rec_text  = rec.get("rec_text", "")
+        rec_score = float(rec.get("rec_score", 0.0))
 
-        shapes = []
-        for poly, rec in zip(valid_polys, rec_results):
-            rec_text  = rec.get("rec_text", "")
-            rec_score = float(rec.get("rec_score", 0.0))
+        # 分数低于阈值则置空字符串
+        description = rec_text if rec_score >= self.score_thresh else ""
 
-            # 分数低于阈值则置空字符串
-            description = rec_text if rec_score >= self.score_thresh else ""
-
-            points = [[float(p[0]), float(p[1])] for p in poly]
-            shapes.append({
-                "label": "text",
-                "score": rec_score,
-                "points": points,
-                "description": description,
-            })
+        points = [[float(p[0]), float(p[1])] for p in poly]
+        shapes = [{
+            "label": "text",
+            "score": rec_score,
+            "points": points,
+            "description": description,
+        }]
 
         return _build_labelme_json(
             shapes=shapes, image_filename=image_filename,
