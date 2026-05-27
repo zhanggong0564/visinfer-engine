@@ -192,3 +192,49 @@ class AutoAnnotator:
             shapes=shapes, image_filename=image_filename,
             image_height=h, image_width=w,
         )
+
+    def process_dir(self, input_dir: Path, overwrite: bool = False) -> None:
+        """
+        批量处理 input_dir 中的所有图片，将 LabelMe JSON 写入同层 jsons/ 目录。
+
+        Args:
+            input_dir: 包含图片的目录（Path 对象）
+            overwrite: True 时覆盖已存在的 JSON；False（默认）时跳过
+        """
+        input_dir = Path(input_dir)
+        jsons_dir = input_dir.parent / "jsons"
+        jsons_dir.mkdir(parents=True, exist_ok=True)
+
+        # 扫描所有图片（大小写不敏感）
+        suffixes = {".jpg", ".jpeg", ".png"}
+        image_paths = sorted(
+            p for p in input_dir.iterdir()
+            if p.suffix.lower() in suffixes
+        )
+
+        if not image_paths:
+            print(f"[WARNING] 未找到图片：{input_dir}")
+            return
+
+        # 尝试导入 tqdm，不可用时降级为 print
+        try:
+            from tqdm import tqdm
+            iterator = tqdm(image_paths, desc="标注中", unit="img")
+        except ImportError:
+            iterator = image_paths
+
+        for img_path in iterator:
+            json_path = jsons_dir / (img_path.stem + ".json")
+
+            if json_path.exists() and not overwrite:
+                continue
+
+            image = cv2.imread(str(img_path))
+            if image is None:
+                print(f"[WARNING] 无法读取图片，跳过：{img_path.name}")
+                continue
+
+            labelme_dict = self.infer_image(image, img_path.name)
+
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(labelme_dict, f, ensure_ascii=False, indent=2)

@@ -1,6 +1,7 @@
 """auto_annotate 单元测试"""
 import json
 import sys
+import cv2
 import numpy as np
 import pytest
 from unittest.mock import patch, MagicMock
@@ -172,3 +173,84 @@ class TestAutoAnnotatorInferImage:
         assert len(result["shapes"]) == 1
         assert result["shapes"][0]["description"] == ""
         assert result["shapes"][0]["score"] == pytest.approx(0.3)
+
+
+class TestAutoAnnotatorProcessDir:
+    """process_dir 测试：使用 tmp_path + mock infer_image"""
+
+    @pytest.fixture
+    def annotator_no_models(self):
+        """绕过模型加载，构造 AutoAnnotator"""
+        with (
+            patch("tools.auto_annotate.TextDetection"),
+            patch("tools.auto_annotate.TextLineOrientationClassification"),
+            patch("tools.auto_annotate.TextRecognition"),
+            patch("tools.auto_annotate.CropByPolys"),
+        ):
+            from tools.auto_annotate import AutoAnnotator
+            return AutoAnnotator(orient_model_path="x", rec_model_path="y")
+
+    def _make_fake_image(self, path: Path):
+        """创建1×1像素的真实 JPEG 图片（cv2 可读）"""
+        img = np.zeros((1, 1, 3), dtype=np.uint8)
+        cv2.imwrite(str(path), img)
+
+    def test_creates_jsons_dir(self, annotator_no_models, tmp_path):
+        """处理后应在 images/ 的同层创建 jsons/ 目录"""
+        images_dir = tmp_path / "images"
+        images_dir.mkdir()
+        self._make_fake_image(images_dir / "img.jpg")
+
+        fake_json = {"version": "3.3.9", "flags": {}, "shapes": [], "imagePath": "img.jpg",
+                     "imageData": None, "imageHeight": 1, "imageWidth": 1, "description": ""}
+        annotator_no_models.infer_image = MagicMock(return_value=fake_json)
+
+        annotator_no_models.process_dir(images_dir)
+
+        jsons_dir = tmp_path / "jsons"
+        assert jsons_dir.is_dir()
+        assert (jsons_dir / "img.json").exists()
+
+    def test_skips_existing_json_by_default(self, annotator_no_models, tmp_path):
+        """overwrite=False 时若 JSON 已存在应跳过（infer_image 不调用）"""
+        images_dir = tmp_path / "images"
+        images_dir.mkdir()
+        self._make_fake_image(images_dir / "img.jpg")
+
+        jsons_dir = tmp_path / "jsons"
+        jsons_dir.mkdir()
+        (jsons_dir / "img.json").write_text("{}")
+
+        annotator_no_models.infer_image = MagicMock()
+        annotator_no_models.process_dir(images_dir, overwrite=False)
+
+        annotator_no_models.infer_image.assert_not_called()
+
+    def test_overwrites_when_flag_set(self, annotator_no_models, tmp_path):
+        """overwrite=True 时应覆盖已存在的 JSON"""
+        images_dir = tmp_path / "images"
+        images_dir.mkdir()
+        self._make_fake_image(images_dir / "img.jpg")
+
+        jsons_dir = tmp_path / "jsons"
+        jsons_dir.mkdir()
+        (jsons_dir / "img.json").write_text("{}")
+
+        fake_json = {"version": "3.3.9", "flags": {}, "shapes": [], "imagePath": "img.jpg",
+                     "imageData": None, "imageHeight": 1, "imageWidth": 1, "description": ""}
+        annotator_no_models.infer_image = MagicMock(return_value=fake_json)
+
+        annotator_no_models.process_dir(images_dir, overwrite=True)
+
+        annotator_no_models.infer_image.assert_called_once()
+
+    def test_skips_unreadable_image(self, annotator_no_models, tmp_path):
+        """cv2 无法读取的文件应跳过，不抛异常"""
+        images_dir = tmp_path / "images"
+        images_dir.mkdir()
+        (images_dir / "broken.jpg").write_text("not an image")
+
+        annotator_no_models.infer_image = MagicMock()
+        # 应正常完成，不抛出异常
+        annotator_no_models.process_dir(images_dir)
+        annotator_no_models.infer_image.assert_not_called()
