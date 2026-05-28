@@ -338,3 +338,77 @@ def test_rec_skip_empty_description(rec_pipeline, tmp_path: Path) -> None:
     result = process_rec_sample(samples[0], rec_pipeline)
     assert isinstance(result, dict)
     assert result["skip_reason"] == "empty-desc"
+
+
+# ---------------------------------------------------------------------------
+# resplit-only 模式单测
+# ---------------------------------------------------------------------------
+
+from tools.convert_ocr_dataset_to_ppocr import resplit_det_split, resplit_rec_split
+
+
+def test_resplit_det_only_rewrites_labels(mini_dataset: Path, tmp_path: Path) -> None:
+    """Resplit det 应只重写 txt，不重新拷贝；缺图的样本计 missing。"""
+    samples = find_samples(mini_dataset)
+    train, val = split_samples(samples, val_ratio=0.34, seed=42)
+    det_dir = tmp_path / "out" / "det"
+
+    # 第一次 split (val_ratio=0.34) 生成产物
+    write_det_split(train, det_dir, "train.txt")
+    write_det_split(val, det_dir, "val.txt")
+    assert (det_dir / "train.txt").exists()
+
+    # 改用新 val_ratio (0.0) 重新切分后只 resplit
+    train2, val2 = split_samples(samples, val_ratio=0.0, seed=42)
+    t_stats = resplit_det_split(train2, det_dir, "train.txt")
+    v_stats = resplit_det_split(val2, det_dir, "val.txt")
+
+    # 所有图都在 train (val_ratio=0)
+    assert t_stats["kept"] == 3
+    assert t_stats["missing"] == 0
+    assert v_stats["kept"] == 0
+    # val.txt 应该被清空（empty file 因为 val=[]）
+    assert (det_dir / "val.txt").read_text(encoding="utf-8") == ""
+    # train.txt 三行
+    assert len((det_dir / "train.txt").read_text(encoding="utf-8").splitlines()) == 3
+
+
+def test_resplit_det_counts_missing_when_image_absent(mini_dataset: Path, tmp_path: Path) -> None:
+    """图不存在时不写入 txt，且计入 missing。"""
+    samples = find_samples(mini_dataset)
+    det_dir = tmp_path / "out" / "det"
+    write_det_split(samples, det_dir, "train.txt")
+    # 删一张图
+    images = list((det_dir / "images").iterdir())
+    images[0].unlink()
+
+    stats = resplit_det_split(samples, det_dir, "train.txt")
+    assert stats["kept"] == 2
+    assert stats["missing"] == 1
+
+
+def test_resplit_rec_reuses_existing_pngs(mini_dataset: Path, tmp_path: Path) -> None:
+    """Resplit rec 应只引用已存在的 PNG；text 直接取自 LabelMe description。"""
+    import cv2 as _cv2
+    import numpy as _np
+
+    rec_dir = tmp_path / "out" / "rec"
+    images_out = rec_dir / "images"
+    images_out.mkdir(parents=True)
+
+    samples = find_samples(mini_dataset)
+    # 手工放 1 个 PNG（模拟之前 rec 跑过的产物）；其它样本无图
+    img = _np.full((30, 80, 3), 255, dtype=_np.uint8)
+    target = samples[0]
+    placed_name = rec_filename(target.original_stem, target.station_code)
+    _cv2.imwrite(str(images_out / placed_name), img)
+
+    stats, texts = resplit_rec_split(samples, rec_dir, "train.txt")
+    assert stats["kept"] == 1
+    assert stats["missing"] == len(samples) - 1
+    line = (rec_dir / "train.txt").read_text(encoding="utf-8").splitlines()[0]
+    path_part, text_part = line.split("\t")
+    assert path_part == f"images/{placed_name}"
+    # text 来自 LabelMe description
+    assert text_part in {"J46-A/PW-1", "J46-B/PW-2", "T1-X/KM-1"}
+    assert texts == [text_part]
