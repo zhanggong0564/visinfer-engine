@@ -280,7 +280,8 @@ def write_dict(transcriptions: list[str], dict_path: Path) -> int:
         chars.update(t)
     sorted_chars = sorted(chars)
     dict_path.parent.mkdir(parents=True, exist_ok=True)
-    dict_path.write_text("\n".join(sorted_chars) + "\n", encoding="utf-8")
+    content = "\n".join(sorted_chars) + "\n" if sorted_chars else ""
+    dict_path.write_text(content, encoding="utf-8")
     return len(sorted_chars)
 
 
