@@ -16,6 +16,9 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 
 @dataclass(frozen=True)
 class Sample:
@@ -133,3 +136,86 @@ def write_det_split(
             f.write(f"images/{new_name}\t{json.dumps(ann, ensure_ascii=False)}\n")
             kept += 1
     return {"kept": kept, "empty_shape": empty_shape}
+
+
+@dataclass
+class RecPipeline:
+    """rec 转换需要的 3 个 paddleocr 组件 + 配置 snapshot。"""
+
+    text_det: object  # paddleocr.TextDetection
+    text_orient: object  # paddleocr.TextLineOrientationClassification
+    crop_by_polys: object  # paddlex CropByPolys
+    min_crop_size: int = 4
+
+
+def build_rec_pipeline(config) -> RecPipeline:
+    """根据 PanelLabelConfig 实例化 paddleocr 组件。
+
+    参数 config: 一个具备 text_det_*, orient_model_path,
+    text_recognition_model_path（仅作占位，本工具不用 rec 模型）等属性的对象。
+    """
+    from paddleocr import TextDetection, TextLineOrientationClassification
+    from paddlex.inference.pipelines.components import CropByPolys
+
+    text_det = TextDetection(
+        model_name="PP-OCRv5_server_det",
+        limit_side_len=config.text_det_limit_side_len,
+        limit_type=config.text_det_limit_type,
+        thresh=config.text_det_thresh,
+        box_thresh=config.text_det_box_thresh,
+        unclip_ratio=config.text_det_unclip_ratio,
+        input_shape=config.text_det_input_shape,
+    )
+    text_orient = TextLineOrientationClassification(
+        model_name="PP-LCNet_x1_0_textline_ori",
+        model_dir=config.orient_model_path,
+    )
+    crop_by_polys = CropByPolys(det_box_type="quad")
+    return RecPipeline(text_det=text_det, text_orient=text_orient, crop_by_polys=crop_by_polys)
+
+
+def process_rec_sample(sample: Sample, pipeline: RecPipeline) -> tuple[np.ndarray, str] | dict:
+    """对单个 sample 跑 rec pipeline，返回 (rotated_crop, transcription)。
+
+    失败/跳过时返回 {"skip_reason": str}。
+
+    Pipeline 与 services/panel_label/panel_label_detect.py:97-149 严格一致：
+        TextDetection → max-area polygon → CropByPolys(quad) →
+        TextLineOrientationClassification → cv2.rotate(180) if angle==1
+    """
+    # 短路：description 为空 / difficult 直接跳过
+    data = json.loads(sample.json_path.read_text(encoding="utf-8"))
+    shapes = data.get("shapes", []) or []
+    if not shapes:
+        return {"skip_reason": "empty-shape"}
+    shape = shapes[0]
+    if shape.get("difficult"):
+        return {"skip_reason": "difficult"}
+    description = shape.get("description")
+    if description is None or str(description).strip() == "":
+        return {"skip_reason": "empty-desc"}
+
+    image = cv2.imread(str(sample.image_path))
+    if image is None:
+        return {"skip_reason": "image-unreadable"}
+
+    det_result = pipeline.text_det.predict(image)
+    dt_polys = det_result[0]["dt_polys"]
+    if dt_polys is None or len(dt_polys) == 0:
+        return {"skip_reason": "det-zero"}
+
+    areas = [cv2.contourArea(np.array(p, dtype=np.float32).reshape(-1, 2)) for p in dt_polys]
+    best_poly = dt_polys[int(np.argmax(areas))]
+
+    crops = list(pipeline.crop_by_polys(image, [best_poly]))
+    if not crops:
+        return {"skip_reason": "crop-failed"}
+    crop = crops[0]
+    if crop is None or crop.shape[0] < pipeline.min_crop_size or crop.shape[1] < pipeline.min_crop_size:
+        return {"skip_reason": "too-small"}
+
+    orient_result = pipeline.text_orient.predict([crop])
+    angle = int(orient_result[0]["class_ids"][0])
+    rotated = cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop
+
+    return rotated, str(description)
