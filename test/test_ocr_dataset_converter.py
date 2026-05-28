@@ -209,3 +209,101 @@ def test_write_dict_unique_sorted(tmp_path: Path) -> None:
     chars = path.read_text(encoding="utf-8").splitlines()
     assert chars == sorted(set("ABCD1"))
     assert n == len(chars)
+
+
+# ---------------------------------------------------------------------------
+# rec 像素一致性单测（需要真实 paddleocr 模型）
+# ---------------------------------------------------------------------------
+
+import cv2  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def rec_pipeline():
+    """模块级 fixture：加载一次模型。"""
+    pytest.importorskip("paddleocr")
+    pytest.importorskip("paddlex")
+    try:
+        from config.panel_label_config import PanelLabelConfig
+        from tools.convert_ocr_dataset_to_ppocr import build_rec_pipeline
+    except Exception as e:
+        pytest.skip(f"cannot import deps: {e}")
+
+    cfg = PanelLabelConfig()
+    if not Path(cfg.orient_model_path).exists():
+        pytest.skip(f"orient model not found at {cfg.orient_model_path}")
+    return build_rec_pipeline(cfg)
+
+
+def _make_synthetic_text_image(text: str = "ABC123") -> bytes:
+    """造一张 cv2.imdecode 能读的 JPG（白底黑字）字节。"""
+    import numpy as np
+    img = np.full((100, 400, 3), 255, dtype=np.uint8)
+    cv2.putText(img, text, (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0, 0, 0), 4)
+    ok, buf = cv2.imencode(".jpg", img)
+    assert ok
+    return buf.tobytes()
+
+
+@pytest.fixture
+def rec_mini_dataset(tmp_path: Path) -> Path:
+    """rec 测试专用 mini 数据集：图片是真实可解码的 JPG。"""
+    root = tmp_path / "rec_data"
+    for station in ("J46", "T1"):
+        d = root / "side" / station / "crop_ocr"
+        (d / "images").mkdir(parents=True)
+        for i in range(3):
+            (d / "images" / f"IMG_{station}_{i}.jpg").write_bytes(_make_synthetic_text_image())
+            _write_labelme(
+                d / "jsons" / f"IMG_{station}_{i}.json",
+                f"IMG_{station}_{i}.jpg",
+                [_make_shape(f"{station}-{i}")],
+            )
+    return root
+
+
+def test_rec_crop_pixel_equality(rec_pipeline, rec_mini_dataset: Path, tmp_path: Path) -> None:
+    """核心：保存到磁盘的 PNG 读回后必须与 pipeline 内存里的 rotated_crop 像素相同。"""
+    from tools.convert_ocr_dataset_to_ppocr import process_rec_sample, write_rec_split, rec_filename
+    import numpy as np
+
+    samples = find_samples(rec_mini_dataset)
+    assert len(samples) == 6
+
+    rec_dir = tmp_path / "rec_out"
+    stats, _ = write_rec_split(samples, rec_pipeline, rec_dir, "train.txt")
+    # 至少有 1 张通过（pipeline 偶尔可能 det-zero，所以不要求全部）
+    if stats["kept"] == 0:
+        pytest.skip(f"no rec crops produced from synthetic images, stats={stats}")
+
+    checked = 0
+    for s in samples:
+        in_mem = process_rec_sample(s, rec_pipeline)
+        if isinstance(in_mem, dict):
+            continue
+        rotated, _text = in_mem
+        png_path = rec_dir / "images" / rec_filename(s.original_stem, s.station_code)
+        if not png_path.exists():
+            continue
+        reloaded = cv2.imread(str(png_path))
+        assert reloaded is not None
+        assert reloaded.shape == rotated.shape, f"shape mismatch on {png_path}"
+        assert np.array_equal(reloaded, rotated), f"pixel mismatch on {png_path}"
+        checked += 1
+    assert checked > 0, "no PNG was actually checked"
+
+
+def test_rec_skip_empty_description(rec_pipeline, tmp_path: Path) -> None:
+    """description=空 的样本 rec 必须跳过（即使图片可推理）。"""
+    from tools.convert_ocr_dataset_to_ppocr import process_rec_sample
+
+    root = tmp_path / "rec_skip"
+    p = root / "side" / "X1" / "crop_ocr"
+    (p / "images").mkdir(parents=True)
+    (p / "images" / "IMG_E.jpg").write_bytes(_make_synthetic_text_image())
+    _write_labelme(p / "jsons" / "IMG_E.json", "IMG_E.jpg", [_make_shape("")])
+
+    samples = find_samples(root)
+    result = process_rec_sample(samples[0], rec_pipeline)
+    assert isinstance(result, dict)
+    assert result["skip_reason"] == "empty-desc"
