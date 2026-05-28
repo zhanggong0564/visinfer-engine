@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import json
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -76,3 +77,29 @@ def split_samples(
     rng.shuffle(shuffled)
     n_val = int(len(shuffled) * val_ratio)
     return shuffled[n_val:], shuffled[:n_val]
+
+
+def det_filename(stem: str, station: str, ext: str) -> str:
+    """det 数据集图片名: <stem>_det_<station>.<ext>"""
+    return f"{stem}_det_{station}.{ext.lstrip('.')}"
+
+
+def rec_filename(stem: str, station: str) -> str:
+    """rec 数据集图片名: <stem>_rec_<station>.png（强制 PNG 无损）"""
+    return f"{stem}_rec_{station}.png"
+
+
+def build_det_annotation(json_path: Path) -> list[dict]:
+    """从 LabelMe JSON 提取 PPOCR det 标注；空 description 或 difficult 写 '###'。"""
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    items: list[dict] = []
+    for shape in data.get("shapes", []):
+        points = shape.get("points") or []
+        if len(points) < 3:
+            continue
+        text = shape.get("description")
+        if text is None or str(text).strip() == "" or shape.get("difficult"):
+            text = "###"
+        rounded = [[int(round(float(p[0]))), int(round(float(p[1])))] for p in points]
+        items.append({"transcription": str(text), "points": rounded})
+    return items

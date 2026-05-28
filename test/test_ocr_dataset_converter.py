@@ -89,7 +89,7 @@ def test_sample_image_path_exists(mini_dataset: Path) -> None:
         assert s.station_code in {"J46", "T1"}
 
 
-from tools.convert_ocr_dataset_to_ppocr import split_samples
+from tools.convert_ocr_dataset_to_ppocr import split_samples, build_det_annotation, det_filename, rec_filename
 
 
 def test_split_deterministic_with_seed(mini_dataset: Path) -> None:
@@ -108,3 +108,44 @@ def test_split_zero_val(mini_dataset: Path) -> None:
     train, val = split_samples(samples, val_ratio=0.0, seed=42)
     assert len(val) == 0
     assert len(train) == 3
+
+
+def test_det_filename_no_chinese() -> None:
+    name = det_filename("IMG_1", "J46", "jpg")
+    assert name == "IMG_1_det_J46.jpg"
+    assert all(ord(c) < 128 for c in name), "filename must be pure ASCII"
+
+
+def test_rec_filename_format() -> None:
+    assert rec_filename("IMG_2", "T1") == "IMG_2_rec_T1.png"
+
+
+def test_build_det_annotation_normal(tmp_path: Path) -> None:
+    j = tmp_path / "a.json"
+    _write_labelme(j, "a.jpg", [_make_shape("HELLO")])
+    ann = build_det_annotation(j)
+    assert len(ann) == 1
+    assert ann[0]["transcription"] == "HELLO"
+    assert ann[0]["points"] == [[10, 10], [90, 10], [90, 30], [10, 30]]
+
+
+def test_build_det_annotation_empty_description_becomes_hash(tmp_path: Path) -> None:
+    j = tmp_path / "a.json"
+    _write_labelme(j, "a.jpg", [_make_shape("")])
+    ann = build_det_annotation(j)
+    assert ann[0]["transcription"] == "###"
+
+
+def test_build_det_annotation_difficult_becomes_hash(tmp_path: Path) -> None:
+    j = tmp_path / "a.json"
+    _write_labelme(j, "a.jpg", [_make_shape("text", difficult=True)])
+    ann = build_det_annotation(j)
+    assert ann[0]["transcription"] == "###"
+
+
+def test_build_det_annotation_skips_short_points(tmp_path: Path) -> None:
+    j = tmp_path / "a.json"
+    bad = _make_shape("x")
+    bad["points"] = [[0.0, 0.0], [10.0, 10.0]]  # 仅 2 个点
+    _write_labelme(j, "a.jpg", [bad])
+    assert build_det_annotation(j) == []
