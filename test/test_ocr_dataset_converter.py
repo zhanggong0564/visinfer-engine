@@ -198,3 +198,14 @@ def test_write_det_split_skips_empty_shape_image(tmp_path: Path) -> None:
     # 既然全跳过，train.txt 仍应存在但为空
     assert (det_dir / "train.txt").exists()
     assert (det_dir / "train.txt").read_text() == ""
+
+
+from tools.convert_ocr_dataset_to_ppocr import write_dict
+
+
+def test_write_dict_unique_sorted(tmp_path: Path) -> None:
+    path = tmp_path / "dict.txt"
+    n = write_dict(["ABC", "BCD", "A1"], path)
+    chars = path.read_text(encoding="utf-8").splitlines()
+    assert chars == sorted(set("ABCD1"))
+    assert n == len(chars)

@@ -219,3 +219,62 @@ def process_rec_sample(sample: Sample, pipeline: RecPipeline) -> tuple[np.ndarra
     rotated = cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop
 
     return rotated, str(description)
+
+
+def write_rec_split(
+    samples: list[Sample], pipeline: RecPipeline, rec_dir: Path, split_filename: str
+) -> tuple[dict[str, int], list[str]]:
+    """跑 rec pipeline 并写出。
+
+    返回 (stats, kept_transcriptions)。
+    stats keys: kept, empty-desc, difficult, det-zero, crop-failed, too-small,
+                empty-shape, image-unreadable
+    """
+    images_out = rec_dir / "images"
+    images_out.mkdir(parents=True, exist_ok=True)
+    label_path = rec_dir / split_filename
+
+    stats: dict[str, int] = {
+        "kept": 0,
+        "empty-desc": 0,
+        "difficult": 0,
+        "det-zero": 0,
+        "crop-failed": 0,
+        "too-small": 0,
+        "empty-shape": 0,
+        "image-unreadable": 0,
+    }
+    transcriptions: list[str] = []
+
+    with label_path.open("w", encoding="utf-8") as f:
+        for s in samples:
+            result = process_rec_sample(s, pipeline)
+            if isinstance(result, dict):
+                reason = result["skip_reason"]
+                stats[reason] = stats.get(reason, 0) + 1
+                continue
+            rotated, text = result
+            new_name = rec_filename(s.original_stem, s.station_code)
+            dst = images_out / new_name
+            ok = cv2.imwrite(str(dst), rotated)
+            if not ok:
+                stats["crop-failed"] += 1
+                continue
+            f.write(f"images/{new_name}\t{text}\n")
+            transcriptions.append(text)
+            stats["kept"] += 1
+    return stats, transcriptions
+
+
+def write_dict(transcriptions: list[str], dict_path: Path) -> int:
+    """收集 transcriptions 里所有 unique 字符，按 sorted 顺序一行一个写入。
+
+    返回字符数。
+    """
+    chars: set[str] = set()
+    for t in transcriptions:
+        chars.update(t)
+    sorted_chars = sorted(chars)
+    dict_path.parent.mkdir(parents=True, exist_ok=True)
+    dict_path.write_text("\n".join(sorted_chars) + "\n", encoding="utf-8")
+    return len(sorted_chars)
