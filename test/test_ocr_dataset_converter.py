@@ -211,6 +211,37 @@ def test_write_dict_unique_sorted(tmp_path: Path) -> None:
     assert n == len(chars)
 
 
+def test_write_dict_empty_produces_empty_file(tmp_path: Path) -> None:
+    """空 transcriptions 不应产生孤零零的换行符。"""
+    path = tmp_path / "dict.txt"
+    n = write_dict([], path)
+    assert n == 0
+    assert path.read_text(encoding="utf-8") == ""
+
+
+def test_split_alignment_det_train_val_disjoint(mini_dataset: Path, tmp_path: Path) -> None:
+    """同一 sample 在 det 中只能落入 train 或 val 其中之一；写出的 stem 集合与 split 列表一致。"""
+    samples = find_samples(mini_dataset)
+    train_s, val_s = split_samples(samples, val_ratio=0.34, seed=42)
+
+    det_dir = tmp_path / "det"
+    write_det_split(train_s, det_dir, "train.txt")
+    write_det_split(val_s, det_dir, "val.txt")
+
+    def stems_from(label_path: Path) -> set[str]:
+        return {
+            line.split("\t")[0].removeprefix("images/").split("_det_")[0]
+            for line in label_path.read_text(encoding="utf-8").splitlines()
+            if line
+        }
+
+    det_train = stems_from(det_dir / "train.txt")
+    det_val = stems_from(det_dir / "val.txt")
+    assert not (det_train & det_val), "stem 跨 split"
+    assert det_train == {s.original_stem for s in train_s}
+    assert det_val == {s.original_stem for s in val_s}
+
+
 # ---------------------------------------------------------------------------
 # rec 像素一致性单测（需要真实 paddleocr 模型）
 # ---------------------------------------------------------------------------
