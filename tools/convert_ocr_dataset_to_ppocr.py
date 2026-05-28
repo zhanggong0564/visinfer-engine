@@ -285,6 +285,68 @@ def write_dict(transcriptions: list[str], dict_path: Path) -> int:
     return len(sorted_chars)
 
 
+def resplit_det_split(
+    samples: list[Sample], det_dir: Path, split_filename: str
+) -> dict[str, int]:
+    """重写 det/<split_filename>，只为 det/images/ 中已存在的图片写标签行。
+
+    返回 {"kept": int, "missing": int}。missing = 样本在该 split 中但磁盘无对应图。
+    """
+    images_out = det_dir / "images"
+    label_path = det_dir / split_filename
+    label_path.parent.mkdir(parents=True, exist_ok=True)
+
+    kept = 0
+    missing = 0
+    with label_path.open("w", encoding="utf-8") as f:
+        for s in samples:
+            ann = build_det_annotation(s.json_path)
+            if not ann:
+                continue
+            ext = s.image_path.suffix.lstrip(".")
+            new_name = det_filename(s.original_stem, s.station_code, ext)
+            if not (images_out / new_name).exists():
+                missing += 1
+                continue
+            f.write(f"images/{new_name}\t{json.dumps(ann, ensure_ascii=False)}\n")
+            kept += 1
+    return {"kept": kept, "missing": missing}
+
+
+def resplit_rec_split(
+    samples: list[Sample], rec_dir: Path, split_filename: str
+) -> tuple[dict[str, int], list[str]]:
+    """重写 rec/<split_filename>。text 直接取自 LabelMe description；只引用已存在的 PNG。
+
+    返回 (stats, transcriptions)。stats = {"kept": int, "missing": int}。
+    """
+    images_out = rec_dir / "images"
+    label_path = rec_dir / split_filename
+    label_path.parent.mkdir(parents=True, exist_ok=True)
+
+    kept = 0
+    missing = 0
+    transcriptions: list[str] = []
+    with label_path.open("w", encoding="utf-8") as f:
+        for s in samples:
+            new_name = rec_filename(s.original_stem, s.station_code)
+            if not (images_out / new_name).exists():
+                missing += 1
+                continue
+            data = json.loads(s.json_path.read_text(encoding="utf-8"))
+            shapes = data.get("shapes", []) or []
+            if not shapes:
+                continue
+            description = shapes[0].get("description")
+            if description is None or str(description).strip() == "":
+                continue
+            text = str(description)
+            f.write(f"images/{new_name}\t{text}\n")
+            transcriptions.append(text)
+            kept += 1
+    return {"kept": kept, "missing": missing}, transcriptions
+
+
 def _print_det_stats(label: str, stats: dict[str, int]) -> None:
     parts = [f"kept={stats['kept']}"]
     if stats["empty_shape"]:
@@ -304,13 +366,38 @@ def main() -> None:
     parser.add_argument("--dst", required=True, type=Path)
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--mode", choices=("all", "det-only", "rec-only"), default="all")
+    parser.add_argument(
+        "--mode", choices=("all", "det-only", "rec-only", "resplit-only"), default="all"
+    )
     args = parser.parse_args()
 
     samples = find_samples(args.src)
     print(f"[scan] found {len(samples)} samples under {args.src}")
     train_samples, val_samples = split_samples(samples, args.val_ratio, args.seed)
     print(f"[split] train={len(train_samples)} val={len(val_samples)}  seed={args.seed}")
+
+    # resplit-only：仅重写 train/val txt，不跑模型也不拷图
+    if args.mode == "resplit-only":
+        det_dir = args.dst / "det"
+        rec_dir = args.dst / "rec"
+        if det_dir.exists():
+            ts = resplit_det_split(train_samples, det_dir, "train.txt")
+            vs = resplit_det_split(val_samples, det_dir, "val.txt")
+            print(f"[det/train] kept={ts['kept']} missing={ts['missing']}")
+            print(f"[det/val] kept={vs['kept']} missing={vs['missing']}")
+        else:
+            print("[resplit] det/ not found, skipping")
+        if rec_dir.exists():
+            ts, train_texts = resplit_rec_split(train_samples, rec_dir, "train.txt")
+            vs, val_texts = resplit_rec_split(val_samples, rec_dir, "val.txt")
+            print(f"[rec/train] kept={ts['kept']} missing={ts['missing']}")
+            print(f"[rec/val] kept={vs['kept']} missing={vs['missing']}")
+            n_chars = write_dict(train_texts + val_texts, rec_dir / "dict.txt")
+            print(f"[dict] {n_chars} unique chars → {rec_dir / 'dict.txt'}")
+        else:
+            print("[resplit] rec/ not found, skipping")
+        print(f"[done] output={args.dst}")
+        return
 
     do_det = args.mode in ("all", "det-only")
     do_rec = args.mode in ("all", "rec-only")
