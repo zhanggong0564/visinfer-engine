@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import argparse
 import json
 import random
 import shutil
@@ -278,3 +279,60 @@ def write_dict(transcriptions: list[str], dict_path: Path) -> int:
     dict_path.parent.mkdir(parents=True, exist_ok=True)
     dict_path.write_text("\n".join(sorted_chars) + "\n", encoding="utf-8")
     return len(sorted_chars)
+
+
+def _print_det_stats(label: str, stats: dict[str, int]) -> None:
+    parts = [f"kept={stats['kept']}"]
+    if stats["empty_shape"]:
+        parts.append(f"empty_shape={stats['empty_shape']}")
+    print(f"[{label}] " + " ".join(parts))
+
+
+def _print_rec_stats(label: str, stats: dict[str, int]) -> None:
+    skipped = {k: v for k, v in stats.items() if k != "kept" and v > 0}
+    skip_part = " ".join(f"{k}={v}" for k, v in skipped.items())
+    print(f"[{label}] kept={stats['kept']}" + (f" (skipped {skip_part})" if skip_part else ""))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--src", required=True, type=Path)
+    parser.add_argument("--dst", required=True, type=Path)
+    parser.add_argument("--val-ratio", type=float, default=0.1)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--mode", choices=("all", "det-only", "rec-only"), default="all")
+    args = parser.parse_args()
+
+    samples = find_samples(args.src)
+    print(f"[scan] found {len(samples)} samples under {args.src}")
+    train_samples, val_samples = split_samples(samples, args.val_ratio, args.seed)
+    print(f"[split] train={len(train_samples)} val={len(val_samples)}  seed={args.seed}")
+
+    do_det = args.mode in ("all", "det-only")
+    do_rec = args.mode in ("all", "rec-only")
+
+    if do_det:
+        det_dir = args.dst / "det"
+        ts = write_det_split(train_samples, det_dir, "train.txt")
+        vs = write_det_split(val_samples, det_dir, "val.txt")
+        _print_det_stats("det/train", ts)
+        _print_det_stats("det/val", vs)
+
+    if do_rec:
+        from config.panel_label_config import PanelLabelConfig
+
+        cfg = PanelLabelConfig()
+        pipeline = build_rec_pipeline(cfg)
+        rec_dir = args.dst / "rec"
+        ts, train_texts = write_rec_split(train_samples, pipeline, rec_dir, "train.txt")
+        vs, val_texts = write_rec_split(val_samples, pipeline, rec_dir, "val.txt")
+        _print_rec_stats("rec/train", ts)
+        _print_rec_stats("rec/val", vs)
+        n_chars = write_dict(train_texts + val_texts, rec_dir / "dict.txt")
+        print(f"[dict] {n_chars} unique chars → {rec_dir / 'dict.txt'}")
+
+    print(f"[done] output={args.dst}")
+
+
+if __name__ == "__main__":
+    main()
