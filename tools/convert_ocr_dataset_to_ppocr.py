@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import random
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -103,3 +104,32 @@ def build_det_annotation(json_path: Path) -> list[dict]:
         rounded = [[int(round(float(p[0]))), int(round(float(p[1])))] for p in points]
         items.append({"transcription": str(text), "points": rounded})
     return items
+
+
+def write_det_split(
+    samples: list[Sample], det_dir: Path, split_filename: str
+) -> dict[str, int]:
+    """把 samples 写为 PPOCR det 格式（images/ 拷贝 + train.txt/val.txt 行）。
+
+    返回统计 dict: {"kept": int, "empty_shape": int}
+    """
+    images_out = det_dir / "images"
+    images_out.mkdir(parents=True, exist_ok=True)
+    label_path = det_dir / split_filename
+
+    kept = 0
+    empty_shape = 0
+    with label_path.open("w", encoding="utf-8") as f:
+        for s in samples:
+            ann = build_det_annotation(s.json_path)
+            if not ann:
+                empty_shape += 1
+                continue
+            ext = s.image_path.suffix.lstrip(".")
+            new_name = det_filename(s.original_stem, s.station_code, ext)
+            dst_image = images_out / new_name
+            if not dst_image.exists():
+                shutil.copy2(s.image_path, dst_image)
+            f.write(f"images/{new_name}\t{json.dumps(ann, ensure_ascii=False)}\n")
+            kept += 1
+    return {"kept": kept, "empty_shape": empty_shape}

@@ -149,3 +149,52 @@ def test_build_det_annotation_skips_short_points(tmp_path: Path) -> None:
     bad["points"] = [[0.0, 0.0], [10.0, 10.0]]  # 仅 2 个点
     _write_labelme(j, "a.jpg", [bad])
     assert build_det_annotation(j) == []
+
+
+from tools.convert_ocr_dataset_to_ppocr import write_det_split
+
+
+def test_write_det_split_creates_images_and_labels(mini_dataset: Path, tmp_path: Path) -> None:
+    samples = find_samples(mini_dataset)
+    train, val = split_samples(samples, val_ratio=0.34, seed=42)
+
+    det_dir = tmp_path / "out" / "det"
+    train_stats = write_det_split(train, det_dir, "train.txt")
+    val_stats = write_det_split(val, det_dir, "val.txt")
+
+    # 标签文件 + 图片
+    assert (det_dir / "train.txt").exists()
+    assert (det_dir / "val.txt").exists()
+    images = list((det_dir / "images").iterdir())
+    assert len(images) == 3
+    for img in images:
+        assert "_det_" in img.name
+        assert img.suffix in {".jpg", ".jpeg", ".png", ".bmp"}
+        assert all(ord(c) < 128 for c in img.name)
+
+    # 标签行格式
+    line = (det_dir / "train.txt").read_text(encoding="utf-8").splitlines()[0]
+    path_part, ann_part = line.split("\t")
+    assert path_part.startswith("images/")
+    ann = json.loads(ann_part)
+    assert isinstance(ann, list) and "transcription" in ann[0]
+
+    assert train_stats["kept"] + val_stats["kept"] == 3
+
+
+def test_write_det_split_skips_empty_shape_image(tmp_path: Path) -> None:
+    # 构造一个没有有效 shape 的样本
+    root = tmp_path / "data"
+    p = root / "ac" / "X1" / "crop_ocr"
+    (p / "images").mkdir(parents=True)
+    (p / "images" / "IMG_E.jpg").write_bytes(b"x")
+    _write_labelme(p / "jsons" / "IMG_E.json", "IMG_E.jpg", shapes=[])
+    samples = find_samples(root)
+
+    det_dir = tmp_path / "out" / "det"
+    stats = write_det_split(samples, det_dir, "train.txt")
+    assert stats["kept"] == 0
+    assert stats["empty_shape"] == 1
+    # 既然全跳过，train.txt 仍应存在但为空
+    assert (det_dir / "train.txt").exists()
+    assert (det_dir / "train.txt").read_text() == ""
