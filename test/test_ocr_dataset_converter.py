@@ -87,3 +87,24 @@ def test_sample_image_path_exists(mini_dataset: Path) -> None:
         assert s.image_path.exists()
         assert s.json_path.exists()
         assert s.station_code in {"J46", "T1"}
+
+
+from tools.convert_ocr_dataset_to_ppocr import split_samples
+
+
+def test_split_deterministic_with_seed(mini_dataset: Path) -> None:
+    samples = find_samples(mini_dataset)
+    # 3 个样本，val_ratio=0.34 → n_val=1
+    train1, val1 = split_samples(samples, val_ratio=0.34, seed=42)
+    train2, val2 = split_samples(samples, val_ratio=0.34, seed=42)
+    assert [s.original_stem for s in train1] == [s.original_stem for s in train2]
+    assert [s.original_stem for s in val1] == [s.original_stem for s in val2]
+    assert len(train1) + len(val1) == 3
+    assert len(val1) == 1
+
+
+def test_split_zero_val(mini_dataset: Path) -> None:
+    samples = find_samples(mini_dataset)
+    train, val = split_samples(samples, val_ratio=0.0, seed=42)
+    assert len(val) == 0
+    assert len(train) == 3

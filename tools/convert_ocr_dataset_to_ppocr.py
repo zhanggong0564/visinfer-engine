@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -59,3 +60,19 @@ def find_samples(src_root: Path) -> list[Sample]:
             )
         )
     return samples
+
+
+def split_samples(
+    samples: list[Sample], val_ratio: float, seed: int
+) -> tuple[list[Sample], list[Sample]]:
+    """固定 seed 的 shuffle 后按 val_ratio 切分。
+
+    返回 (train_samples, val_samples)。
+    """
+    if not 0.0 <= val_ratio <= 1.0:
+        raise ValueError(f"val_ratio must be in [0,1], got {val_ratio}")
+    rng = random.Random(seed)
+    shuffled = list(samples)
+    rng.shuffle(shuffled)
+    n_val = int(len(shuffled) * val_ratio)
+    return shuffled[n_val:], shuffled[:n_val]
