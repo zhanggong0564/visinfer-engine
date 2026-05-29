@@ -27,3 +27,94 @@ class TestRouterRegistry:
         # base_router 和 router_registry 应被忽略
         for name, _, _ in routers:
             assert name not in ("base_router", "router_registry")
+
+
+import types
+from routers.base_router import BaseRouter
+
+
+class _FakePluginRouter(BaseRouter):
+    def __init__(self):
+        super().__init__(
+            router_name="fake_router",
+            api_path="/fake_detect",
+            summary="fake",
+            description="fake",
+            detector_type="fake_scene",
+        )
+
+    def request_schema(self, json_dict):
+        return json_dict
+
+    def get_inputs(self, request_params, image):
+        return None
+
+
+def test_find_plugin_routers_discovers_entry_point(monkeypatch):
+    """entry_points 中暴露 BaseRouter 的插件应被发现并收集进 base_routers。"""
+    fake_module = types.ModuleType("fake_vie_plugin")
+    fake_module.router = _FakePluginRouter()
+
+    class _FakeEP:
+        name = "fake_scene"
+
+        def load(self):
+            return fake_module
+
+    def _fake_entry_points(group=None):
+        assert group == "vie.plugins"
+        return [_FakeEP()]
+
+    monkeypatch.setattr("routers.router_registry.entry_points", _fake_entry_points)
+
+    reg = RouterRegistry()
+    found = reg.find_plugin_routers()
+
+    assert any(name == "fake_scene" for name, _, _ in found)
+    assert any(br.detector_type == "fake_scene" for br in reg.base_routers)
+
+
+def test_find_plugin_routers_skips_broken_entry_point(monkeypatch):
+    """插件 load 抛异常时跳过，不影响整体发现。"""
+
+    class _BrokenEP:
+        name = "broken_scene"
+
+        def load(self):
+            raise ImportError("boom")
+
+    monkeypatch.setattr(
+        "routers.router_registry.entry_points",
+        lambda group=None: [_BrokenEP()],
+    )
+
+    reg = RouterRegistry()
+    found = reg.find_plugin_routers()
+
+    assert found == []
+
+
+def test_find_plugin_routers_empty(monkeypatch):
+    """无任何插件安装时返回空列表。"""
+    monkeypatch.setattr(
+        "routers.router_registry.entry_points", lambda group=None: []
+    )
+    reg = RouterRegistry()
+    assert reg.find_plugin_routers() == []
+
+
+def test_find_plugin_routers_module_without_routers(monkeypatch):
+    """插件模块不含任何路由实例时返回空列表。"""
+    empty_module = types.ModuleType("no_router_plugin")
+
+    class _EP:
+        name = "no_router"
+
+        def load(self):
+            return empty_module
+
+    monkeypatch.setattr(
+        "routers.router_registry.entry_points", lambda group=None: [_EP()]
+    )
+    reg = RouterRegistry()
+    assert reg.find_plugin_routers() == []
