@@ -19,6 +19,7 @@ from typing import Any, Optional, Tuple
 import cv2
 import numpy as np
 from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
+from fastapi.concurrency import run_in_threadpool
 
 from config import settings
 from schemas import CommonResponse, ErrorCode, ERROR_CODE_MESSAGES
@@ -77,11 +78,12 @@ class BaseRouter(ABC):
         inputs = self.get_inputs(request_params, image)
         detector = self.get_detector_singleton()
         start = time.time()
-        result_info = detector.detect(inputs)
+        # detect 是同步 CPU/GPU 密集操作，丢到线程池执行，避免阻塞事件循环
+        result_info = await run_in_threadpool(detector.detect, inputs)
         end = time.time()
         latency_ms = (end - start) * 1000
         vision_logger.info(f"检测耗时：{end - start}秒")
-        vision_logger.info(f"原始检测结果：{result_info}")
+        vision_logger.debug(f"原始检测结果：{result_info}")
         if is_rotate:
             w, h, _ = image.shape  ##注意这里是反向的
             result_info = rotate_points(result_info.to_dict(), w, h)
@@ -136,8 +138,13 @@ class BaseRouter(ABC):
     async def _process_image(self, file: UploadFile) -> Tuple[np.ndarray, bool]:
         """只负责读取并解码图片，落盘逻辑见 _persist_record"""
         img_bytes = await file.read()
+        max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+        if len(img_bytes) > max_bytes:
+            vision_logger.error(f"上传图片过大: {len(img_bytes)} bytes > {max_bytes} bytes")
+            raise InvalidImageError(f"图片大小超过上限 {settings.MAX_UPLOAD_MB}MB")
         img_array = np.frombuffer(img_bytes, dtype=np.uint8)
-        image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+        # imdecode 为同步 CPU 操作，丢到线程池避免阻塞事件循环
+        image = await run_in_threadpool(cv2.imdecode, img_array, cv2.IMREAD_COLOR)
         if image is None:
             vision_logger.error("图片读取失败")
             raise InvalidImageError("图片读取失败，请检查文件格式")
