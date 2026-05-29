@@ -24,7 +24,7 @@ from config import settings
 from schemas import InputParamsBusiness
 
 # 数据目录配置
-DATA_DIR = Path("./demo/data/test")
+DATA_DIR = Path("./demo/data/panel_label/charging_pile")
 VIS_DIR = Path("./demo/test/vis")
 
 
