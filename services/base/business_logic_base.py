@@ -1,26 +1,25 @@
 '''
-@Author       : gongzhang4
-@Date         : 2026-01-23 05:37:39
-@LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-03-02 08:33:51
-@FilePath     : business_logic_base.py
-@Description  : 业务逻辑基类
+@Description : 业务逻辑基类（模板方法 + 可插拔钩子）
 '''
 
-import threading
-
-import numpy as np
-from schemas.data_base import InputParamsBusiness, MoMResult, DetectResult, IndicatorLightEmbedding
+from schemas.data_base import InputParamsBusiness
+from schemas.inference_context import InferenceContext
 
 
 class BusinessLogicBase:
+    """推理编排模板方法基类。
+
+    detect() 固定调用顺序，子类通过重写钩子定制行为：
+        build_context → preprocess_hook → detector.infer
+        → business_post_process → (should_normalize ? normalize_hook) → finalize_hook
+    检测器与本类均无每请求状态，每请求态全部装在 InferenceContext 上，故单例可并发。
+    """
+
+    NORMALIZE: bool = True  # 类级开关：场景可置 False 关闭默认坐标归一化
+
     def __init__(self, settings):
         self.settings = settings
         self.detector = None
-        # 检测器为单例且推理链路把每请求的尺寸/缩放/原图等暂存到 self 上，
-        # 一旦多请求并发（线程池）会相互覆盖导致结果串台；此锁把单实例上的
-        # 整条 detect 串行化，配合多 worker/进程级并行扩展。
-        self._infer_lock = threading.Lock()
         self._initialize(settings)
 
     def _initialize(self, settings):
@@ -29,31 +28,42 @@ class BusinessLogicBase:
     def _initialize_model(self, settings):
         raise NotImplementedError
 
-    def detect(self, InputParams: InputParamsBusiness) -> MoMResult:
-        with self._infer_lock:
-            image = InputParams.image
-            self.h, self.w, _ = image.shape
-            is_registered = InputParams.is_registered
-            product_type = InputParams.product_type
-            rule = InputParams.rule
-            result = self.detector.infer(image)
-            if is_registered:
-                return self.registered_post_process(result, product_type)
-            result = self.business_logic_post_process(result, product_type, rule)
-            result = self.result_post_process(result)
+    def detect(self, params: InputParamsBusiness):
+        ctx = self.build_context(params)
+        self.preprocess_hook(ctx)
+        ctx.raw_result = self.detector.infer(ctx.image)
+        self.business_post_process(ctx)
+        if self.should_normalize(ctx):
+            self.normalize_hook(ctx)
+        self.finalize_hook(ctx)
+        return ctx.result
 
-            return result
+    def build_context(self, params: InputParamsBusiness) -> InferenceContext:
+        h, w = params.image.shape[:2]
+        return InferenceContext(
+            image=params.image,
+            h=h,
+            w=w,
+            product_type=params.product_type,
+            rule=params.rule,
+            is_registered=params.is_registered,
+        )
 
-    def business_logic_post_process(self, result: DetectResult, product_type: str, rule: str = "all") -> MoMResult:
+    def preprocess_hook(self, ctx: InferenceContext) -> None:
+        """图像级预处理钩子，默认 no-op。"""
+        pass
+
+    def business_post_process(self, ctx: InferenceContext) -> None:
+        """场景业务后处理：读 ctx.raw_result，写 ctx.result。子类必须实现。"""
         raise NotImplementedError
 
-    def registered_post_process(self, result: IndicatorLightEmbedding, product_type: str) -> bool:
-        raise NotImplementedError
+    def should_normalize(self, ctx: InferenceContext) -> bool:
+        return self.NORMALIZE and not ctx.skip_normalize
 
-    def result_post_process(self, result: MoMResult) -> MoMResult:
-        """结果后处理"""
-        detailList = result.detailList
-        for item in detailList:
+    def normalize_hook(self, ctx: InferenceContext) -> None:
+        """默认坐标归一化：按原图宽高把 4/8 值坐标统一成归一化的 8 值多边形。"""
+        result = ctx.result
+        for item in result.detailList:
             coordinate = item.coordinate
             if len(coordinate) == 4:
                 ltx, lty, rbx, rby = coordinate
@@ -63,15 +73,13 @@ class BusinessLogicBase:
                 x4, y4 = ltx, rby
             else:
                 x1, y1, x2, y2, x3, y3, x4, y4 = coordinate
-
             item.coordinate = [
-                x1 / self.w,
-                y1 / self.h,
-                x2 / self.w,
-                y2 / self.h,
-                x3 / self.w,
-                y3 / self.h,
-                x4 / self.w,
-                y4 / self.h,
+                x1 / ctx.w, y1 / ctx.h,
+                x2 / ctx.w, y2 / ctx.h,
+                x3 / ctx.w, y3 / ctx.h,
+                x4 / ctx.w, y4 / ctx.h,
             ]
-        return result
+
+    def finalize_hook(self, ctx: InferenceContext) -> None:
+        """结果收尾钩子，默认 no-op。"""
+        pass
