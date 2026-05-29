@@ -102,7 +102,7 @@ class OCRPipeline:
         start = time.time()
         mask_rois, sorted_idxs = Points_to_Mask(image, points_line)
         end = time.time()
-        vision_logger.info(f"Points_to_Mask: {end - start:.4f}秒")
+        vision_logger.debug(f"Points_to_Mask: {end - start:.4f}秒")
         start = time.time()
 
         # Stage 1: Text Detection on each mask_roi
@@ -119,7 +119,7 @@ class OCRPipeline:
             all_dt_polys.append([best_poly])
             roi_to_idx.append(i)
         det_end = time.time()
-        vision_logger.info(f"Text Detection: {det_end - start:.4f}秒")
+        vision_logger.debug(f"Text Detection: {det_end - start:.4f}秒")
 
         # Crop detected text regions
         all_crops = []
@@ -138,7 +138,7 @@ class OCRPipeline:
             orient_results = self.text_orient_model.predict(all_crops)
             angles = [int(r["class_ids"][0]) for r in orient_results]
             orient_end = time.time()
-            vision_logger.info(f"Text Orientation: {orient_end - det_end:.4f}秒")
+            vision_logger.debug(f"Text Orientation: {orient_end - det_end:.4f}秒")
 
             # Stage 3: Rotate + Text Recognition
             rotated_crops = [
@@ -146,7 +146,7 @@ class OCRPipeline:
             ]
             rec_results = self.text_rec_model.predict(rotated_crops)
             rec_end = time.time()
-            vision_logger.info(f"Text Recognition: {rec_end - orient_end:.4f}秒")
+            vision_logger.debug(f"Text Recognition: {rec_end - orient_end:.4f}秒")
 
             for crop_idx, rec_res in enumerate(rec_results):
                 roi_idx = crop_roi_map[crop_idx]
@@ -162,7 +162,7 @@ class OCRPipeline:
         texts = [text_map.get(i) for i in all_rois]
 
         end = time.time()
-        vision_logger.info(f"OCR 三阶段总耗时: {end - start:.4f}秒")
+        vision_logger.debug(f"OCR 三阶段总耗时: {end - start:.4f}秒")
         line_indices = np.where(class_ids == 0)[0]
         ori_index = [line_indices[sorted_idxs[i]] for i in all_rois]
         positions = [
@@ -194,5 +194,5 @@ class OCRPipelineCrop:
         start = time.time()
         mask_rois, sorted_idxs = Points_to_Mask(image, points_line, sort_by=sort_by)
         end = time.time()
-        vision_logger.info(f"Points_to_Mask: {end - start:.4f}秒")
+        vision_logger.debug(f"Points_to_Mask: {end - start:.4f}秒")
         return mask_rois
