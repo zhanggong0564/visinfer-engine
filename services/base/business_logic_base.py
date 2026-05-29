@@ -71,8 +71,11 @@ class BusinessLogicBase:
                 x2, y2 = rbx, lty
                 x3, y3 = rbx, rby
                 x4, y4 = ltx, rby
-            else:
+            elif len(coordinate) == 8:
                 x1, y1, x2, y2, x3, y3, x4, y4 = coordinate
+            else:
+                # 空坐标（如缺线占位项）或非 4/8 值，无从归一化，原样保留
+                continue
             item.coordinate = [
                 x1 / ctx.w, y1 / ctx.h,
                 x2 / ctx.w, y2 / ctx.h,
