@@ -13,6 +13,7 @@ from ..utils.utils import *
 from utils import vision_logger
 import time
 from schemas.data_base import DetectResult
+from schemas.exceptions import ModelInferenceError
 
 # 设置onnxruntime日志级别
 onnxruntime.set_default_logger_severity(3)
@@ -24,11 +25,13 @@ class BaseOnnxInfer:
         self.confThreshold = confThreshold
         self.nmsThreshold = nmsThreshold
         available_providers = onnxruntime.get_available_providers()
-        self.providers = (
-            providers or ["CUDAExecutionProvider"]
-            if "CUDAExecutionProvider" in available_providers
-            else ["CPUExecutionProvider"]
-        )
+        if providers is None:
+            # 优先 CUDA，但始终保留 CPU 兜底：遇到 CUDA 不支持的算子时可回退而非直接报错
+            if "CUDAExecutionProvider" in available_providers:
+                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                providers = ["CPUExecutionProvider"]
+        self.providers = providers
         self.r = None
         self.dw = None
         self.dh = None
@@ -97,21 +100,23 @@ class BaseOnnxInfer:
             DetectResult: 推理结果
         """
         try:
-            self.ori_img = img.copy()
+            # 仅分割任务的后处理需要原图，其余任务存引用即可，避免每请求复制整张大图
+            self.ori_img = img.copy() if getattr(self, "task", None) == "seg" else img
             self.image_src_shape = img.shape
             start = time.time()
             img = self.preprocess(img)
             end = time.time()
-            vision_logger.info(f"YOLO预处理时间: {end - start:.4f}秒")
+            vision_logger.debug(f"YOLO预处理时间: {end - start:.4f}秒")
             start = time.time()
             outputs = self.session.run(self.output_names, {self.input_names[0]: img})
             end = time.time()
-            vision_logger.info(f"YOLO推理时间: {end - start:.4f}秒")
+            vision_logger.debug(f"YOLO推理时间: {end - start:.4f}秒")
             start = time.time()
             result = self.post_process(outputs)
             end = time.time()
-            vision_logger.info(f"YOLO后处理时间: {end - start:.4f}秒")
+            vision_logger.debug(f"YOLO后处理时间: {end - start:.4f}秒")
             return result
         except Exception as e:
-            vision_logger.error(f"YOLO推理过程中发生错误: {e}")
-            return DetectResult()
+            # 推理失败必须向上暴露，避免被静默吞成空结果，导致线上故障无法区分
+            vision_logger.error(f"推理过程中发生错误: {e}")
+            raise ModelInferenceError("模型推理失败", original_error=str(e))
