@@ -7,6 +7,8 @@
 @Description  : 业务逻辑基类
 '''
 
+import threading
+
 import numpy as np
 from schemas.data_base import InputParamsBusiness, MoMResult, DetectResult, IndicatorLightEmbedding
 
@@ -15,6 +17,10 @@ class BusinessLogicBase:
     def __init__(self, settings):
         self.settings = settings
         self.detector = None
+        # 检测器为单例且推理链路把每请求的尺寸/缩放/原图等暂存到 self 上，
+        # 一旦多请求并发（线程池）会相互覆盖导致结果串台；此锁把单实例上的
+        # 整条 detect 串行化，配合多 worker/进程级并行扩展。
+        self._infer_lock = threading.Lock()
         self._initialize(settings)
 
     def _initialize(self, settings):
@@ -24,18 +30,19 @@ class BusinessLogicBase:
         raise NotImplementedError
 
     def detect(self, InputParams: InputParamsBusiness) -> MoMResult:
-        image = InputParams.image
-        self.h, self.w, _ = image.shape
-        is_registered = InputParams.is_registered
-        product_type = InputParams.product_type
-        rule = InputParams.rule
-        result = self.detector.infer(image)
-        if is_registered:
-            return self.registered_post_process(result, product_type)
-        result = self.business_logic_post_process(result, product_type, rule)
-        result = self.result_post_process(result)
+        with self._infer_lock:
+            image = InputParams.image
+            self.h, self.w, _ = image.shape
+            is_registered = InputParams.is_registered
+            product_type = InputParams.product_type
+            rule = InputParams.rule
+            result = self.detector.infer(image)
+            if is_registered:
+                return self.registered_post_process(result, product_type)
+            result = self.business_logic_post_process(result, product_type, rule)
+            result = self.result_post_process(result)
 
-        return result
+            return result
 
     def business_logic_post_process(self, result: DetectResult, product_type: str, rule: str = "all") -> MoMResult:
         raise NotImplementedError
