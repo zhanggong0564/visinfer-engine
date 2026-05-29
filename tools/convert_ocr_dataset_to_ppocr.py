@@ -92,9 +92,9 @@ def det_filename(stem: str, station: str, ext: str) -> str:
     return f"{stem}_det_{station}.{ext.lstrip('.')}"
 
 
-def rec_filename(stem: str, station: str) -> str:
-    """rec 数据集图片名: <stem>_rec_<station>.png（强制 PNG 无损）"""
-    return f"{stem}_rec_{station}.png"
+def rec_filename(stem: str, station: str, shape_idx: int) -> str:
+    """rec 数据集图片名: <stem>_rec_<station>_<shape_idx>.png（强制 PNG 无损）"""
+    return f"{stem}_rec_{station}_{shape_idx}.png"
 
 
 def build_det_annotation(json_path: Path) -> list[dict]:
@@ -144,85 +144,186 @@ def write_det_split(
 
 @dataclass
 class RecPipeline:
-    """rec 转换需要的 3 个 paddleocr 组件 + 配置 snapshot。"""
+    """rec 转换需要的方向分类组件 + unclip/裁剪配置。"""
 
-    text_det: object  # paddleocr.TextDetection
     text_orient: object  # paddleocr.TextLineOrientationClassification
-    crop_by_polys: object  # paddlex CropByPolys
+    unclip_ratio: float = 2.0
     min_crop_size: int = 4
 
 
 def build_rec_pipeline(config) -> RecPipeline:
-    """根据 PanelLabelConfig 实例化 paddleocr 组件。
+    """根据 PanelLabelConfig 实例化方向分类组件。
 
-    参数 config: 一个具备 text_det_*, orient_model_path,
-    text_recognition_model_path（仅作占位，本工具不用 rec 模型）等属性的对象。
+    参数 config: 一个具备 orient_model_path, text_det_unclip_ratio 等属性的对象。
     """
-    from paddleocr import TextDetection, TextLineOrientationClassification
-    from paddlex.inference.pipelines.components import CropByPolys
+    from paddleocr import TextLineOrientationClassification
 
-    text_det = TextDetection(
-        model_name="PP-OCRv5_server_det",
-        limit_side_len=config.text_det_limit_side_len,
-        limit_type=config.text_det_limit_type,
-        thresh=config.text_det_thresh,
-        box_thresh=config.text_det_box_thresh,
-        unclip_ratio=config.text_det_unclip_ratio,
-        input_shape=config.text_det_input_shape,
-    )
     text_orient = TextLineOrientationClassification(
         model_name="PP-LCNet_x1_0_textline_ori",
         model_dir=config.orient_model_path,
     )
-    crop_by_polys = CropByPolys(det_box_type="quad")
-    return RecPipeline(text_det=text_det, text_orient=text_orient, crop_by_polys=crop_by_polys)
+    return RecPipeline(
+        text_orient=text_orient,
+        unclip_ratio=getattr(config, "text_det_unclip_ratio", 2.0),
+    )
 
 
-def process_rec_sample(sample: Sample, pipeline: RecPipeline) -> tuple[np.ndarray, str] | dict:
-    """对单个 sample 跑 rec pipeline，返回 (rotated_crop, transcription)。
+def _unclip_poly(points: np.ndarray, unclip_ratio: float) -> np.ndarray:
+    """对多边形做 unclip 扩展，与 PPOCR DBPostProcess.unclip 逻辑一致。"""
+    import pyclipper
 
-    失败/跳过时返回 {"skip_reason": str}。
+    area = cv2.contourArea(points)
+    length = cv2.arcLength(points, True)
+    distance = area * unclip_ratio / length
+    offset = pyclipper.PyclipperOffset()
+    # pyclipper 要求路径为 (N,2) 的整数点序列；contourArea/arcLength 可吃 (N,1,2)，此处需展平
+    offset.AddPath(points.reshape(-1, 2).tolist(), pyclipper.JT_ROUND, pyclipper.ET_CLOSEDPOLYGON)
+    try:
+        expanded = np.array(offset.Execute(distance))
+    except ValueError:
+        expanded = np.array(offset.Execute(distance)[0])
+    return expanded
 
-    Pipeline 与 services/panel_label/panel_label_detect.py:97-149 严格一致：
-        TextDetection → max-area polygon → CropByPolys(quad) →
-        TextLineOrientationClassification → cv2.rotate(180) if angle==1
+
+def _get_mini_boxes(contour: np.ndarray) -> tuple[list, float]:
+    """取最小外接矩形的 4 个角点，与 PPOCR DBPostProcess.get_mini_boxes 一致。"""
+    bounding_box = cv2.minAreaRect(contour)
+    points = sorted(list(cv2.boxPoints(bounding_box)), key=lambda x: x[0])
+
+    index_1, index_2, index_3, index_4 = 0, 1, 2, 3
+    if points[1][1] > points[0][1]:
+        index_1, index_4 = 0, 1
+    else:
+        index_1, index_4 = 1, 0
+    if points[3][1] > points[2][1]:
+        index_2, index_3 = 2, 3
+    else:
+        index_2, index_3 = 3, 2
+
+    box = [points[index_1], points[index_2], points[index_3], points[index_4]]
+    return box, min(bounding_box[1])
+
+
+def _get_rotate_crop_image(img: np.ndarray, points: np.ndarray) -> np.ndarray:
+    """透视变换裁剪，与 CropByPolys.get_rotate_crop_image 一致。"""
+    assert len(points) == 4, "shape of points must be 4*2"
+    img_crop_width = int(
+        max(
+            np.linalg.norm(points[0] - points[1]),
+            np.linalg.norm(points[2] - points[3]),
+        )
+    )
+    img_crop_height = int(
+        max(
+            np.linalg.norm(points[0] - points[3]),
+            np.linalg.norm(points[1] - points[2]),
+        )
+    )
+    if img_crop_width <= 0 or img_crop_height <= 0:
+        return None
+    pts_std = np.float32(
+        [
+            [0, 0],
+            [img_crop_width, 0],
+            [img_crop_width, img_crop_height],
+            [0, img_crop_height],
+        ]
+    )
+    M = cv2.getPerspectiveTransform(points, pts_std)
+    dst_img = cv2.warpPerspective(
+        img,
+        M,
+        (img_crop_width, img_crop_height),
+        borderMode=cv2.BORDER_REPLICATE,
+        flags=cv2.INTER_CUBIC,
+    )
+    dst_img_height, dst_img_width = dst_img.shape[0:2]
+    if dst_img_height * 1.0 / dst_img_width >= 1.5:
+        dst_img = np.rot90(dst_img)
+    return dst_img
+
+
+def _crop_by_quad(img: np.ndarray, points: np.ndarray) -> np.ndarray | None:
+    """对 quad 类型的 4 点做 minAreaRect + 透视裁剪，与 CropByPolys(quad) 一致。"""
+    bounding_box = cv2.minAreaRect(np.array(points).astype(np.int32))
+    box_points = sorted(list(cv2.boxPoints(bounding_box)), key=lambda x: x[0])
+
+    index_a, index_b, index_c, index_d = 0, 1, 2, 3
+    if box_points[1][1] > box_points[0][1]:
+        index_a, index_d = 0, 1
+    else:
+        index_a, index_d = 1, 0
+    if box_points[3][1] > box_points[2][1]:
+        index_b, index_c = 2, 3
+    else:
+        index_b, index_c = 3, 2
+
+    ordered = [box_points[index_a], box_points[index_b], box_points[index_c], box_points[index_d]]
+    return _get_rotate_crop_image(img, np.array(ordered))
+
+
+def process_rec_sample(sample: Sample, pipeline: RecPipeline) -> list[tuple[np.ndarray, str, int]] | dict:
+    """对单个 sample 从 JSON 标注裁剪 rec 图像。
+
+    流程：JSON points → unclip → minAreaRect → 透视裁剪 → 方向分类旋转。
+    返回 [(rotated_crop, transcription, shape_idx), ...] 或 {"skip_reason": str}。
     """
-    # 短路：description 为空 / difficult 直接跳过
     data = json.loads(sample.json_path.read_text(encoding="utf-8"))
     shapes = data.get("shapes", []) or []
     if not shapes:
         return {"skip_reason": "empty-shape"}
-    shape = shapes[0]
-    if shape.get("difficult"):
-        return {"skip_reason": "difficult"}
-    description = shape.get("description")
-    if description is None or str(description).strip() == "":
-        return {"skip_reason": "empty-desc"}
 
     image = cv2.imread(str(sample.image_path))
     if image is None:
         return {"skip_reason": "image-unreadable"}
 
-    det_result = pipeline.text_det.predict(image)
-    dt_polys = det_result[0]["dt_polys"]
-    if dt_polys is None or len(dt_polys) == 0:
-        return {"skip_reason": "det-zero"}
+    results: list[tuple[np.ndarray, str, int]] = []
+    all_crops: list[tuple[np.ndarray, int]] = []
 
-    areas = [cv2.contourArea(np.array(p, dtype=np.float32).reshape(-1, 2)) for p in dt_polys]
-    best_poly = dt_polys[int(np.argmax(areas))]
+    for shape_idx, shape in enumerate(shapes):
+        if shape.get("difficult"):
+            continue
+        description = shape.get("description")
+        if description is None or str(description).strip() == "":
+            continue
 
-    crops = list(pipeline.crop_by_polys(image, [best_poly]))
-    if not crops:
-        return {"skip_reason": "crop-failed"}
-    crop = crops[0]
-    if crop is None or crop.shape[0] < pipeline.min_crop_size or crop.shape[1] < pipeline.min_crop_size:
-        return {"skip_reason": "too-small"}
+        points = shape.get("points") or []
+        if len(points) < 3:
+            continue
 
-    orient_result = pipeline.text_orient.predict([crop])
-    angle = int(orient_result[0]["class_ids"][0])
-    rotated = cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop
+        pts = np.array([[int(round(float(p[0]))), int(round(float(p[1])))] for p in points], dtype=np.int32)
 
-    return rotated, str(description)
+        # unclip 扩展
+        expanded = _unclip_poly(pts.reshape(-1, 1, 2), pipeline.unclip_ratio)
+        if len(expanded) == 0:
+            continue
+        expanded = expanded.reshape(-1, 2)
+
+        # minAreaRect → 4 角点（与 DBPostProcess.boxes_from_bitmap 一致）
+        box, sside = _get_mini_boxes(expanded.reshape(-1, 1, 2))
+        if sside < 3:
+            continue
+        box = np.array(box, dtype=np.float32)
+
+        # 透视裁剪（与 CropByPolys quad 模式一致）
+        crop = _crop_by_quad(image, box)
+        if crop is None or crop.shape[0] < pipeline.min_crop_size or crop.shape[1] < pipeline.min_crop_size:
+            continue
+
+        all_crops.append((crop, shape_idx))
+
+    if not all_crops:
+        return {"skip_reason": "no-valid-crop"}
+
+    # 批量方向分类
+    orient_results = pipeline.text_orient.predict([c for c, _ in all_crops])
+    for (crop, shape_idx), orient_res in zip(all_crops, orient_results):
+        angle = int(orient_res["class_ids"][0])
+        rotated = cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop
+        text = str(shapes[shape_idx].get("description", ""))
+        results.append((rotated, text, shape_idx))
+
+    return results
 
 
 def write_rec_split(
@@ -231,8 +332,7 @@ def write_rec_split(
     """跑 rec pipeline 并写出。
 
     返回 (stats, kept_transcriptions)。
-    stats keys: kept, empty-desc, difficult, det-zero, crop-failed, too-small,
-                empty-shape, image-unreadable
+    stats keys: kept, empty-shape, image-unreadable, no-valid-crop
     """
     images_out = rec_dir / "images"
     images_out.mkdir(parents=True, exist_ok=True)
@@ -240,13 +340,9 @@ def write_rec_split(
 
     stats: dict[str, int] = {
         "kept": 0,
-        "empty-desc": 0,
-        "difficult": 0,
-        "det-zero": 0,
-        "crop-failed": 0,
-        "too-small": 0,
         "empty-shape": 0,
         "image-unreadable": 0,
+        "no-valid-crop": 0,
     }
     transcriptions: list[str] = []
 
@@ -257,16 +353,16 @@ def write_rec_split(
                 reason = result["skip_reason"]
                 stats[reason] = stats.get(reason, 0) + 1
                 continue
-            rotated, text = result
-            new_name = rec_filename(s.original_stem, s.station_code)
-            dst = images_out / new_name
-            ok = cv2.imwrite(str(dst), rotated)
-            if not ok:
-                stats["crop-failed"] += 1
-                continue
-            f.write(f"images/{new_name}\t{text}\n")
-            transcriptions.append(text)
-            stats["kept"] += 1
+            for rotated, text, shape_idx in result:
+                new_name = rec_filename(s.original_stem, s.station_code, shape_idx)
+                dst = images_out / new_name
+                ok = cv2.imwrite(str(dst), rotated)
+                if not ok:
+                    stats["no-valid-crop"] = stats.get("no-valid-crop", 0) + 1
+                    continue
+                f.write(f"images/{new_name}\t{text}\n")
+                transcriptions.append(text)
+                stats["kept"] += 1
     return stats, transcriptions
 
 
@@ -329,21 +425,22 @@ def resplit_rec_split(
     transcriptions: list[str] = []
     with label_path.open("w", encoding="utf-8") as f:
         for s in samples:
-            new_name = rec_filename(s.original_stem, s.station_code)
-            if not (images_out / new_name).exists():
-                missing += 1
-                continue
             data = json.loads(s.json_path.read_text(encoding="utf-8"))
             shapes = data.get("shapes", []) or []
-            if not shapes:
-                continue
-            description = shapes[0].get("description")
-            if description is None or str(description).strip() == "":
-                continue
-            text = str(description)
-            f.write(f"images/{new_name}\t{text}\n")
-            transcriptions.append(text)
-            kept += 1
+            for shape_idx, shape in enumerate(shapes):
+                if shape.get("difficult"):
+                    continue
+                description = shape.get("description")
+                if description is None or str(description).strip() == "":
+                    continue
+                text = str(description)
+                new_name = rec_filename(s.original_stem, s.station_code, shape_idx)
+                if not (images_out / new_name).exists():
+                    missing += 1
+                    continue
+                f.write(f"images/{new_name}\t{text}\n")
+                transcriptions.append(text)
+                kept += 1
     return {"kept": kept, "missing": missing}, transcriptions
 
 
@@ -410,7 +507,7 @@ def main() -> None:
         _print_det_stats("det/val", vs)
 
     if do_rec:
-        from config.panel_label_config import PanelLabelConfig
+        from vie_plugin_panel_label.config import PanelLabelConfig
 
         cfg = PanelLabelConfig()
         pipeline = build_rec_pipeline(cfg)
