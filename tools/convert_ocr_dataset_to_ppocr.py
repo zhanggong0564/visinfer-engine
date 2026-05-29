@@ -8,6 +8,7 @@
         --src <labelme-root> --dst <out-root> \
         --val-ratio 0.1 --seed 42 --mode all
 """
+
 from __future__ import annotations
 
 import argparse
@@ -71,9 +72,7 @@ def find_samples(src_root: Path) -> list[Sample]:
     return samples
 
 
-def split_samples(
-    samples: list[Sample], val_ratio: float, seed: int
-) -> tuple[list[Sample], list[Sample]]:
+def split_samples(samples: list[Sample], val_ratio: float, seed: int) -> tuple[list[Sample], list[Sample]]:
     """固定 seed 的 shuffle 后按 val_ratio 切分。
 
     返回 (train_samples, val_samples)。
@@ -92,9 +91,19 @@ def det_filename(stem: str, station: str, ext: str) -> str:
     return f"{stem}_det_{station}.{ext.lstrip('.')}"
 
 
-def rec_filename(stem: str, station: str, shape_idx: int) -> str:
-    """rec 数据集图片名: <stem>_rec_<station>_<shape_idx>.png（强制 PNG 无损）"""
-    return f"{stem}_rec_{station}_{shape_idx}.png"
+def rec_filename(stem: str, station: str, tag: str | None = None) -> str:
+    """rec 数据集图片名: <stem>_rec_<station>[_<tag>].png（强制 PNG 无损）
+
+    每条 crop_ocr strip 仅一行文字，故文件名不含 shape 序号。
+    多外扩比例增广时用 tag（如 e10/e15/e20）区分同一 strip 的不同变体。
+    """
+    suffix = f"_{tag}" if tag else ""
+    return f"{stem}_rec_{station}{suffix}.png"
+
+
+def _expand_tag(ratio: float, multi: bool) -> str | None:
+    """多变体时为外扩比例生成文件名标签（0.15→'e15'）；单变体返回 None（不加标签）。"""
+    return f"e{int(round(ratio * 100)):02d}" if multi else None
 
 
 def build_det_annotation(json_path: Path) -> list[dict]:
@@ -113,9 +122,7 @@ def build_det_annotation(json_path: Path) -> list[dict]:
     return items
 
 
-def write_det_split(
-    samples: list[Sample], det_dir: Path, split_filename: str
-) -> dict[str, int]:
+def write_det_split(samples: list[Sample], det_dir: Path, split_filename: str) -> dict[str, int]:
     """把 samples 写为 PPOCR det 格式（images/ 拷贝 + train.txt/val.txt 行）。
 
     返回统计 dict: {"kept": int, "empty_shape": int}
@@ -144,17 +151,28 @@ def write_det_split(
 
 @dataclass
 class RecPipeline:
-    """rec 转换需要的方向分类组件 + unclip/裁剪配置。"""
+    """rec 转换需要的方向分类组件 + 裁剪配置。
+
+    expand_ratios: 裁剪前对标注框向外扩的比例列表（以短边/文字高度为基准，四边等距）。
+        人工框贴合文字、偏紧，推理 dt_polys 四周带少量边距，用此项补齐二者差异。
+        给多个比例（如 0.10/0.15/0.20）时，每条 strip 按每个比例各裁一份，
+        既覆盖推理边距波动、又成倍增广训练数据。典型单值 0.10~0.20；含 0 表示原始紧框。
+    """
 
     text_orient: object  # paddleocr.TextLineOrientationClassification
-    unclip_ratio: float = 2.0
     min_crop_size: int = 4
+    expand_ratios: tuple[float, ...] = (0.15,)
+    orient_batch_size: int = 64
 
 
-def build_rec_pipeline(config) -> RecPipeline:
+def build_rec_pipeline(
+    config, expand_ratios: tuple[float, ...] = (0.15,), orient_batch_size: int = 64
+) -> RecPipeline:
     """根据 PanelLabelConfig 实例化方向分类组件。
 
-    参数 config: 一个具备 orient_model_path, text_det_unclip_ratio 等属性的对象。
+    参数 config: 一个具备 orient_model_path 属性的对象。
+    参数 expand_ratios: 裁剪框外扩比例列表（见 RecPipeline.expand_ratios）。
+    参数 orient_batch_size: 方向分类批量大小（跨样本统一推理时的分块尺寸）。
     """
     from paddleocr import TextLineOrientationClassification
 
@@ -164,25 +182,9 @@ def build_rec_pipeline(config) -> RecPipeline:
     )
     return RecPipeline(
         text_orient=text_orient,
-        unclip_ratio=getattr(config, "text_det_unclip_ratio", 2.0),
+        expand_ratios=tuple(expand_ratios),
+        orient_batch_size=orient_batch_size,
     )
-
-
-def _unclip_poly(points: np.ndarray, unclip_ratio: float) -> np.ndarray:
-    """对多边形做 unclip 扩展，与 PPOCR DBPostProcess.unclip 逻辑一致。"""
-    import pyclipper
-
-    area = cv2.contourArea(points)
-    length = cv2.arcLength(points, True)
-    distance = area * unclip_ratio / length
-    offset = pyclipper.PyclipperOffset()
-    # pyclipper 要求路径为 (N,2) 的整数点序列；contourArea/arcLength 可吃 (N,1,2)，此处需展平
-    offset.AddPath(points.reshape(-1, 2).tolist(), pyclipper.JT_ROUND, pyclipper.ET_CLOSEDPOLYGON)
-    try:
-        expanded = np.array(offset.Execute(distance))
-    except ValueError:
-        expanded = np.array(offset.Execute(distance)[0])
-    return expanded
 
 
 def _get_mini_boxes(contour: np.ndarray) -> tuple[list, float]:
@@ -243,6 +245,36 @@ def _get_rotate_crop_image(img: np.ndarray, points: np.ndarray) -> np.ndarray:
     return dst_img
 
 
+def _expand_box(box: np.ndarray, ratio: float) -> np.ndarray:
+    """沿框自身的宽/高方向，向外各扩 ratio×短边 的距离。
+
+    box: _get_mini_boxes 返回的有序 4 点 [tl, tr, br, bl]（float32）。
+    margin 以「短边（文字高度）」为基准、与框宽无关，避免 DB unclip 在宽框上沿
+    宽度方向过扩（最初产物四周大留白的病根）。ratio<=0 时原样返回。
+    """
+    if ratio <= 0:
+        return box
+    tl, tr, br, bl = box
+    u = tr - tl  # 宽方向
+    v = bl - tl  # 高方向
+    nu = float(np.linalg.norm(u))
+    nv = float(np.linalg.norm(v))
+    if nu < 1e-6 or nv < 1e-6:
+        return box
+    u = u / nu
+    v = v / nv
+    d = ratio * min(nu, nv)
+    return np.array(
+        [
+            tl - u * d - v * d,
+            tr + u * d - v * d,
+            br + u * d + v * d,
+            bl - u * d + v * d,
+        ],
+        dtype=np.float32,
+    )
+
+
 def _crop_by_quad(img: np.ndarray, points: np.ndarray) -> np.ndarray | None:
     """对 quad 类型的 4 点做 minAreaRect + 透视裁剪，与 CropByPolys(quad) 一致。"""
     bounding_box = cv2.minAreaRect(np.array(points).astype(np.int32))
@@ -262,68 +294,92 @@ def _crop_by_quad(img: np.ndarray, points: np.ndarray) -> np.ndarray | None:
     return _get_rotate_crop_image(img, np.array(ordered))
 
 
-def process_rec_sample(sample: Sample, pipeline: RecPipeline) -> list[tuple[np.ndarray, str, int]] | dict:
-    """对单个 sample 从 JSON 标注裁剪 rec 图像。
+def extract_rec_crops(
+    sample: Sample, expand_ratios: tuple[float, ...], min_crop_size: int = 4
+) -> list[tuple[np.ndarray, str, float]] | dict:
+    """从 JSON 标注裁剪 rec 图像（**未做方向校正**，纯几何，无需模型）。
 
-    流程：JSON points → unclip → minAreaRect → 透视裁剪 → 方向分类旋转。
-    返回 [(rotated_crop, transcription, shape_idx), ...] 或 {"skip_reason": str}。
+    几何来自人工标注框。人工框贴合文字偏紧，推理 dt_polys 四周带少量边距，故裁剪前
+    按 expand_ratios（短边比例、四边等距）做轻量外扩补齐差异；给多个比例时每个比例
+    各裁一份用于增广。流程：JSON points → minAreaRect 规整 4 点 → _expand_box 外扩 →
+    _crop_by_quad 透视裁剪。
+
+    返回 [(crop, transcription, ratio), ...]（未旋转）或 {"skip_reason": str}。
     """
     data = json.loads(sample.json_path.read_text(encoding="utf-8"))
     shapes = data.get("shapes", []) or []
     if not shapes:
         return {"skip_reason": "empty-shape"}
 
+    # 单行假设：取第一个有效（非 difficult、description 非空、点数足够）的 shape
+    shape = None
+    for s in shapes:
+        if s.get("difficult"):
+            continue
+        description = s.get("description")
+        if description is None or str(description).strip() == "":
+            continue
+        if len(s.get("points") or []) < 3:
+            continue
+        shape = s
+        break
+    if shape is None:
+        return {"skip_reason": "empty-desc"}
+
     image = cv2.imread(str(sample.image_path))
     if image is None:
         return {"skip_reason": "image-unreadable"}
 
-    results: list[tuple[np.ndarray, str, int]] = []
-    all_crops: list[tuple[np.ndarray, int]] = []
+    pts = np.array(
+        [[int(round(float(p[0]))), int(round(float(p[1])))] for p in shape["points"]], dtype=np.int32
+    )
 
-    for shape_idx, shape in enumerate(shapes):
-        if shape.get("difficult"):
-            continue
-        description = shape.get("description")
-        if description is None or str(description).strip() == "":
-            continue
-
-        points = shape.get("points") or []
-        if len(points) < 3:
-            continue
-
-        pts = np.array([[int(round(float(p[0]))), int(round(float(p[1])))] for p in points], dtype=np.int32)
-
-        # unclip 扩展
-        expanded = _unclip_poly(pts.reshape(-1, 1, 2), pipeline.unclip_ratio)
-        if len(expanded) == 0:
-            continue
-        expanded = expanded.reshape(-1, 2)
-
-        # minAreaRect → 4 角点（与 DBPostProcess.boxes_from_bitmap 一致）
-        box, sside = _get_mini_boxes(expanded.reshape(-1, 1, 2))
-        if sside < 3:
-            continue
-        box = np.array(box, dtype=np.float32)
-
-        # 透视裁剪（与 CropByPolys quad 模式一致）
-        crop = _crop_by_quad(image, box)
-        if crop is None or crop.shape[0] < pipeline.min_crop_size or crop.shape[1] < pipeline.min_crop_size:
-            continue
-
-        all_crops.append((crop, shape_idx))
-
-    if not all_crops:
+    # minAreaRect of raw polygon → 规整的 4 点 quad
+    box, sside = _get_mini_boxes(pts.reshape(-1, 1, 2))
+    if sside < 3:
         return {"skip_reason": "no-valid-crop"}
+    box = np.array(box, dtype=np.float32)
 
-    # 批量方向分类
-    orient_results = pipeline.text_orient.predict([c for c, _ in all_crops])
-    for (crop, shape_idx), orient_res in zip(all_crops, orient_results):
-        angle = int(orient_res["class_ids"][0])
-        rotated = cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop
-        text = str(shapes[shape_idx].get("description", ""))
-        results.append((rotated, text, shape_idx))
+    # 每个外扩比例各裁一份（CropByPolys 透视裁剪，与 OCRPipeline._crop_by_polys quad 一致）
+    text = str(shape.get("description", ""))
+    crops: list[tuple[np.ndarray, str, float]] = []
+    for ratio in expand_ratios:
+        crop = _crop_by_quad(image, _expand_box(box, ratio))
+        if crop is None or crop.shape[0] < min_crop_size or crop.shape[1] < min_crop_size:
+            continue
+        crops.append((crop, text, ratio))
+    if not crops:
+        return {"skip_reason": "no-valid-crop"}
+    return crops
 
-    return results
+
+def _orient_and_rotate(crops: list[np.ndarray], text_orient, batch_size: int) -> list[np.ndarray]:
+    """对裁剪批量做方向分类并按需旋转 180°；按 batch_size 分块以控显存。
+
+    方向分类是逐图独立分类（推理期 BN 用 running stats），故分块不影响单图结果，
+    与整体一次推理等价。
+    """
+    rotated: list[np.ndarray] = []
+    for i in range(0, len(crops), max(1, batch_size)):
+        chunk = crops[i : i + max(1, batch_size)]
+        results = text_orient.predict(chunk)
+        for crop, res in zip(chunk, results):
+            angle = int(res["class_ids"][0])
+            rotated.append(cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop)
+    return rotated
+
+
+def process_rec_sample(sample: Sample, pipeline: RecPipeline) -> list[tuple[np.ndarray, str, float]] | dict:
+    """对单个 sample 裁剪并方向校正 rec 图像（每条 strip 一行文字）。
+
+    = extract_rec_crops（几何）+ 方向分类旋转。批量转换走 write_rec_split 的跨样本批处理；
+    此函数主要供单样本/测试使用。返回 [(rotated_crop, transcription, ratio), ...] 或 {"skip_reason": str}。
+    """
+    crops = extract_rec_crops(sample, pipeline.expand_ratios, pipeline.min_crop_size)
+    if isinstance(crops, dict):
+        return crops
+    rotated = _orient_and_rotate([c for c, _, _ in crops], pipeline.text_orient, pipeline.orient_batch_size)
+    return [(rot, text, ratio) for rot, (_crop, text, ratio) in zip(rotated, crops)]
 
 
 def write_rec_split(
@@ -331,8 +387,12 @@ def write_rec_split(
 ) -> tuple[dict[str, int], list[str]]:
     """跑 rec pipeline 并写出。
 
+    分三阶段：① 逐样本几何裁剪（extract_rec_crops，无模型）并收集全 split 的裁剪；
+    ② 跨样本按 orient_batch_size 分块统一做方向分类（减少 predict 调用、提速）；
+    ③ 旋转后写盘 + 写标签行。
+
     返回 (stats, kept_transcriptions)。
-    stats keys: kept, empty-shape, image-unreadable, no-valid-crop
+    stats keys: kept, empty-shape, empty-desc, image-unreadable, no-valid-crop
     """
     images_out = rec_dir / "images"
     images_out.mkdir(parents=True, exist_ok=True)
@@ -341,28 +401,41 @@ def write_rec_split(
     stats: dict[str, int] = {
         "kept": 0,
         "empty-shape": 0,
+        "empty-desc": 0,
         "image-unreadable": 0,
         "no-valid-crop": 0,
     }
-    transcriptions: list[str] = []
+    multi = len(pipeline.expand_ratios) > 1
 
+    # ① 收集全 split 裁剪（未旋转）
+    pending: list[tuple[Sample, np.ndarray, str, float]] = []
+    for s in samples:
+        result = extract_rec_crops(s, pipeline.expand_ratios, pipeline.min_crop_size)
+        if isinstance(result, dict):
+            reason = result["skip_reason"]
+            stats[reason] = stats.get(reason, 0) + 1
+            continue
+        for crop, text, ratio in result:
+            pending.append((s, crop, text, ratio))
+
+    # ② 跨样本批量方向分类 + 旋转
+    rotated_all = _orient_and_rotate(
+        [crop for _, crop, _, _ in pending], pipeline.text_orient, pipeline.orient_batch_size
+    )
+
+    # ③ 写盘 + 标签
+    transcriptions: list[str] = []
     with label_path.open("w", encoding="utf-8") as f:
-        for s in samples:
-            result = process_rec_sample(s, pipeline)
-            if isinstance(result, dict):
-                reason = result["skip_reason"]
-                stats[reason] = stats.get(reason, 0) + 1
+        for (s, _crop, text, ratio), rotated in zip(pending, rotated_all):
+            new_name = rec_filename(s.original_stem, s.station_code, _expand_tag(ratio, multi))
+            dst = images_out / new_name
+            ok = cv2.imwrite(str(dst), rotated)
+            if not ok:
+                stats["no-valid-crop"] = stats.get("no-valid-crop", 0) + 1
                 continue
-            for rotated, text, shape_idx in result:
-                new_name = rec_filename(s.original_stem, s.station_code, shape_idx)
-                dst = images_out / new_name
-                ok = cv2.imwrite(str(dst), rotated)
-                if not ok:
-                    stats["no-valid-crop"] = stats.get("no-valid-crop", 0) + 1
-                    continue
-                f.write(f"images/{new_name}\t{text}\n")
-                transcriptions.append(text)
-                stats["kept"] += 1
+            f.write(f"images/{new_name}\t{text}\n")
+            transcriptions.append(text)
+            stats["kept"] += 1
     return stats, transcriptions
 
 
@@ -381,9 +454,7 @@ def write_dict(transcriptions: list[str], dict_path: Path) -> int:
     return len(sorted_chars)
 
 
-def resplit_det_split(
-    samples: list[Sample], det_dir: Path, split_filename: str
-) -> dict[str, int]:
+def resplit_det_split(samples: list[Sample], det_dir: Path, split_filename: str) -> dict[str, int]:
     """重写 det/<split_filename>，只为 det/images/ 中已存在的图片写标签行。
 
     返回 {"kept": int, "missing": int}。missing = 样本在该 split 中但磁盘无对应图。
@@ -409,12 +480,13 @@ def resplit_det_split(
     return {"kept": kept, "missing": missing}
 
 
-def resplit_rec_split(
-    samples: list[Sample], rec_dir: Path, split_filename: str
-) -> tuple[dict[str, int], list[str]]:
+def resplit_rec_split(samples: list[Sample], rec_dir: Path, split_filename: str) -> tuple[dict[str, int], list[str]]:
     """重写 rec/<split_filename>。text 直接取自 LabelMe description；只引用已存在的 PNG。
 
-    返回 (stats, transcriptions)。stats = {"kept": int, "missing": int}。
+    多外扩比例增广时每条 strip 在磁盘上有多份变体（<stem>_rec_<station>[_e*].png），
+    此处按前缀 glob 收集全部变体、每份各写一行。
+
+    返回 (stats, transcriptions)。stats = {"kept": int, "missing": int}（missing 按 strip 计）。
     """
     images_out = rec_dir / "images"
     label_path = rec_dir / split_filename
@@ -427,18 +499,30 @@ def resplit_rec_split(
         for s in samples:
             data = json.loads(s.json_path.read_text(encoding="utf-8"))
             shapes = data.get("shapes", []) or []
-            for shape_idx, shape in enumerate(shapes):
+            # 单行假设：取第一个有效（非 difficult、description 非空）的 shape
+            text = None
+            for shape in shapes:
                 if shape.get("difficult"):
                     continue
                 description = shape.get("description")
                 if description is None or str(description).strip() == "":
                     continue
                 text = str(description)
-                new_name = rec_filename(s.original_stem, s.station_code, shape_idx)
-                if not (images_out / new_name).exists():
-                    missing += 1
-                    continue
-                f.write(f"images/{new_name}\t{text}\n")
+                break
+            if text is None:
+                continue
+            # 收集该 strip 的所有变体 PNG（无标签 + e* 标签），remainder 守卫避免站点名前缀误匹配
+            prefix = f"{s.original_stem}_rec_{s.station_code}"
+            variants = sorted(
+                p
+                for p in images_out.glob(f"{prefix}*.png")
+                if (rem := p.stem[len(prefix):]) == "" or rem.startswith("_")
+            )
+            if not variants:
+                missing += 1
+                continue
+            for p in variants:
+                f.write(f"images/{p.name}\t{text}\n")
                 transcriptions.append(text)
                 kept += 1
     return {"kept": kept, "missing": missing}, transcriptions
@@ -463,8 +547,20 @@ def main() -> None:
     parser.add_argument("--dst", required=True, type=Path)
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--mode", choices=("all", "det-only", "rec-only", "resplit-only"), default="all")
     parser.add_argument(
-        "--mode", choices=("all", "det-only", "rec-only", "resplit-only"), default="all"
+        "--rec-expand-ratios",
+        type=float,
+        nargs="+",
+        default=[0.15],
+        help="rec 裁剪框外扩比例（短边/文字高度为基准，四边等距）；"
+        "可给多个值，每条 strip 按每个比例各裁一份做增广（如 0.05 0.15 0.25）；0 表示原始紧框",
+    )
+    parser.add_argument(
+        "--rec-batch-size",
+        type=int,
+        default=64,
+        help="rec 方向分类批量大小（跨样本统一推理时的分块尺寸）",
     )
     args = parser.parse_args()
 
@@ -510,7 +606,9 @@ def main() -> None:
         from vie_plugin_panel_label.config import PanelLabelConfig
 
         cfg = PanelLabelConfig()
-        pipeline = build_rec_pipeline(cfg)
+        pipeline = build_rec_pipeline(
+            cfg, expand_ratios=tuple(args.rec_expand_ratios), orient_batch_size=args.rec_batch_size
+        )
         rec_dir = args.dst / "rec"
         ts, train_texts = write_rec_split(train_samples, pipeline, rec_dir, "train.txt")
         vs, val_texts = write_rec_split(val_samples, pipeline, rec_dir, "val.txt")
