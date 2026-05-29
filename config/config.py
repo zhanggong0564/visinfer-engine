@@ -9,6 +9,7 @@
 
 from pydantic_settings import BaseSettings
 from .panel_label_config import PanelLabelConfig
+from .plate_screw_congfig import PlateScrewConfig
 
 
 class Settings(BaseSettings):
@@ -20,9 +21,17 @@ class Settings(BaseSettings):
 
     LOG_DIR: str = "logs"
     LOG_LEVEL: str = "INFO"
-    # plate_screw: PlateScrewConfig = PlateScrewConfig()
     panel_label: PanelLabelConfig = PanelLabelConfig()
+    # plate_screw 业务代码引用 settings.plate_screw，此处必须保持注册以避免运行时
+    # AttributeError；启用端点还需取消 routers/plate_routers.py 中 router 实例的注释
+    plate_screw: PlateScrewConfig = PlateScrewConfig()
     WORKERS: int = 1
+    # 开发模式热重载；生产应保持 False（reload=True 时 WORKERS 会被 uvicorn 忽略）
+    RELOAD: bool = False
+    # 上传图片大小上限（MB），超出直接拒绝，避免大文件占满内存
+    MAX_UPLOAD_MB: int = 20
+    # 严格启动：任一检测器预加载失败则拒绝启动（生产建议 True，避免带病运行、端点静默缺失）
+    STRICT_STARTUP: bool = False
 
     class Config:
         env_file = ".env"
