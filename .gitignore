@@ -28,3 +28,6 @@ CLAUDE.md
 demo/test/
 # 临时草稿文件
 test.md
+
+# Python 包构建产物（editable 安装生成）
+*.egg-info/
