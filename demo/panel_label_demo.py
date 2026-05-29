@@ -14,12 +14,13 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 sys.path.append("..")
+sys.path.append("../plugins/vie-plugin-panel-label")
 
 import cv2
 import numpy as np
 from pathlib import Path
 from loguru import logger
-from services.panel_label import OCRPipeline, PanelLabelJudgeApi, PRODUCT_guideline
+from vie_plugin_panel_label import OCRPipeline, PanelLabelJudgeApi, PRODUCT_guideline
 from config import settings
 from schemas import InputParamsBusiness
 
