@@ -39,11 +39,14 @@ UNKNOWN_MODEL_DIR = "_unknown_model"
 class BaseRouter(ABC):
     """路由基类，封装所有路由共有的功能"""
 
-    def __init__(self, router_name, api_path, summary, description, detector_type):
+    def __init__(self, router_name, api_path, summary, description, detector_type, tag=None):
         self.router = APIRouter()
         self.router_name = router_name
         self.instance = None
         self.detector_type = detector_type
+        # 路由自描述的 Swagger 分组标签；为空时由 RouterRegistry 回退到模块名映射。
+        # 让插件无需依赖框架 tag_map 即可声明中文分组名，保持框架对插件零知晓。
+        self.tag = tag
 
         self.router.post(
             api_path,

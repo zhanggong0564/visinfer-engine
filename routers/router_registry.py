@@ -94,16 +94,18 @@ class RouterRegistry:
                 router = attr.get_router()
                 if isinstance(router, APIRouter):
                     self.base_routers.append(attr)
-                    config = self._make_router_config(module_name)
+                    config = self._make_router_config(module_name, getattr(attr, "tag", None))
                     routers.append((module_name, router, config))
                     self.router_configs[module_name] = config
                     vision_logger.info(f"发现路由模块 {module_name}，标签为 {config['tags']}")
         return routers
 
-    def _make_router_config(self, module_name: str) -> Dict:
+    def _make_router_config(self, module_name: str, tag: str = None) -> Dict:
         return {
             "name": module_name,
-            "tags": [self._get_tag_from_filename(module_name)],
+            # 路由自带 tag 优先（插件可自描述其 Swagger 分组名，框架无需知晓具体插件）；
+            # 否则回退到按模块名映射，兼容存量目录发现的内置路由。
+            "tags": [tag or self._get_tag_from_filename(module_name)],
             "prefix": "/api/v1",
         }
 
