@@ -7,6 +7,9 @@
 @Description  :
 '''
 
+import time
+import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +24,19 @@ from routers import RouterRegistry
 import uvicorn
 from services import detection_factory
 
+# 路由注册器：导入期只发现/注册路由，模型预加载延后到 lifespan
+router_registry = RouterRegistry()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期钩子：startup 统一预加载模型，shutdown 预留清理位。"""
+    vision_logger.info("应用启动：开始预加载检测模型 ...")
+    router_registry.preload_all()
+    vision_logger.info(f"模型预加载完成，可用场景: {detection_factory.list_scenarios()}")
+    yield
+    vision_logger.info("应用关闭")
+
 
 # 创建FastAPI应用实例
 app = FastAPI(
@@ -30,18 +46,47 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    lifespan=lifespan,
 )
 
 # 配置CORS中间件
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # 生产环境应配置具体域名
-    allow_credentials=True,
+    # allow_origins="*" 与 allow_credentials=True 是浏览器禁止的非法组合，
+    # 这里关闭凭证；若需携带 cookie/凭证，请改为具体域名白名单并设为 True
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# 注册路由
-router_registry = RouterRegistry()
+
+
+@app.middleware("http")
+async def access_log_middleware(request: Request, call_next):
+    """统一访问日志钩子：为每个请求生成 request-id，记录耗时与状态码。
+
+    覆盖所有端点（含健康检查/异常），把计时与访问日志从各业务 handler 中抽离。
+    """
+    request_id = uuid.uuid4().hex[:12]
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        latency_ms = (time.perf_counter() - start) * 1000
+        vision_logger.exception(
+            f"[{request_id}] {request.method} {request.url.path} 异常 耗时={latency_ms:.1f}ms"
+        )
+        raise
+    latency_ms = (time.perf_counter() - start) * 1000
+    vision_logger.info(
+        f"[{request_id}] {request.method} {request.url.path} "
+        f"-> {response.status_code} 耗时={latency_ms:.1f}ms"
+    )
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
+# 注册路由（仅发现与注册，不加载模型）
 router_registry.register_all_routers(app, "routers")
 
 
@@ -130,15 +175,19 @@ def main():
     """应用启动入口"""
     vision_logger.info(f"启动 {settings.API_TITLE} v{settings.API_VERSION}")
 
-    uvicorn.run(
-        "app:app",
+    # reload=True 时 uvicorn 会忽略 workers，故二者按配置互斥：
+    # 开发用 RELOAD=True 单进程热重载；生产用 RELOAD=False + 多 WORKERS
+    run_kwargs = dict(
         host=settings.HOST,
         port=settings.PORT,
-        reload=True,  # 开发模式开启热重载
         log_level=settings.LOG_LEVEL.lower(),
         access_log=False,  # 禁用uvicorn的访问日志，使用自定义日志
-        workers=settings.WORKERS,
     )
+    if settings.RELOAD:
+        run_kwargs["reload"] = True
+    else:
+        run_kwargs["workers"] = settings.WORKERS
+    uvicorn.run("app:app", **run_kwargs)
 
 
 if __name__ == "__main__":

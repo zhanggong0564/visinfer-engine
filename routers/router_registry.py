@@ -12,6 +12,7 @@ import pkgutil
 import inspect
 from typing import Dict, List, Tuple
 from fastapi import APIRouter, FastAPI
+from config import settings
 from utils.logger import vision_logger
 from .base_router import BaseRouter
 
@@ -23,6 +24,8 @@ class RouterRegistry:
         """初始化路由注册器"""
         self.routers: Dict[str, APIRouter] = {}
         self.router_configs: Dict[str, Dict] = {}
+        # 发现到的 BaseRouter 实例，模型预加载延后到 lifespan 统一处理
+        self.base_routers: List[BaseRouter] = []
 
     def find_routers(self, package_name: str) -> List[Tuple[str, APIRouter, Dict]]:
         """
@@ -52,15 +55,10 @@ class RouterRegistry:
                         self.router_configs[module_name] = config
                         vision_logger.info(f"发现路由模块 {module_name}，标签为 {config['tags']}")
                     elif isinstance(attr, BaseRouter):
-                        try:
-                            detector = attr.get_detector_singleton()
-                            vision_logger.info(f"预加载 {attr.detector_type} 模型完成")
-                        except Exception as e:
-                            vision_logger.error(f"预加载 {attr.detector_type} 模型失败: {e}")
-                            continue
-
+                        # 只做路由发现/注册，重型模型加载延后到 preload_all（lifespan）
                         router = attr.get_router()
                         if isinstance(router, APIRouter):
+                            self.base_routers.append(attr)
                             config = self._make_router_config(module_name)
                             routers.append((module_name, router, config))
                             self.router_configs[module_name] = config
@@ -77,9 +75,44 @@ class RouterRegistry:
         }
 
     def _get_tag_from_filename(self, filename: str) -> str:
-        """根据文件名生成标签"""
-        tag_map = {'dc_fuse': '直流熔丝检测', 'indicator': '指示灯检测', 'lap_surf': '搭界面检测', 'plate': '铁片检测'}
+        """根据文件名生成标签。
+
+        注意：find_routers 传入的是模块名（如 'panel_routers'），故映射表需以实际
+        模块名为键；旧的裸场景名键保留以兼容历史调用。
+        """
+        tag_map = {
+            # 实际模块名（find_routers 传入的就是这个）
+            'panel_routers': '线标OCR检测',
+            'plate_routers': '铁片螺丝检测',
+            'dc_fuse_routers': '直流熔丝检测',
+            'indicator_routers': '指示灯检测',
+            'lap_surf_routers': '搭接面检测',
+            # 兼容历史裸场景名键
+            'dc_fuse': '直流熔丝检测',
+            'indicator': '指示灯检测',
+            'lap_surf': '搭界面检测',
+            'plate': '铁片检测',
+        }
         return tag_map.get(filename, filename.replace('_', ' ').title())
+
+    def preload_all(self) -> None:
+        """预加载所有 BaseRouter 的检测器模型。
+
+        应在应用 startup(lifespan) 阶段调用，把"重型模型加载"与"路由发现/导入"
+        解耦：导入期只构建路由，模型在服务启动时统一加载。
+        默认单个失败仅记录并跳过（对应端点首请求时再懒加载）；STRICT_STARTUP=True
+        时任一失败直接拒绝启动，避免服务"看似健康"却静默缺端点。
+        """
+        for br in self.base_routers:
+            try:
+                br.get_detector_singleton()
+                vision_logger.info(f"预加载 {br.detector_type} 模型完成")
+            except Exception as e:
+                vision_logger.exception(f"预加载 {br.detector_type} 模型失败: {e}")
+                if settings.STRICT_STARTUP:
+                    raise RuntimeError(
+                        f"严格启动模式下 {br.detector_type} 预加载失败，拒绝启动"
+                    ) from e
 
     def register_all_routers(self, app: FastAPI, package_name: str) -> int:
         """
