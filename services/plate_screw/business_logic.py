@@ -72,17 +72,13 @@ class PlateScrewJudgeApi(BusinessLogicBase):
                 original_error=e,
             )
 
-    def business_logic_post_process(self, result: DetectResult, product_type: str, rule: str = "all") -> MoMResult:
+    def business_post_process(self, ctx):
+        result = ctx.raw_result
         res = defaultdict(list)
         for box, cls, score, name in zip(result.boxes, result.class_ids, result.scores, result.class_names):
-            info = []
-            info.append(box)
-            info.append(score)
-            res[name].append(info)
-        results_contain = select_box(res, self.w, self.h)
-        res = self._judge_result(results_contain, True)
-        return res
-        # return results
+            res[name].append([box, score])
+        results_contain = select_box(res, ctx.w, ctx.h)
+        ctx.result = self._judge_result(results_contain, True)
 
     def _judge_result(self, results_contain, return_box=True):
         judge_result_info = MoMResult()
