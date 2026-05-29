@@ -64,7 +64,7 @@ class YoloOnnxInfer(BaseOnnxInfer):
             start = time.time()
             masks = process_mask(protos, mask_in, bboxes, input_shape)
             end = time.time()
-            vision_logger.info(f"process_mask: {end - start:.4f}秒")
+            vision_logger.debug(f"process_mask: {end - start:.4f}秒")
             start = time.time()
             if len(masks) != 0:
                 # masks = [scale_mask_fast(m, target_shape, top, bottom, left, right) for m in masks]
@@ -72,7 +72,7 @@ class YoloOnnxInfer(BaseOnnxInfer):
                     2, 0, 1
                 )
             end = time.time()
-            vision_logger.info(f"scale_masks: {end - start:.4f}秒")
+            vision_logger.debug(f"scale_masks: {end - start:.4f}秒")
 
             # masks = [scale_masks(mask, (image_shape[1], image_shape[0]), self.r, self.dw, self.dh) for mask in masks]
             start = time.time()
@@ -85,7 +85,7 @@ class YoloOnnxInfer(BaseOnnxInfer):
             # mask_polygons_gt = [segment for mask in masks for segment in masks2segments(mask)]
 
             end = time.time()
-            vision_logger.info(f"masks2segments: {end - start:.4f}秒")
+            vision_logger.debug(f"masks2segments: {end - start:.4f}秒")
 
         pred = np.concatenate([pred[:, :4], pred[:, -1:], pred[:, 4:6]], axis=-1)
         bbox = pred[:, :4]  # xywh
