@@ -8,12 +8,9 @@
 '''
 
 import cv2
-import random
 import numpy as np
 import base64
 from typing import List, Tuple, Any
-from concurrent.futures import ThreadPoolExecutor
-import time
 from utils import vision_logger
 
 
