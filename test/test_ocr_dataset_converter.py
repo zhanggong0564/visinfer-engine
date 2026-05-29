@@ -120,6 +120,31 @@ def test_rec_filename_format() -> None:
     assert rec_filename("IMG_2", "T1") == "IMG_2_rec_T1.png"
 
 
+def test_expand_box_ratio_zero_is_noop() -> None:
+    """ratio<=0 时原样返回。"""
+    import numpy as np
+    from tools.convert_ocr_dataset_to_ppocr import _expand_box
+
+    box = np.array([[10, 10], [110, 10], [110, 40], [10, 40]], dtype=np.float32)
+    assert np.array_equal(_expand_box(box, 0.0), box)
+
+
+def test_expand_box_grows_by_short_side_ratio() -> None:
+    """轴对齐框：宽高应各增长 2×ratio×短边，且仍居中。"""
+    import numpy as np
+    from tools.convert_ocr_dataset_to_ppocr import _expand_box
+
+    # 宽 100、高 30 的轴对齐框，短边=30，ratio=0.2 → 每边外扩 6px
+    box = np.array([[10, 10], [110, 10], [110, 40], [10, 40]], dtype=np.float32)
+    out = _expand_box(box, 0.2)
+
+    d = 0.2 * 30  # = 6
+    expected = np.array([[10 - d, 10 - d], [110 + d, 10 - d], [110 + d, 40 + d], [10 - d, 40 + d]], dtype=np.float32)
+    assert np.allclose(out, expected, atol=1e-4)
+    # 中心不变
+    assert np.allclose(out.mean(axis=0), box.mean(axis=0), atol=1e-4)
+
+
 def test_build_det_annotation_normal(tmp_path: Path) -> None:
     j = tmp_path / "a.json"
     _write_labelme(j, "a.jpg", [_make_shape("HELLO")])
@@ -312,7 +337,8 @@ def test_rec_crop_pixel_equality(rec_pipeline, rec_mini_dataset: Path, tmp_path:
         in_mem = process_rec_sample(s, rec_pipeline)
         if isinstance(in_mem, dict):
             continue
-        rotated, _text = in_mem
+        # 默认单比例（expand_ratios=(0.15,)）→ 单变体、文件名无标签
+        rotated, _text, _ratio = in_mem[0]
         png_path = rec_dir / "images" / rec_filename(s.original_stem, s.station_code)
         if not png_path.exists():
             continue
@@ -322,6 +348,33 @@ def test_rec_crop_pixel_equality(rec_pipeline, rec_mini_dataset: Path, tmp_path:
         assert np.array_equal(reloaded, rotated), f"pixel mismatch on {png_path}"
         checked += 1
     assert checked > 0, "no PNG was actually checked"
+
+
+def test_rec_multi_ratio_augmentation(rec_pipeline, rec_mini_dataset: Path, tmp_path: Path) -> None:
+    """多外扩比例：每条 strip 应按每个比例各产出一份带标签的 PNG。"""
+    from dataclasses import replace
+    from tools.convert_ocr_dataset_to_ppocr import write_rec_split, rec_filename
+
+    pipeline = replace(rec_pipeline, expand_ratios=(0.0, 0.15, 0.3))
+    samples = find_samples(rec_mini_dataset)
+    assert len(samples) == 6
+
+    rec_dir = tmp_path / "rec_aug"
+    stats, texts = write_rec_split(samples, pipeline, rec_dir, "train.txt")
+    if stats["kept"] == 0:
+        pytest.skip(f"no rec crops produced, stats={stats}")
+
+    # 通过的 strip 每条出 3 份；产出数应为 3 的倍数
+    assert stats["kept"] % 3 == 0
+    assert len(texts) == stats["kept"]
+
+    # 找一条产出齐全的 strip，验证三种标签文件名都在
+    for s in samples:
+        names = [rec_filename(s.original_stem, s.station_code, tag) for tag in ("e00", "e15", "e30")]
+        if all((rec_dir / "images" / n).exists() for n in names):
+            break
+    else:
+        pytest.fail("no strip produced all three e00/e15/e30 variants")
 
 
 def test_rec_skip_empty_description(rec_pipeline, tmp_path: Path) -> None:
@@ -345,6 +398,134 @@ def test_rec_skip_empty_description(rec_pipeline, tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 from tools.convert_ocr_dataset_to_ppocr import resplit_det_split, resplit_rec_split
+from tools.convert_ocr_dataset_to_ppocr import (
+    _get_mini_boxes,
+    _crop_by_quad,
+    _expand_box,
+)
+
+
+# ---------------------------------------------------------------------------
+# 像素级推理管线一致性测试：验证 convert tool 产出与 PaddleX 推理完全一致
+# ---------------------------------------------------------------------------
+
+
+def _make_labelme_json_for_polygon(
+    json_dir: Path, image_name: str, polygon: list, description: str = "TEST"
+) -> Path:
+    """在指定目录下创建 LabelMe JSON，points 为传入的 polygon。"""
+    json_dir.mkdir(parents=True, exist_ok=True)
+    json_path = json_dir / f"{Path(image_name).stem}.json"
+    _write_labelme(
+        json_path,
+        image_name,
+        [
+            {
+                "label": "text",
+                "score": 1.0,
+                "points": polygon,
+                "group_id": 0,
+                "description": description,
+                "difficult": False,
+                "shape_type": "polygon",
+                "flags": None,
+                "attributes": {},
+                "kie_linking": [],
+            }
+        ],
+    )
+    return json_path
+
+
+def _make_rec_dataset_for_polygon(
+    root: Path, station: str, stem: str, image_bytes: bytes, polygon: list, description: str = "TEST"
+) -> Path:
+    """创建完整的 crop_ocr 目录结构（images + jsons），返回 root。"""
+    d = root / "side" / station / "crop_ocr"
+    (d / "images").mkdir(parents=True)
+    img_path = d / "images" / f"{stem}.jpg"
+    img_path.write_bytes(image_bytes)
+    _make_labelme_json_for_polygon(d / "jsons", f"{stem}.jpg", polygon, description)
+    return root
+
+
+def test_rec_crop_matches_ppocr_api_with_mock_detection(rec_pipeline, tmp_path: Path) -> None:
+    """像素级验证：convert tool rec crop 与 PaddleX CropByPolys 严格一致。
+
+    路线 B：几何直接来自人工标注框，不做 DB unclip 外扩——人工框已贴合文字，
+    对应推理里 text_det 输出 dt_polys 的语义。convert tool 流程为
+    minAreaRect 规整 4 点 → _crop_by_quad + orient。
+
+    测试验证：对同一标注框，convert tool 的 _crop_by_quad 与推理用的 PaddleX
+    CropByPolys（喂入同一 minAreaRect box）逐像素一致，确保裁剪算子无偏差。
+
+    Path A: polygon → minAreaRect box → CropByPolys(PaddleX API) → orient
+    Path B: polygon → process_rec_sample(convert tool 管线)
+
+    如果任一像素不同，说明 convert tool 的裁剪算子与推理存在偏差。
+    """
+    import numpy as np
+    from paddlex.inference.pipelines.components import CropByPolys
+    from tools.convert_ocr_dataset_to_ppocr import process_rec_sample
+
+    # ---- 1. 构造合成图片和多边形标注（模拟手标轮廓） ----
+    polygon = [[30.0, 50.0], [370.0, 40.0], [380.0, 140.0], [20.0, 150.0]]
+
+    img = np.full((200, 400, 3), 255, dtype=np.uint8)
+    cv2.putText(img, "TEST123", (60, 120), cv2.FONT_HERSHEY_SIMPLEX, 1.8, (0, 0, 0), 4)
+    ok, buf = cv2.imencode(".jpg", img)
+    assert ok
+    image_bytes = buf.tobytes()
+
+    # ---- 2. minAreaRect 规整 4 点（与 process_rec_sample 一致，不 unclip） ----
+    image = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    pts = np.array([[int(round(float(p[0]))), int(round(float(p[1])))] for p in polygon], dtype=np.int32)
+    box, sside = _get_mini_boxes(pts.reshape(-1, 1, 2))
+    assert sside >= 3
+    box = np.array(box, dtype=np.float32)
+    # 与 process_rec_sample 一致地外扩，再喂给推理裁剪算子做等价对比
+    box = _expand_box(box, rec_pipeline.expand_ratios[0])
+
+    # ---- 3. Path A (推理裁剪算子): box → CropByPolys(PaddleX) → orient ----
+    crop_by_polys = CropByPolys(det_box_type="quad")
+    crops_infer = list(crop_by_polys(image, [box]))
+    assert len(crops_infer) >= 1
+    crop_infer = crops_infer[0]
+
+    orient_results = rec_pipeline.text_orient.predict([crop_infer])
+    angle = int(orient_results[0]["class_ids"][0])
+    crop_infer = cv2.rotate(crop_infer, cv2.ROTATE_180) if angle == 1 else crop_infer
+
+    # ---- 4. Path B (转换工具): process_rec_sample 管线 ----
+    root = _make_rec_dataset_for_polygon(tmp_path, "J46", "IMG_NOUNCLIP", image_bytes, polygon)
+    samples = find_samples(root)
+    assert len(samples) == 1
+
+    result_b = process_rec_sample(samples[0], rec_pipeline)
+    if isinstance(result_b, dict):
+        pytest.skip(f"convert tool skipped: {result_b['skip_reason']}")
+    crop_convert, text_convert, _ratio = result_b[0]
+
+    # ---- 5. 像素级对比 ----
+    assert crop_infer.shape == crop_convert.shape, (
+        f"shape mismatch: paddlex_api={crop_infer.shape} vs convert_tool={crop_convert.shape}"
+    )
+    if not np.array_equal(crop_infer, crop_convert):
+        diff = np.abs(crop_infer.astype(np.int32) - crop_convert.astype(np.int32))
+        max_diff = int(diff.max())
+        nonzero = int(np.count_nonzero(diff))
+        diff_dir = tmp_path / "diff_debug"
+        diff_dir.mkdir(exist_ok=True)
+        cv2.imwrite(str(diff_dir / "crop_infer_paddlex_api.png"), crop_infer)
+        cv2.imwrite(str(diff_dir / "crop_convert_tool.png"), crop_convert)
+        cv2.imwrite(str(diff_dir / "diff.png"), diff.astype(np.uint8))
+        pytest.fail(
+            f"pixel mismatch! max_diff={max_diff}, nonzero_pixels={nonzero} "
+            f"(saved debug images to {diff_dir})"
+        )
+
+    assert text_convert == "TEST", f"text mismatch: {text_convert}"
 
 
 def test_resplit_det_only_rewrites_labels(mini_dataset: Path, tmp_path: Path) -> None:
