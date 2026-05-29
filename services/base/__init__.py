@@ -9,6 +9,7 @@
 
 from .onnx_base import BaseOnnxInfer
 from .business_logic_base import BusinessLogicBase
+from .detector import Detector
 
 
-__all__ = ["BaseOnnxInfer", "BusinessLogicBase"]
+__all__ = ["BaseOnnxInfer", "BusinessLogicBase", "Detector"]
