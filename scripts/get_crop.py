@@ -14,7 +14,8 @@ import cv2
 from utils import vision_logger
 from services import rotate_points
 import numpy as np
-from services.panel_label import OCRPipelineCrop
+from vie_plugin_panel_label import OCRPipelineCrop
+from vie_plugin_panel_label.config import PanelLabelConfig
 from config import settings
 from schemas import InputParamsBusiness
 import json
@@ -28,11 +29,12 @@ if __name__ == '__main__':
     image_paths = list(Path(f"./demo/data/panel_label/{type}").glob("*.jpg"))
     positive_num = 0
     total_num = len(image_paths)
+    cfg = PanelLabelConfig()
     detector = OCRPipelineCrop(
-        settings.panel_label.model_path,
-        settings.panel_label.orient_model_path,
-        confThreshold=settings.panel_label.confThreshold,
-        nmsThreshold=settings.panel_label.nmsThreshold,
+        cfg.model_path,
+        cfg.orient_model_path,
+        confThreshold=cfg.confThreshold,
+        nmsThreshold=cfg.nmsThreshold,
     )
     for image_path in image_paths:
         image_src = cv2.imread(str(image_path))

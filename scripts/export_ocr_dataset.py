@@ -16,8 +16,9 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from services.panel_label.utils import Points_to_Mask
+from vie_plugin_panel_label.utils import Points_to_Mask
 from config import settings
+from vie_plugin_panel_label.config import PanelLabelConfig
 from paddleocr import TextDetection, TextLineOrientationClassification, TextRecognition
 from paddlex.inference.pipelines.components import CropByPolys
 
@@ -134,7 +135,7 @@ def process_image(image_src, stem, points_line, detectors, output_dirs):
 
 def init_detectors():
     """初始化 OCR 模型（参数与 OCRPipeline 一致，无需 YOLO）"""
-    cfg = settings.panel_label
+    cfg = PanelLabelConfig()
     text_det = TextDetection(
         model_name="PP-OCRv5_server_det",
         limit_side_len=cfg.text_det_limit_side_len,

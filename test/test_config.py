@@ -14,13 +14,7 @@ import pytest
 from unittest.mock import patch
 from config import settings
 from config.config import Settings
-from config.panel_label_config import PanelLabelConfig
 import os
-
-
-def test_panel_label_config_defaults():
-    assert settings.panel_label.model_path == "./weights/panel_label/best_v3.onnx"
-    assert settings.panel_label.confThreshold == 0.7
 
 
 def test_settings_defaults():
@@ -32,8 +26,6 @@ def test_settings_defaults():
         assert settings.LOG_DIR == "logs"
         assert settings.LOG_LEVEL == "INFO"
         assert settings.WORKERS == 1
-
-        assert isinstance(settings.panel_label, PanelLabelConfig)
 
 
 def test_settings_env_file():

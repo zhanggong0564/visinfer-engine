@@ -255,7 +255,7 @@ def rec_pipeline():
     pytest.importorskip("paddleocr")
     pytest.importorskip("paddlex")
     try:
-        from config.panel_label_config import PanelLabelConfig
+        from vie_plugin_panel_label.config import PanelLabelConfig
         from tools.convert_ocr_dataset_to_ppocr import build_rec_pipeline
     except Exception as e:
         pytest.skip(f"cannot import deps: {e}")
