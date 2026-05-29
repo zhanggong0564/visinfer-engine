@@ -346,7 +346,8 @@ def scale_masks(masks, shape, gain, dw, dh):
 
 def xywh2xyxy(x):
     # Convert bounding box (x, y, w, h) to bounding box (x1, y1, x2, y2)
-    y = np.empty_like(x)
+    # 用 copy 而非 empty_like，保留 conf/class 等额外列（仅覆盖前 4 列坐标）
+    y = np.copy(x)
     y[..., 0] = x[..., 0] - x[..., 2] / 2
     y[..., 1] = x[..., 1] - x[..., 3] / 2
     y[..., 2] = x[..., 0] + x[..., 2] / 2
