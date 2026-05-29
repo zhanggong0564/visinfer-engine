@@ -19,8 +19,8 @@ import os
 
 
 def test_panel_label_config_defaults():
-    assert settings.panel_label.model_path == "./weights/panel_label/best_v2.onnx"
-    assert settings.panel_label.confThreshold == 0.72
+    assert settings.panel_label.model_path == "./weights/panel_label/best_v3.onnx"
+    assert settings.panel_label.confThreshold == 0.7
 
 
 def test_settings_defaults():
