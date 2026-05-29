@@ -7,9 +7,8 @@
 @Description  :
 '''
 
-from .panel_label import PanelLabelJudgeApi
 from .utils import rotate_points
 from .api import detection_factory
 
 
-__all__ = ["PanelLabelJudgeApi", "rotate_points", "detection_factory"]
+__all__ = ["rotate_points", "detection_factory"]

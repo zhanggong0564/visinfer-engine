@@ -8,7 +8,6 @@
 '''
 
 from pydantic_settings import BaseSettings
-from .panel_label_config import PanelLabelConfig
 from .plate_screw_congfig import PlateScrewConfig
 
 
@@ -21,7 +20,6 @@ class Settings(BaseSettings):
 
     LOG_DIR: str = "logs"
     LOG_LEVEL: str = "INFO"
-    panel_label: PanelLabelConfig = PanelLabelConfig()
     # plate_screw 业务代码引用 settings.plate_screw，此处必须保持注册以避免运行时
     # AttributeError；启用端点还需取消 routers/plate_routers.py 中 router 实例的注释
     plate_screw: PlateScrewConfig = PlateScrewConfig()

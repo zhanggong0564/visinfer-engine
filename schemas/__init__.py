@@ -8,7 +8,6 @@
 '''
 
 from .common import CommonResponse, EmptyRequest
-from .panel_label_schemas import PanelLabelRequest
 from .data_base import *
 from .inference_context import InferenceContext, PreprocMeta
 from .error_codes import ErrorCode, ERROR_CODE_MESSAGES
@@ -22,7 +21,7 @@ from .exceptions import (
 )
 
 __all__ = [
-    "CommonResponse", "EmptyRequest", "DetectResult", "DetectionItem", "PanelLabelRequest",
+    "CommonResponse", "EmptyRequest", "DetectResult", "DetectionItem",
     "ErrorCode", "ERROR_CODE_MESSAGES",
     "VisionAPIError", "InvalidParamsError", "InvalidImageError",
     "ProductNotRegisteredError", "ModelInferenceError", "InternalError",
