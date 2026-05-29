@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import numpy as np
+from schemas.inference_context import InferenceContext
 from services.panel_label.business_logic import (
     PanelLabelJudgeApi,
     PanelInfo,
@@ -183,7 +184,7 @@ class TestPanelLabelAnalyze:
                 ],
                 confidence=[0.9, 0.8, 0.7],
             )
-            result = judge.analyze(observed, "TYPE1")
+            result = judge.analyze(observed, "TYPE1", rule="front")
             assert result.result is True
 
 
@@ -204,7 +205,7 @@ class TestGuidelineFilter:
                 texts=["KEEP"],
                 confidence=[0.9],
             )
-            filtered = judge.guideline_filter(results, "TYPE1")
+            filtered = judge.guideline_filter(results, "TYPE1", judge.w, judge.h)
             assert len(filtered.Points) == 1
             assert filtered.texts == ["KEEP"]
 
@@ -224,49 +225,65 @@ class TestGuidelineFilter:
                 texts=["DISCARD"],
                 confidence=[0.9],
             )
-            filtered = judge.guideline_filter(results, "TYPE1")
+            filtered = judge.guideline_filter(results, "TYPE1", judge.w, judge.h)
             assert len(filtered.Points) == 0
 
 
 class TestBusinessLogicPostProcess:
-    def test_success_scenario(self, judge, mock_product_type):
+    def test_success_scenario(self, judge, mock_product_type, mock_guideline):
         with patch(
             "services.panel_label.business_logic.PRODUCT_TYPE", mock_product_type
+        ), patch(
+            "services.panel_label.business_logic.PRODUCT_guideline", mock_guideline
         ):
+            # ROI: (0.1,0.1,0.8,0.8) * (w=1000,h=800) = rect(100,80,800,640)
+            # 坐标均位于 ROI 内部
             results = PanellabelItem(
                 Points=[
-                    [10, 20, 30, 40, 50, 60, 70, 80],
-                    [100, 200, 300, 400, 500, 600, 700, 800],
-                    [10, 200, 300, 200, 300, 400, 10, 400],
+                    [200, 200, 300, 200, 300, 300, 200, 300],
+                    [400, 200, 500, 200, 500, 300, 400, 300],
+                    [600, 200, 700, 200, 700, 300, 600, 300],
                 ],
                 index=[0, 1, 2],
                 class_id=[0, 0, 0],
                 texts=["LINE1/xxx", "LINE2/yyy", "LINE3/zzz"],
                 confidence=[0.95, 0.88, 0.72],
             )
-            mom = judge.business_logic_post_process(results, "TYPE1")
+            ctx = InferenceContext(image=np.zeros((judge.h, judge.w, 3), dtype=np.uint8),
+                                   h=judge.h, w=judge.w, product_type="TYPE1")
+            ctx.raw_result = results
+            judge.business_post_process(ctx)
+            mom = ctx.result
             assert mom.status is True
             assert mom.message == ErrorType.OK.value
             assert len(mom.detailList) == 3
             for item in mom.detailList:
                 assert item.status is True
 
-    def test_mismatch_items_have_false_status(self, judge, mock_product_type):
+    def test_mismatch_items_have_false_status(self, judge, mock_product_type, mock_guideline):
         with patch(
             "services.panel_label.business_logic.PRODUCT_TYPE", mock_product_type
+        ), patch(
+            "services.panel_label.business_logic.PRODUCT_guideline", mock_guideline
         ):
+            # ROI: (0.1,0.1,0.8,0.8) * (w=1000,h=800) = rect(100,80,800,640)
+            # 坐标均位于 ROI 内部
             results = PanellabelItem(
                 Points=[
-                    [10, 20, 30, 40, 50, 60, 70, 80],
-                    [100, 200, 300, 400, 500, 600, 700, 800],
-                    [10, 200, 300, 200, 300, 400, 10, 400],
+                    [200, 200, 300, 200, 300, 300, 200, 300],
+                    [400, 200, 500, 200, 500, 300, 400, 300],
+                    [600, 200, 700, 200, 700, 300, 600, 300],
                 ],
                 index=[0, 1, 2],
                 class_id=[0, 0, 0],
                 texts=["LINE1/xxx", "WRONG_DATA", "LINE3/zzz"],
                 confidence=[0.95, 0.88, 0.72],
             )
-            mom = judge.business_logic_post_process(results, "TYPE1")
+            ctx = InferenceContext(image=np.zeros((judge.h, judge.w, 3), dtype=np.uint8),
+                                   h=judge.h, w=judge.w, product_type="TYPE1")
+            ctx.raw_result = results
+            judge.business_post_process(ctx)
+            mom = ctx.result
             assert mom.status is False
             # 第1个和第3个正确，第2个错误
             assert mom.detailList[0].status is True

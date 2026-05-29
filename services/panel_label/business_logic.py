@@ -80,10 +80,10 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 original_error=e,
             )
 
-    def guideline_filter(self, results: PanellabelItem, product_type: str):
+    def guideline_filter(self, results: PanellabelItem, product_type: str, img_w: int, img_h: int):
         norm_rect = PRODUCT_guideline[product_type]
         x_norm, y_norm, w_norm, h_norm = norm_rect
-        rect = (int(x_norm * self.w), int(y_norm * self.h), int(w_norm * self.w), int(h_norm * self.h))
+        rect = (int(x_norm * img_w), int(y_norm * img_h), int(w_norm * img_w), int(h_norm * img_h))
         boxes = results.Points
         keep_indices = []
         for i, box in enumerate(boxes):
@@ -104,15 +104,16 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         )
         return filtered_results
 
-    def business_logic_post_process(self, results: PanellabelItem, product_type: str, rule: str = "all"):
+    def business_post_process(self, ctx):
+        product_type = ctx.product_type
         if product_type not in PRODUCT_TYPE or product_type not in PRODUCT_guideline:
             raise ProductNotRegisteredError(
                 f"产品型号 '{product_type}' 未在 panel_label PRODUCT_TYPE 中注册",
                 product_type=product_type,
                 scenario="panel_label",
             )
-        results = self.guideline_filter(results, product_type)
-        panel_info = self.analyze(results, product_type, rule)
+        results = self.guideline_filter(ctx.raw_result, product_type, ctx.w, ctx.h)
+        panel_info = self.analyze(results, product_type, ctx.rule)
         mom_result = MoMResult()
         mom_result.status = panel_info.result
         mom_result.message = panel_info.message
@@ -129,7 +130,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 )
             )
         mom_result.detailList = data_list
-        return mom_result
+        ctx.result = mom_result
 
     @staticmethod
     def _fix_slash_misrecognition(text: str) -> str:
