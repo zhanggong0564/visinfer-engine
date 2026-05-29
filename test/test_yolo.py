@@ -29,9 +29,7 @@ class TestYoloOnnxInfer:
             model = YoloOnnxInfer(model_path="fake_model.onnx", nc=80, confThreshold=0.5, nmsThreshold=0.5, task="det")
             # 模拟必要属性
             model._input_model_shape = (1, 3, 640, 640)
-            model.image_src_shape = (480, 640, 3)
             model.id2name = {i: f"class_{i}" for i in range(80)}
-            model.ori_img = np.zeros((480, 640, 3), dtype=np.uint8)
 
             return model
 
@@ -44,26 +42,21 @@ class TestYoloOnnxInfer:
         assert mock_model.agnostic is False
         assert mock_model.filter_classes is None
 
-    def test_preprocess_output_shape(self, mock_model):
-        """测试预处理输出形状"""
-        # 模拟输入图像 (H, W, C)
+    def test_preprocess_returns_tensor_and_meta(self, mock_model):
+        """测试预处理返回 (tensor, PreprocMeta) 元组"""
+        from schemas.inference_context import PreprocMeta
         input_image = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-
         with patch("services.yolo.letterbox") as mock_letterbox:
             mock_letterbox.return_value = (
-                np.zeros((640, 640, 3), dtype=np.uint8),  # 处理后图像
-                1.0,  # ratio
-                0,  # dw
-                0,  # dh
+                np.zeros((640, 640, 3), dtype=np.uint8), 1.0, 0, 0,
             )
-
-            output = mock_model.preprocess(input_image)
-
-        # 验证输出形状 (B, C, H, W)
-        assert output.shape == (1, 3, 640, 640)
-        assert output.dtype == np.float32
-        assert output.max() <= 1.0
-        assert output.min() >= 0.0
+            tensor, meta = mock_model.preprocess(input_image)
+        assert tensor.shape == (1, 3, 640, 640)
+        assert tensor.dtype == np.float32
+        assert tensor.max() <= 1.0 and tensor.min() >= 0.0
+        assert isinstance(meta, PreprocMeta)
+        assert meta.r == 1.0
+        assert meta.src_shape == (480, 640, 3)
 
     def test_preprocess_normalization(self, mock_model):
         """测试预处理归一化"""
@@ -73,10 +66,10 @@ class TestYoloOnnxInfer:
         with patch("services.yolo.letterbox") as mock_letterbox:
             mock_letterbox.return_value = (np.ones((640, 640, 3), dtype=np.uint8) * 255, 1.0, 0, 0)
 
-            output = mock_model.preprocess(white_image)
+            tensor, _ = mock_model.preprocess(white_image)
 
         # 归一化后应接近 1.0
-        assert np.allclose(output, 1.0)
+        assert np.allclose(tensor, 1.0)
 
     @patch("services.yolo.non_max_suppression_v8")
     @patch("services.yolo.scale_boxes")
@@ -95,7 +88,11 @@ class TestYoloOnnxInfer:
         # 模拟模型输出
         preds = [np.random.rand(1, 84, 8400)]
 
-        result = mock_model.post_process(preds)
+        from schemas.inference_context import PreprocMeta
+        meta = PreprocMeta(r=1.0, dw=0, dh=0, src_shape=(480, 640, 3),
+                           ori_img=np.zeros((480, 640, 3), dtype=np.uint8))
+
+        result = mock_model.post_process(preds, meta)
 
         # 验证返回结构
         assert hasattr(result, "boxes")
@@ -127,7 +124,11 @@ class TestYoloOnnxInfer:
 
         preds = [np.random.rand(1, 84, 8400)]
 
-        result = mock_model.post_process(preds)
+        from schemas.inference_context import PreprocMeta
+        meta = PreprocMeta(r=1.0, dw=0, dh=0, src_shape=(480, 640, 3),
+                           ori_img=np.zeros((480, 640, 3), dtype=np.uint8))
+
+        result = mock_model.post_process(preds, meta)
 
         # 验证调用了旋转框转换
         mock_xywhr.assert_called_once()
@@ -143,7 +144,11 @@ class TestYoloOnnxInfer:
 
         preds = [np.random.rand(1, 84, 8400)]
 
-        result = mock_model.post_process(preds)
+        from schemas.inference_context import PreprocMeta
+        meta = PreprocMeta(r=1.0, dw=0, dh=0, src_shape=(480, 640, 3),
+                           ori_img=np.zeros((480, 640, 3), dtype=np.uint8))
+
+        result = mock_model.post_process(preds, meta)
 
         assert len(result.boxes) == 0
         assert len(result.scores) == 0

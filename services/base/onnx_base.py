@@ -32,9 +32,6 @@ class BaseOnnxInfer:
             else:
                 providers = ["CPUExecutionProvider"]
         self.providers = providers
-        self.r = None
-        self.dw = None
-        self.dh = None
 
         # 初始化模型
         self._initialize_session(model_path)
@@ -75,23 +72,27 @@ class BaseOnnxInfer:
         vision_logger.info(f"预热时间: {end - start:.4f}秒")
 
     def preprocess(self, im):
-        raise NotImplementedError("preprecess method must be implemented in subclass")
-
-    def post_process(self, output_data) -> DetectResult:
-        """后处理模型输出结果
-
-        注意：这个方法需要在子类中具体实现
-
-        Args:
-            result: 模型输出结果
+        """预处理输入图像（子类实现）。
 
         Returns:
-            DetectResult: 处理后的结果，包含rect、score、cls等键值对
+            tuple: (模型输入张量 np.ndarray, PreprocMeta)
+        """
+        raise NotImplementedError("preprecess method must be implemented in subclass")
+
+    def post_process(self, output_data, meta) -> DetectResult:
+        """后处理模型输出结果（子类实现）。
+
+        Args:
+            output_data: 模型原始输出
+            meta (PreprocMeta): 预处理产生的每请求缩放/原图元数据
+
+        Returns:
+            DetectResult: 处理后的结果
         """
         raise NotImplementedError("post_process method must be implemented in subclass")
 
     def infer(self, img: np.ndarray) -> DetectResult:
-        """执行推理过程
+        """执行推理过程（无状态：每请求态走局部 meta，不写 self）。
 
         Args:
             img (np.ndarray): 输入图像
@@ -100,19 +101,19 @@ class BaseOnnxInfer:
             DetectResult: 推理结果
         """
         try:
-            # 仅分割任务的后处理需要原图，其余任务存引用即可，避免每请求复制整张大图
-            self.ori_img = img.copy() if getattr(self, "task", None) == "seg" else img
-            self.image_src_shape = img.shape
+            # 仅分割任务后处理需要原图，其余存引用即可，避免每请求复制整张大图
+            ori_img = img.copy() if getattr(self, "task", None) == "seg" else img
             start = time.time()
-            img = self.preprocess(img)
+            tensor, meta = self.preprocess(img)
+            meta.ori_img = ori_img
             end = time.time()
             vision_logger.debug(f"YOLO预处理时间: {end - start:.4f}秒")
             start = time.time()
-            outputs = self.session.run(self.output_names, {self.input_names[0]: img})
+            outputs = self.session.run(self.output_names, {self.input_names[0]: tensor})
             end = time.time()
             vision_logger.debug(f"YOLO推理时间: {end - start:.4f}秒")
             start = time.time()
-            result = self.post_process(outputs)
+            result = self.post_process(outputs, meta)
             end = time.time()
             vision_logger.debug(f"YOLO后处理时间: {end - start:.4f}秒")
             return result
