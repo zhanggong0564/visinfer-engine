@@ -2,7 +2,17 @@
 @Author       : zhanggong
 @Date         : 2026-01-07 09:54:40
 @Description  : 一键加密 services/ 目录并生成 encrypted/ 部署包
+
+[已弃用 / DEPRECATED] 场景插件化后业务逻辑迁至 plugins/，本脚本仅加密 services/，
+不再覆盖 5 个插件，产出的 encrypted/ 会缺失这些场景。请改用二进制 wheel 构建：
+
+    python scripts/build_wheels.py --no-isolation     # 产出 dist/*.whl(.so)
+
+部署见 PACKAGING.md。本脚本仅保留供 plate_screw 等仍在 services/ 的历史排查参考。
 '''
+import sys
+
+print(__doc__, file=sys.stderr)
 
 import os
 import shutil
