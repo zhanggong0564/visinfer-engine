@@ -1,7 +1,7 @@
 '''
 @Description : 线标检测接口的 HTTP 测试客户端
               对应路由：POST /api/v1/panel_label_detect
-              使用：python demo/panel_label_client.py --image <图片路径> --product-type 1017KM1_1
+              使用：python scripts/panel_label_client.py --image <图片路径> --product-type 1017KM1_1
 '''
 
 import argparse
