@@ -165,9 +165,7 @@ class RecPipeline:
     orient_batch_size: int = 64
 
 
-def build_rec_pipeline(
-    config, expand_ratios: tuple[float, ...] = (0.15,), orient_batch_size: int = 64
-) -> RecPipeline:
+def build_rec_pipeline(config, expand_ratios: tuple[float, ...] = (0.15,), orient_batch_size: int = 64) -> RecPipeline:
     """根据 PanelLabelConfig 实例化方向分类组件。
 
     参数 config: 一个具备 orient_model_path 属性的对象。
@@ -330,9 +328,7 @@ def extract_rec_crops(
     if image is None:
         return {"skip_reason": "image-unreadable"}
 
-    pts = np.array(
-        [[int(round(float(p[0]))), int(round(float(p[1])))] for p in shape["points"]], dtype=np.int32
-    )
+    pts = np.array([[int(round(float(p[0]))), int(round(float(p[1])))] for p in shape["points"]], dtype=np.int32)
 
     # minAreaRect of raw polygon → 规整的 4 点 quad
     box, sside = _get_mini_boxes(pts.reshape(-1, 1, 2))
@@ -516,7 +512,7 @@ def resplit_rec_split(samples: list[Sample], rec_dir: Path, split_filename: str)
             variants = sorted(
                 p
                 for p in images_out.glob(f"{prefix}*.png")
-                if (rem := p.stem[len(prefix):]) == "" or rem.startswith("_")
+                if (rem := p.stem[len(prefix) :]) == "" or rem.startswith("_")
             )
             if not variants:
                 missing += 1
@@ -550,6 +546,7 @@ def main() -> None:
     parser.add_argument("--mode", choices=("all", "det-only", "rec-only", "resplit-only"), default="all")
     parser.add_argument(
         "--rec-expand-ratios",
+        "-r",
         type=float,
         nargs="+",
         default=[0.15],
@@ -558,6 +555,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--rec-batch-size",
+        "-b",
         type=int,
         default=64,
         help="rec 方向分类批量大小（跨样本统一推理时的分块尺寸）",
