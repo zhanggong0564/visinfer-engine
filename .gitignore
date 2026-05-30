@@ -26,8 +26,13 @@ CLAUDE.md
 
 # 测试数据目录（含可视化图像、报告、PDF 等大型二进制文件）
 demo/test/
-# 临时草稿文件
-test.md
+
+# 本地数据集（OCR 示例/训练数据，含大型二进制）
+datasets/
+# 草稿/调试产物归拢目录
+.scratch/
+# 脚本运行输出
+output/
 
 # Python 包构建产物（editable 安装生成）
 *.egg-info/
