@@ -145,3 +145,5 @@ class InputParamsBusiness:
     product_type: str = ""
     is_registered: bool = False
     rule: str = "all"
+    # 注册/比对类场景（如指示灯）的第二输入：注册参考图，默认空数组
+    registered: np.ndarray = field(default_factory=lambda: np.array([]))

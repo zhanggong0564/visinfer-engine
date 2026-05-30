@@ -18,6 +18,7 @@ class InferenceContext:
     product_type: str = ""
     rule: str = "all"
     is_registered: bool = False
+    registered: Optional[np.ndarray] = None  # 注册/比对类场景的第二输入（注册参考图）
     # 阶段产物
     raw_result: Any = None        # detector.infer 的输出
     result: Any = None            # 业务后处理输出 (MoMResult / bool ...)
