@@ -38,15 +38,21 @@ env
 logs
 **/logs
 *.log
-encrypted/logs
+
+# --- 构建产物（builder 内现编现装，宿主机产物不入 context） ---
+build
+dist
+*.egg-info
+encrypted
 
 # --- 测试与本地调试 ---
 test
 tests
 demo
-encrypted/demo
 **/data
-encrypted/data
+.scratch
+datasets
+output
 
 # --- 文档与说明 ---
 *.md

@@ -26,6 +26,7 @@ RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g; s@//secur
     && apt-get install -y --no-install-recommends \
         python3.10 \
         python3.10-venv \
+        python3.10-dev \
         python3-pip \
         build-essential \
         libgomp1 \
@@ -53,6 +54,25 @@ RUN pip install --upgrade pip setuptools wheel \
     && pip install decorator astor "opt_einsum==3.3.0" networkx protobuf \
     && pip install /tmp/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl --force-reinstall
 
+# ---------- 编译加密：框架 + 全部场景插件 → 二进制 wheel(.so) ----------
+# 业务模块经 Cython 编译为 .so 后以 wheel 安装进 venv，镜像内不落明文业务源码。
+# 与宿主机 scripts/build_wheels.py 同一流程；cp310 ABI 与 base image 天然匹配。
+RUN pip install "Cython>=3"
+
+WORKDIR /build
+# 仅复制构建 wheel 所需源码（不含 weights/app.py 等运行期产物，最大化缓存）
+COPY pyproject.toml setup.py ./
+COPY services/ ./services/
+COPY schemas/ ./schemas/
+COPY routers/ ./routers/
+COPY utils/ ./utils/
+COPY config/ ./config/
+COPY plugins/ ./plugins/
+COPY scripts/build_wheels.py ./scripts/build_wheels.py
+
+RUN python scripts/build_wheels.py --no-isolation \
+    && pip install dist/vie_framework-*.whl dist/vie_plugin_*.whl
+
 # ---------- Stage 2: runtime ----------
 FROM ${BASE_IMAGE} AS runtime
 
@@ -60,6 +80,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    RELOAD=False \
     TZ=Asia/Shanghai \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
@@ -97,8 +118,10 @@ RUN groupadd --system --gid 1000 appuser \
 
 WORKDIR /app/workspace
 
-# 最后复制业务代码（最易变化层放最后，最大化缓存命中）
-COPY --chown=appuser:appuser ./encrypted /app/workspace
+# 业务代码已作为 .so 随 venv 装入 site-packages（见 builder 编译加密阶段），
+# 运行期工作目录仅需：启动器 app.py + 模型权重 weights/（路径相对 cwd）。
+COPY --chown=appuser:appuser app.py /app/workspace/app.py
+COPY --chown=appuser:appuser weights /app/workspace/weights
 
 USER appuser
 
