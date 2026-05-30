@@ -2,18 +2,18 @@
 可视化 PaddleOCR 检测数据集标注框。
 
 用法：
-    # 可视化 train.txt 前 10 张，输出到 vis_output/
-    python tools/vis_ocr_det_dataset.py
+    # 可视化 train.txt 前 10 张，输出到 output/vis_ocr/
+    python scripts/vis_ocr_det_dataset.py
 
     # 指定标注文件、数据集根目录、输出目录、数量
-    python tools/vis_ocr_det_dataset.py \
-        --label_file ocr_det_dataset_examples/train.txt \
-        --data_dir   ocr_det_dataset_examples \
-        --output_dir vis_ocr_output \
+    python scripts/vis_ocr_det_dataset.py \
+        --label_file datasets/ocr_det_dataset_examples/train.txt \
+        --data_dir   datasets/ocr_det_dataset_examples \
+        --output_dir output/vis_ocr \
         --num        20
 
     # 可视化全部，显示窗口而不保存
-    python tools/vis_ocr_det_dataset.py --show --num -1
+    python scripts/vis_ocr_det_dataset.py --show --num -1
 """
 
 import argparse
@@ -118,19 +118,19 @@ def visualize(label_file: str, data_dir: str, output_dir: str,
 
 def main():
     ap = argparse.ArgumentParser(description="可视化 PaddleOCR 检测数据集")
-    ap.add_argument("--label_file", default="ocr_det_dataset_examples/train.txt",
-                    help="标注文件路径（默认: ocr_det_dataset_examples/train.txt）")
-    ap.add_argument("--data_dir", default="ocr_det_dataset_examples",
-                    help="数据集根目录，图片路径以此为基准（默认: ocr_det_dataset_examples）")
-    ap.add_argument("--output_dir", default="vis_ocr_output",
-                    help="可视化结果输出目录（默认: vis_ocr_output）")
+    ap.add_argument("--label_file", default="datasets/ocr_det_dataset_examples/train.txt",
+                    help="标注文件路径（默认: datasets/ocr_det_dataset_examples/train.txt）")
+    ap.add_argument("--data_dir", default="datasets/ocr_det_dataset_examples",
+                    help="数据集根目录，图片路径以此为基准（默认: datasets/ocr_det_dataset_examples）")
+    ap.add_argument("--output_dir", default="output/vis_ocr",
+                    help="可视化结果输出目录（默认: output/vis_ocr）")
     ap.add_argument("--num", type=int, default=10,
                     help="可视化图片数量，-1 表示全部（默认: 10）")
     ap.add_argument("--show", action="store_true",
                     help="用窗口显示而不保存，按 Q/ESC 退出，任意键下一张")
     args = ap.parse_args()
 
-    # 脚本可从项目根目录或 tools/ 目录运行
+    # 脚本可从项目根目录或 scripts/ 目录运行
     script_dir  = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
 
