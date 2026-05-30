@@ -47,6 +47,7 @@ class BusinessLogicBase:
             product_type=params.product_type,
             rule=params.rule,
             is_registered=params.is_registered,
+            registered=params.registered,
         )
 
     def preprocess_hook(self, ctx: InferenceContext) -> None:
