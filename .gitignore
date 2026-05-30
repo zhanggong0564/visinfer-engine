@@ -31,3 +31,6 @@ test.md
 
 # Python 包构建产物（editable 安装生成）
 *.egg-info/
+
+# VSCode 个人工作区配置
+.vscode/
