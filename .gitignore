@@ -39,3 +39,8 @@ output/
 
 # VSCode 个人工作区配置
 .vscode/
+
+# 二进制 wheel 构建产物
+build/
+dist/
+**.c
