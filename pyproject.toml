@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61", "Cython>=3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vie-framework"
+version = "1.1.6"
+description = "VisInfer Engine 框架本体（services/schemas/routers/utils/config，含未插件化的 plate_screw）"
+requires-python = ">=3.10"
+# 运行期第三方依赖（fastapi/onnxruntime/loguru 等）由 requirements.txt 统一安装，
+# 此处不重复声明以免双份版本维护；插件 wheel 通过 name "vie-framework" 依赖本包。
+dependencies = []
+
+# 包发现与 cython 编译在 setup.py 中处理（ext_modules + build_py 覆盖）。
