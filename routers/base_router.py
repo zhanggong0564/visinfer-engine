@@ -80,9 +80,27 @@ class BaseRouter(ABC):
         image, is_rotate = await self._process_image(file)
         inputs = self.get_inputs(request_params, image)
         detector = self.get_detector_singleton()
+        fallback_product_type = self._extract_product_type(request_params)
         start = time.time()
         # detect 是同步 CPU/GPU 密集操作，丢到线程池执行，避免阻塞事件循环
-        result_info = await run_in_threadpool(detector.detect, inputs)
+        try:
+            result_info = await run_in_threadpool(detector.detect, inputs)
+        except Exception as exc:
+            # 检测失败（如型号未注册）也要落盘：数据回流的核心价值之一就是
+            # 收集这些"没见过"的新型号样本去标注、补型号。异常会跳过下方
+            # background_tasks 注册，故此处内联落盘后再重抛，交全局异常处理器响应。
+            latency_ms = (time.time() - start) * 1000
+            await run_in_threadpool(
+                self._persist_record,
+                image=image,
+                original_filename=original_filename,
+                raw_json=json_data,
+                result_dict={"error": str(exc)},
+                latency_ms=latency_ms,
+                received_at=received_at,
+                fallback_product_type=fallback_product_type,
+            )
+            raise
         end = time.time()
         latency_ms = (end - start) * 1000
         vision_logger.info(f"检测耗时：{end - start}秒")
@@ -107,7 +125,7 @@ class BaseRouter(ABC):
             result_dict=result_dict,
             latency_ms=latency_ms,
             received_at=received_at,
-            fallback_product_type=self._extract_product_type(request_params),
+            fallback_product_type=fallback_product_type,
         )
         return result
 
