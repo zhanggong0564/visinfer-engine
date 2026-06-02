@@ -11,12 +11,13 @@ wheel 内无明文业务源码，`pip install` 即注册（含 `entry_points`）
 
 | Wheel | 内容 | 说明 |
 |---|---|---|
-| `vie_framework-*.whl` | services / schemas / routers / utils / config（均 `.so`） | 框架本体，含未插件化的 plate_screw |
+| `vie_framework-*.whl` | services / schemas / routers / utils / config（均 `.so`） | 框架本体，不含任何场景，仅提供基类与插件发现机制 |
 | `vie_plugin_dc_fuse-*.whl` | dc_fuse 场景（`.so` + entry_point） | 直流熔丝 |
 | `vie_plugin_indicator_light-*.whl` | indicator_light 场景 | 指示灯 |
 | `vie_plugin_lap_surf-*.whl` | lap_surf 场景 | 搭接面 |
 | `vie_plugin_line_squeeze-*.whl` | line_squeeze 场景 | 线序 |
 | `vie_plugin_panel_label-*.whl` | panel_label 场景 | 线标 OCR |
+| `vie_plugin_plate_screw-*.whl` | plate_screw 场景 | 铁片螺丝 |
 
 每个 wheel 仅含各包 `__init__.py`（纯 py 胶水）+ `.so` + 元数据，**无业务 `.py`、无 `.c`**。
 
@@ -28,7 +29,7 @@ wheel 内无明文业务源码，`pip install` 即注册（含 `entry_points`）
 已装 `Cython>=3`、`setuptools>=61`、`wheel`、`gcc`。
 
 ```bash
-# 仓库根目录，一键构建全部 6 个 wheel 到 dist/
+# 仓库根目录，一键构建全部 7 个 wheel（1 框架 + 6 插件）到 dist/
 python scripts/build_wheels.py --no-isolation
 # 产物：dist/vie_framework-*.whl, dist/vie_plugin_*.whl
 ```
@@ -53,9 +54,9 @@ pip install dist/vie_framework-*.whl dist/vie_plugin_*.whl
 
 # 4) 启动（生产建议 reload=False）
 python app.py
-# 启动后框架通过 entry_points 自动发现 5 个插件并挂载路由：
+# 启动后框架通过 entry_points 自动发现 6 个插件并挂载路由：
 #   /api/v1/dcfuse_detect /api/v1/indicator_light_detect /api/v1/lap_surf_detect
-#   /api/v1/line_squeeze_recognition /api/v1/panel_label_detect
+#   /api/v1/line_squeeze_recognition /api/v1/panel_label_detect /api/v1/plate_screw_detect
 ```
 
 **只部分场景上线**：只 `pip install` 需要的插件 wheel 即可，框架只挂载已安装插件的路由。
