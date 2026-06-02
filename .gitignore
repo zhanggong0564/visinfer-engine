@@ -48,3 +48,4 @@ dist/
 # 场景插件单独仓库维护，框架仓库不跟踪 plugins/
 # 各 plugins/vie-plugin-* 为独立 git 仓库，通过 pip install -e 加载
 plugins/
+**.pyc
