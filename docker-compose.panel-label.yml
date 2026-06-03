@@ -1,0 +1,54 @@
+# =========================================================
+# VisInfer Engine (VIE) - 精简编排：仅 panel_label（线标 OCR）场景
+#
+# 构建并启动：  docker compose -f docker-compose.panel-label.yml up -d --build
+# 查看日志：    docker compose -f docker-compose.panel-label.yml logs -f
+# 停止：        docker compose -f docker-compose.panel-label.yml down
+#
+# 与主 docker-compose.yml 的唯一区别：dockerfile 指向 Dockerfile.panel-label，
+# 镜像/容器名加 -panel-label 后缀以便与全量镜像共存。
+# =========================================================
+
+services:
+  mobile-vision-panel-label:
+    build:
+      context: .
+      dockerfile: Dockerfile.panel-label
+    image: mobile_vision:panel-label
+    container_name: mobile-vision-panel-label
+
+    ports:
+      - "3007:3007"
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    environment:
+      - TZ=Asia/Shanghai
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+    volumes:
+      - ./logs:/app/workspace/logs
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3007/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+
+    shm_size: "2gb"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
