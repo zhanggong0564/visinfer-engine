@@ -2,7 +2,7 @@
 @Description : 推理链路每请求上下文与检测器私有缩放元数据
 '''
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional, Tuple
 
 import numpy as np
@@ -19,6 +19,8 @@ class InferenceContext:
     rule: str = "all"
     is_registered: bool = False
     registered: Optional[np.ndarray] = None  # 注册/比对类场景的第二输入（注册参考图）
+    # 场景私有的请求级参数透传袋（由 InputParamsBusiness.extra 原样带入，框架不解释）。
+    extra: dict = field(default_factory=dict)
     # 阶段产物
     raw_result: Any = None        # detector.infer 的输出
     result: Any = None            # 业务后处理输出 (MoMResult / bool ...)

@@ -147,3 +147,6 @@ class InputParamsBusiness:
     rule: str = "all"
     # 注册/比对类场景（如指示灯）的第二输入：注册参考图，默认空数组
     registered: np.ndarray = field(default_factory=lambda: np.array([]))
+    # 场景私有的请求级参数透传袋（框架不解释内容，原样交给各场景业务层）。
+    # 例：panel_label 用它携带 standard_result / guideline 等随请求下发的判定基准。
+    extra: dict = field(default_factory=dict)
