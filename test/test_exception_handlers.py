@@ -145,7 +145,7 @@ class TestBaseRouterExceptionTranslation:
     def test_invalid_image_bytes(self, real_app_client):
         """图片字节不可解码 → code=1002"""
         files = {"file": ("test.jpg", b"definitely_not_an_image", "image/jpeg")}
-        data = {"json_data": '{"product": "wind_power", "type": "1017KM1_1", "modelParams": {"product_type": "1017KM1_1"}}'}
+        data = {"json_data": '{"product": "wind_power", "type": "1017KM1_1", "modelParams": {"product_type": "1017KM1_1", "line_order": "1017KM1-1", "guideline_coordinates": "0.1,0.1,0.8,0.8"}}'}
         resp = real_app_client.post("/api/v1/panel_label_detect", files=files, data=data)
         assert resp.status_code == 200
         body = resp.json()
