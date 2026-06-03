@@ -155,6 +155,47 @@ class TestYoloOnnxInfer:
         assert len(result.class_ids) == 0
         assert len(result.class_names) == 0
 
+    @patch("services.yolo.masks2segments_with_boxes")
+    @patch("services.yolo.scale_masks")
+    @patch("services.yolo.process_mask")
+    @patch("services.yolo.non_max_suppression_v8")
+    @patch("services.yolo.scale_boxes")
+    def test_post_process_seg_drops_degenerate_mask_keeps_others(
+        self, mock_scale_boxes, mock_nms, mock_process_mask, mock_scale_masks, mock_m2s, mock_model
+    ):
+        """seg: 个别掩膜退化(0 轮廓)时应丢弃该检测并保留其余，而非作废整帧。"""
+        mock_model.task = "seg"
+        # 两个检测，列含 mask 系数：[x,y,x,y,conf,cls, c1, c2]
+        mock_pred = np.array(
+            [
+                [100, 100, 200, 200, 0.9, 0, 0.1, 0.2],
+                [300, 300, 400, 400, 0.8, 0, 0.1, 0.2],
+            ]
+        )
+        mock_nms.return_value = [mock_pred]
+        mock_scale_boxes.return_value = mock_pred[:, :4]
+        mock_process_mask.return_value = np.zeros((2, 160, 160), dtype=np.uint8)
+        # scale_masks 返回 (H, W, N)，post_process 会 .transpose(2, 0, 1)
+        mock_scale_masks.return_value = np.zeros((480, 640, 2), dtype=np.uint8)
+        seg0 = np.array([[100, 100], [200, 100], [200, 200], [100, 200]], dtype=np.float32)
+        # 第一个检测有有效轮廓，第二个掩膜退化返回空
+        mock_m2s.side_effect = [[seg0], []]
+
+        preds = [np.zeros((1, 38, 8400), dtype=np.float32), np.zeros((1, 32, 160, 160), dtype=np.float32)]
+
+        from schemas.inference_context import PreprocMeta
+        meta = PreprocMeta(r=1.0, dw=0, dh=0, src_shape=(480, 640, 3),
+                           ori_img=np.zeros((480, 640, 3), dtype=np.uint8))
+
+        result = mock_model.post_process(preds, meta)
+
+        # 退化的检测被丢弃，有效检测保留，且各字段长度严格对齐
+        assert len(result.mask_polygons) == 1
+        assert len(result.boxes) == 1
+        assert len(result.scores) == 1
+        assert len(result.class_ids) == 1
+        assert len(result.masks) == 1
+
     def test_class_name_mapping(self, mock_model):
         """测试类别名称映射"""
         assert mock_model.id2name[0] == "class_0"
