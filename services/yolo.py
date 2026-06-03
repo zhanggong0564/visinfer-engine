@@ -74,12 +74,25 @@ class YoloOnnxInfer(BaseOnnxInfer):
             end = time.time()
             vision_logger.debug(f"scale_masks: {end - start:.4f}秒")
             start = time.time()
-            mask_polygons = [
-                segment for mask, box in zip(masks, pred[:, :4]) for segment in masks2segments_with_boxes(mask, box)
-            ]
-            if len(mask_polygons) != len(pred[:, :4]):
-                vision_logger.error(f"mask_polygons len: {len(mask_polygons)}, pred len: {len(pred[:, :4])}")
-                return DetectResult()
+            # 逐检测提取掩膜多边形：轮廓退化（空掩膜/面积过小）的检测单独丢弃，
+            # 并同步剔除其 pred/masks 行，保持三者严格 1:1 对齐——
+            # 不能因个别退化掩膜就 return 作废整帧检测。
+            mask_polygons = []
+            keep = []
+            for mask, box in zip(masks, pred[:, :4]):
+                segs = masks2segments_with_boxes(mask, box)
+                if segs:
+                    mask_polygons.append(segs[0])
+                    keep.append(True)
+                else:
+                    keep.append(False)
+            keep = np.array(keep, dtype=bool)
+            if not keep.all():
+                vision_logger.warning(
+                    f"丢弃 {int((~keep).sum())} 个掩膜退化的检测（共 {len(keep)} 个），保留 {int(keep.sum())} 个"
+                )
+                pred = pred[keep]
+                masks = masks[keep]
             end = time.time()
             vision_logger.debug(f"masks2segments: {end - start:.4f}秒")
 
