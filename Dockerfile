@@ -15,13 +15,13 @@ ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:11
 FROM ${BASE_IMAGE} AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-    PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn \
+    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+    PIP_TRUSTED_HOST=mirrors.aliyun.com \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # 切换 apt 源为清华 + 安装 Python 3.10 与构建工具
-RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g; s@//security.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list \
+RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g; s@//security.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         python3.10 \
@@ -48,7 +48,8 @@ COPY whl/paddlepaddle_gpu-3.0.0-cp310-cp310-manylinux1_x86_64.whl /tmp/
 #     - 这些 CUDA 库已由 base image（cuda:11.8.0-cudnn8-runtime）作为系统库提供
 #     - 再单独安装 paddlepaddle 所需的 4 个纯 Python 依赖
 #  3. 最后强制替换为 GPU 版 onnxruntime（已自带 CUDA 链接，无需 nvidia pip 包）
-RUN pip install --upgrade pip setuptools wheel \
+# 不强升 pip：基础镜像自带 pip 已足够，强升会解析到最新版而清华镜像对未同步新文件返回 403。
+RUN pip install --upgrade setuptools wheel \
     && pip install -r /tmp/requirements.txt \
     && pip install /tmp/paddlepaddle_gpu-3.0.0-cp310-cp310-manylinux1_x86_64.whl --force-reinstall --no-deps \
     && pip install decorator astor "opt_einsum==3.3.0" networkx protobuf \
@@ -93,7 +94,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   - curl                 : HEALTHCHECK 使用
 #   - tzdata               : 时区
 # 注：使用 opencv-python-headless，无需 libgl1（X11/GUI 依赖）
-RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g; s@//security.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list \
+RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g; s@//security.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         python3.10 \
