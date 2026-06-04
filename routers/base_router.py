@@ -24,7 +24,7 @@ from fastapi.concurrency import run_in_threadpool
 from config import settings
 from schemas import CommonResponse, ErrorCode, ERROR_CODE_MESSAGES
 from schemas.exceptions import InvalidParamsError, InvalidImageError, InternalError
-from services import detection_factory, rotate_points
+from services import detection_factory
 from utils import vision_logger
 
 # 数据回流根目录：按 settings.DATA_DIR（相对路径锚定运行 cwd）解析为绝对路径。
@@ -75,11 +75,13 @@ class BaseRouter(ABC):
     ):
         received_at = datetime.now().isoformat(timespec="milliseconds")
         original_filename = file.filename or "unknown.jpg"
-        vision_logger.info(f"接收{self.router_name}请求：图片={original_filename}, json_data={json_data}")
+        # json_data 可能很长（含 line_order 等），且防止以后夹带 base64 图撑爆日志，截断预览
+        json_preview = json_data if len(json_data) <= 500 else f"{json_data[:500]}...(共{len(json_data)}字符)"
+        vision_logger.info(f"接收{self.router_name}请求：图片={original_filename}, json_data={json_preview}")
         request_params = await self._validate_and_parse_params(json_data)
         vision_logger.info(f"校验参数：{request_params}")
 
-        image, is_rotate = await self._process_image(file)
+        image, _ = await self._process_image(file)
         inputs = self.get_inputs(request_params, image)
         detector = self.get_detector_singleton()
         fallback_product_type = self._extract_product_type(request_params)
@@ -105,19 +107,17 @@ class BaseRouter(ABC):
             raise
         end = time.time()
         latency_ms = (end - start) * 1000
-        vision_logger.info(f"检测耗时：{end - start}秒")
-        vision_logger.debug(f"原始检测结果：{result_info}")
-        if is_rotate:
-            w, h, _ = image.shape  ##注意这里是反向的
-            result_info = rotate_points(result_info.to_dict(), w, h)
-            vision_logger.info(f"旋转后的检测结果：{result_info}")
+        # 用 loguru 占位参数（惰性格式化）：仅当 sink 真要写该级别时才拼接字符串，
+        # 避免在热路径上对结果对象做无谓的 str() 求值
+        vision_logger.info("检测耗时：{:.4f}秒", end - start)
+        vision_logger.debug("原始检测结果：{}", result_info)
         result_dict = result_info if isinstance(result_info, dict) else result_info.to_dict()
         result = CommonResponse(
             code=int(ErrorCode.SUCCESS),
             message=ERROR_CODE_MESSAGES[ErrorCode.SUCCESS],
             result=result_dict,
         )
-        vision_logger.info("参数校验通过，返回检测结果")
+        vision_logger.info("返回检测结果")
 
         background_tasks.add_task(
             self._persist_record,
