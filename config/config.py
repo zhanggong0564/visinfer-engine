@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     PORT: int = 3001
 
     LOG_DIR: str = "logs"
+    # 数据回流落盘根目录（相对路径按运行 cwd 解析；容器内 cwd=/app/workspace）。
+    # 设为可配置 + cwd 锚定，便于通过卷挂载持久化到宿主，避免编译为 .so 后写入 venv 内。
+    DATA_DIR: str = "data"
     LOG_LEVEL: str = "INFO"
     WORKERS: int = 1
     # 开发模式热重载；生产应保持 False（reload=True 时 WORKERS 会被 uvicorn 忽略）
