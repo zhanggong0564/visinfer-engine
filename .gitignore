@@ -49,3 +49,8 @@ dist/
 # 各 plugins/vie-plugin-* 为独立 git 仓库，通过 pip install -e 加载
 plugins/
 **.pyc
+
+# 部署交付包（含 docker save 导出的 GB 级镜像 tar.gz，不入库）
+deploy/
+# 运行期数据回流落盘目录（图片 + 记录）
+data/

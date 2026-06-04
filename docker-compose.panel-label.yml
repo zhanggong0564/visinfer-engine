@@ -34,7 +34,10 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
     volumes:
+      # 运行日志（按天切分）持久化到宿主
       - ./logs:/app/workspace/logs
+      # 数据回流图片 + 记录（按 型号/ok|ng 分目录）持久化到宿主，避免随容器重建丢失
+      - ./data:/app/workspace/data
 
     restart: unless-stopped
 

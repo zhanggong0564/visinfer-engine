@@ -88,17 +88,20 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # 运行时依赖：
 #   - python3.10           : 运行 venv 里的解释器
-#   - libglib2.0-0         : opencv-headless 运行依赖
+#   - libglib2.0-0         : opencv 运行依赖
+#   - libgl1               : 提供 libGL.so.1；paddlex/paddleocr 传递安装的
+#                            opencv-contrib-python（非 headless）需要它，否则
+#                            import cv2 直接报 libGL.so.1 not found，服务起不来
 #   - libgomp1             : onnxruntime / paddlepaddle OpenMP 依赖
 #   - libssl3              : paddlepaddle 网络/加密依赖（Ubuntu 22.04）
 #   - curl                 : HEALTHCHECK 使用
 #   - tzdata               : 时区
-# 注：使用 opencv-python-headless，无需 libgl1（X11/GUI 依赖）
 RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g; s@//security.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         python3.10 \
         libglib2.0-0 \
+        libgl1 \
         libgomp1 \
         libssl3 \
         curl \
