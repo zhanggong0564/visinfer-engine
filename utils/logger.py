@@ -64,25 +64,25 @@ class VisionLogger(metaclass=SingletonMeta):
             colorize=True,  # 控制台日志带颜色
         )
 
-        # 5. 配置文件输出（按大小分割，保留7天，压缩归档）
+        # 5. 配置文件输出（按天分割，每天 0 点切新文件，保留 30 天，压缩归档）
         logger.add(
             sink=str(log_dir / "mobile_vision_{time:YYYY-MM-DD}.log"),  # 按日期命名文件
             format=log_format,
             level="DEBUG",  # 文件日志保留更详细的DEBUG级别
             enqueue=True,
-            rotation="500 MB",  # 单个日志文件最大500MB
-            retention="30 days",  # 保留7天日志
+            rotation="00:00",  # 每天零点切分，避免长跑堆积到单个文件
+            retention="30 days",  # 保留 30 天日志
             compression="zip",  # 过期日志压缩为zip
             encoding="utf-8",
         )
 
-        # 6. 单独配置错误日志文件（仅ERROR及以上级别）
+        # 6. 单独配置错误日志文件（仅ERROR及以上级别，同样按天分割）
         logger.add(
             sink=str(log_dir / "mobile_vision_error_{time:YYYY-MM-DD}.log"),
             format=log_format,
             level="ERROR",
             enqueue=True,
-            rotation="100 MB",
+            rotation="00:00",  # 每天零点切分
             retention="30 days",
             compression="zip",
             encoding="utf-8",
