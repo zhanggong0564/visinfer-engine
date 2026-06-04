@@ -201,6 +201,20 @@ class BaseRouter(ABC):
         """把 product_type 当目录名前清洗，去掉路径分隔符避免越界。"""
         return re.sub(r"[\\/]+", "_", name).strip() or UNKNOWN_MODEL_DIR
 
+    @staticmethod
+    def _classify_result(result_dict: dict) -> str:
+        """按检测结论把样本分到 ok / ng 目录。
+
+        判定依据为响应顶层 status（MoMResult.to_dict 输出字符串 'true'/'false'）。
+        仅 status 明确为真（True / 'true'）时归 ok；其余一律归 ng——包括
+        status 为假、未检出任何信息（无 status 字段）、以及检测异常落盘的
+        {"error": ...} 记录。
+        """
+        status = result_dict.get("status")
+        if status is True or (isinstance(status, str) and status.strip().lower() == "true"):
+            return "ok"
+        return "ng"
+
     def _persist_record(
         self,
         image: np.ndarray,
@@ -230,7 +244,9 @@ class BaseRouter(ABC):
                 model_dir_name = UNKNOWN_MODEL_DIR
                 save_stem = os.path.splitext(original_filename)[0] or f"unknown_{int(time.time() * 1000)}"
 
-            model_dir = os.path.join(DATA_DIR, self.detector_type, date_dir, model_dir_name)
+            # 在型号目录下再按检测结论分 ok / ng（未检出信息归 ng）
+            verdict_dir = self._classify_result(result_dict)
+            model_dir = os.path.join(DATA_DIR, self.detector_type, date_dir, model_dir_name, verdict_dir)
             image_dir = os.path.join(model_dir, "images")
             record_dir = os.path.join(model_dir, "records")
             os.makedirs(image_dir, exist_ok=True)
@@ -254,6 +270,7 @@ class BaseRouter(ABC):
                 "scene_from_filename": scene,
                 "model_from_filename": parsed_model,
                 "saved_model_dir": model_dir_name,
+                "verdict": verdict_dir,
                 "request_params": request_params,
                 "latency_ms": latency_ms,
                 "result": result_dict,
