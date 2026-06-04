@@ -27,8 +27,10 @@ from schemas.exceptions import InvalidParamsError, InvalidImageError, InternalEr
 from services import detection_factory, rotate_points
 from utils import vision_logger
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+# 数据回流根目录：按 settings.DATA_DIR（相对路径锚定运行 cwd）解析为绝对路径。
+# 不再基于 __file__ 推算——本模块会被编译成 .so 装进 venv，__file__ 会指向
+# site-packages，导致落盘埋进 venv 且无法挂载持久化。
+DATA_DIR = os.path.abspath(settings.DATA_DIR)
 
 # 文件名形如 "1+X线标检验PE1-A-1779526099406.jpg":
 #   最后一段 -<digits> 是 timestamp，去掉扩展名后用贪婪匹配切出
