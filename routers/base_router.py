@@ -24,7 +24,7 @@ from fastapi.concurrency import run_in_threadpool
 from config import settings
 from schemas import CommonResponse, ErrorCode, ERROR_CODE_MESSAGES
 from schemas.exceptions import InvalidParamsError, InvalidImageError, InternalError
-from services import detection_factory, rotate_points
+from services import detection_factory
 from utils import vision_logger
 
 # 数据回流根目录：按 settings.DATA_DIR（相对路径锚定运行 cwd）解析为绝对路径。
@@ -32,9 +32,13 @@ from utils import vision_logger
 # site-packages，导致落盘埋进 venv 且无法挂载持久化。
 DATA_DIR = os.path.abspath(settings.DATA_DIR)
 
-# 文件名形如 "1+X线标检验PE1-A-1779526099406.jpg":
-#   最后一段 -<digits> 是 timestamp，去掉扩展名后用贪婪匹配切出
+# 文件名形如 "AI-中压线标检验TK2-1-1764780181920.jpg" / "1+X线标检验PE1-A-1779526099406.jpg":
+#   - 可选前缀 "AI-"（上游 AI 处理标记），先剥掉再解析
+#   - 末段 -<digits> 是 timestamp，去掉扩展名后用贪婪匹配切出
+#   - 型号尾部的 -<digits> 是单面多拍的图片序号（如 TK2-1 的 -1），按型号聚合需去掉
 _FILENAME_TS_RE = re.compile(r"^(.+)-(\d+)$")
+_AI_PREFIX_RE = re.compile(r"^AI-", re.IGNORECASE)
+_MODEL_INDEX_SUFFIX_RE = re.compile(r"-\d+$")
 UNKNOWN_MODEL_DIR = "_unknown_model"
 
 
@@ -75,11 +79,13 @@ class BaseRouter(ABC):
     ):
         received_at = datetime.now().isoformat(timespec="milliseconds")
         original_filename = file.filename or "unknown.jpg"
-        vision_logger.info(f"接收{self.router_name}请求：图片={original_filename}, json_data={json_data}")
+        # json_data 可能很长（含 line_order 等），且防止以后夹带 base64 图撑爆日志，截断预览
+        json_preview = json_data if len(json_data) <= 500 else f"{json_data[:500]}...(共{len(json_data)}字符)"
+        vision_logger.info(f"接收{self.router_name}请求：图片={original_filename}, json_data={json_preview}")
         request_params = await self._validate_and_parse_params(json_data)
         vision_logger.info(f"校验参数：{request_params}")
 
-        image, is_rotate = await self._process_image(file)
+        image, _ = await self._process_image(file)
         inputs = self.get_inputs(request_params, image)
         detector = self.get_detector_singleton()
         fallback_product_type = self._extract_product_type(request_params)
@@ -105,19 +111,17 @@ class BaseRouter(ABC):
             raise
         end = time.time()
         latency_ms = (end - start) * 1000
-        vision_logger.info(f"检测耗时：{end - start}秒")
-        vision_logger.debug(f"原始检测结果：{result_info}")
-        if is_rotate:
-            w, h, _ = image.shape  ##注意这里是反向的
-            result_info = rotate_points(result_info.to_dict(), w, h)
-            vision_logger.info(f"旋转后的检测结果：{result_info}")
+        # 用 loguru 占位参数（惰性格式化）：仅当 sink 真要写该级别时才拼接字符串，
+        # 避免在热路径上对结果对象做无谓的 str() 求值
+        vision_logger.info("检测耗时：{:.4f}秒", end - start)
+        vision_logger.debug("原始检测结果：{}", result_info)
         result_dict = result_info if isinstance(result_info, dict) else result_info.to_dict()
         result = CommonResponse(
             code=int(ErrorCode.SUCCESS),
             message=ERROR_CODE_MESSAGES[ErrorCode.SUCCESS],
             result=result_dict,
         )
-        vision_logger.info("参数校验通过，返回检测结果")
+        vision_logger.info("返回检测结果")
 
         background_tasks.add_task(
             self._persist_record,
@@ -180,12 +184,15 @@ class BaseRouter(ABC):
 
     @staticmethod
     def _parse_filename(filename: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """从形如 '1+X线标检验PE1-A-1779526099406.jpg' 的文件名解析 (场景, 型号, timestamp)。
+        """从文件名解析 (场景, 型号, timestamp)。
 
-        规则：去扩展名 → 末尾 -<digits> 切出 timestamp → 前半段最后一个中文字符之前是场景名，之后是型号。
-        不符合规则时返回 (None, None, None)，由调用方走 _unknown_model 兜底。
+        形如 'AI-中压线标检验TK2-1-1764780181920.jpg' / '1+X线标检验PE1-A-...':
+        去扩展名 → 剥掉可选 'AI-' 前缀 → 末尾 -<digits> 切出 timestamp →
+        前半段最后一个中文字符之前是场景名，之后是型号 → 型号尾部 -<digits>
+        图片序号去掉（TK2-1 → TK2）。不符合规则时返回 (None, None, None)，
+        由调用方走 detector_type / _unknown_model 兜底。
         """
-        stem = Path(filename).stem
+        stem = _AI_PREFIX_RE.sub("", Path(filename).stem, count=1)
         m = _FILENAME_TS_RE.match(stem)
         if not m:
             return None, None, None
@@ -196,7 +203,10 @@ class BaseRouter(ABC):
                 last_cjk_idx = i
         if last_cjk_idx < 0:
             return None, None, None
-        return body[: last_cjk_idx + 1], body[last_cjk_idx + 1 :], timestamp
+        scene = body[: last_cjk_idx + 1]
+        raw_model = body[last_cjk_idx + 1 :]
+        model = _MODEL_INDEX_SUFFIX_RE.sub("", raw_model, count=1) or raw_model
+        return scene, model, timestamp
 
     @staticmethod
     def _sanitize_dir_name(name: str) -> str:
@@ -246,9 +256,13 @@ class BaseRouter(ABC):
                 model_dir_name = UNKNOWN_MODEL_DIR
                 save_stem = os.path.splitext(original_filename)[0] or f"unknown_{int(time.time() * 1000)}"
 
+            # 顶层目录用文件名解析出的中文场景名（已去 AI- 前缀），解析失败回退 detector_type；
+            # 例：data/中压线标检验/2026-06-05/TK2/ng/images/1764780181920.jpg
+            scene_dir = self._sanitize_dir_name(scene) if scene else self.detector_type
+
             # 在型号目录下再按检测结论分 ok / ng（未检出信息归 ng）
             verdict_dir = self._classify_result(result_dict)
-            model_dir = os.path.join(DATA_DIR, self.detector_type, date_dir, model_dir_name, verdict_dir)
+            model_dir = os.path.join(DATA_DIR, scene_dir, date_dir, model_dir_name, verdict_dir)
             image_dir = os.path.join(model_dir, "images")
             record_dir = os.path.join(model_dir, "records")
             os.makedirs(image_dir, exist_ok=True)
@@ -271,6 +285,7 @@ class BaseRouter(ABC):
                 "original_filename": original_filename,
                 "scene_from_filename": scene,
                 "model_from_filename": parsed_model,
+                "saved_scene_dir": scene_dir,
                 "saved_model_dir": model_dir_name,
                 "verdict": verdict_dir,
                 "request_params": request_params,

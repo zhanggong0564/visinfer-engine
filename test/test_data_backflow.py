@@ -83,3 +83,29 @@ def test_persist_called_when_detect_fails(monkeypatch):
     # 即便检测失败，回流也必须落盘
     assert len(calls) == 1, "检测失败时数据回流未落盘"
     assert calls[0]["original_filename"] == "线标检验FU211-1779526099406.jpg"
+
+
+@pytest.mark.parametrize(
+    "filename, expected",
+    [
+        # AI- 前缀剥掉、型号序号 -1 去掉
+        ("AI-中压线标检验TK2-1-1764780181920.jpg", ("中压线标检验", "TK2", "1764780181920")),
+        # 无 AI- 前缀，效果一致
+        ("中压线标检验TK2-1-1764780181920.jpg", ("中压线标检验", "TK2", "1764780181920")),
+        # 旧式：型号尾部非数字（-A）不应被当序号去掉
+        ("1+X线标检验PE1-A-1779526099406.jpg", ("1+X线标检验", "PE1-A", "1779526099406")),
+        # 型号本身无序号后缀
+        ("中压线标检验TK2-1764780181920.jpg", ("中压线标检验", "TK2", "1764780181920")),
+        # AI- 大小写不敏感
+        ("ai-中压线标检验TK2-2-1764780181920.png", ("中压线标检验", "TK2", "1764780181920")),
+    ],
+)
+def test_parse_filename(filename, expected):
+    """文件名解析：AI- 前缀剥离、型号图片序号去除、场景/型号/时间戳切分。"""
+    assert BaseRouter._parse_filename(filename) == expected
+
+
+@pytest.mark.parametrize("filename", ["random.jpg", "noscene-123.jpg", "纯中文.jpg"])
+def test_parse_filename_unparseable(filename):
+    """不符合规则的文件名返回三元 None，由调用方走兜底。"""
+    assert BaseRouter._parse_filename(filename) == (None, None, None)

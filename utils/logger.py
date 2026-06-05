@@ -9,6 +9,7 @@
 
 # app/common/logger.py
 import os
+import sys
 from pathlib import Path
 from loguru import logger
 from typing import Optional
@@ -55,9 +56,9 @@ class VisionLogger(metaclass=SingletonMeta):
         log_dir = Path(settings.LOG_DIR)
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        # 4. 配置控制台输出（仅INFO及以上级别）
+        # 4. 配置控制台输出（级别取全局配置）
         logger.add(
-            sink=lambda msg: print(msg, end=""),  # 控制台输出
+            sink=sys.stderr,  # 直接用标准错误流，比 lambda+print 少一层 Python 调用
             format=log_format,
             level=settings.LOG_LEVEL,  # 全局配置的日志级别（如INFO）
             enqueue=True,  # 异步输出，提升性能
@@ -68,7 +69,9 @@ class VisionLogger(metaclass=SingletonMeta):
         logger.add(
             sink=str(log_dir / "mobile_vision_{time:YYYY-MM-DD}.log"),  # 按日期命名文件
             format=log_format,
-            level="DEBUG",  # 文件日志保留更详细的DEBUG级别
+            # 文件级别同样取全局配置：原先写死 DEBUG，导致生产每请求都把分阶段计时/
+            # 结果对象全量落盘，LOG_LEVEL=INFO 形同虚设。需排障时调 LOG_LEVEL=DEBUG 即可。
+            level=settings.LOG_LEVEL,
             enqueue=True,
             rotation="00:00",  # 每天零点切分，避免长跑堆积到单个文件
             retention="30 days",  # 保留 30 天日志

@@ -65,14 +65,14 @@ class YoloOnnxInfer(BaseOnnxInfer):
             start = time.time()
             masks = process_mask(protos, mask_in, bboxes, input_shape)
             end = time.time()
-            vision_logger.debug(f"process_mask: {end - start:.4f}秒")
+            vision_logger.debug("process_mask: {:.4f}秒", end - start)
             start = time.time()
             if len(masks) != 0:
                 masks = scale_masks(
                     masks, (image_shape[1], image_shape[0]), meta.r, meta.dw, meta.dh
                 ).transpose(2, 0, 1)
             end = time.time()
-            vision_logger.debug(f"scale_masks: {end - start:.4f}秒")
+            vision_logger.debug("scale_masks: {:.4f}秒", end - start)
             start = time.time()
             # 逐检测提取掩膜多边形：轮廓退化（空掩膜/面积过小）的检测单独丢弃，
             # 并同步剔除其 pred/masks 行，保持三者严格 1:1 对齐——
@@ -94,7 +94,7 @@ class YoloOnnxInfer(BaseOnnxInfer):
                 pred = pred[keep]
                 masks = masks[keep]
             end = time.time()
-            vision_logger.debug(f"masks2segments: {end - start:.4f}秒")
+            vision_logger.debug("masks2segments: {:.4f}秒", end - start)
 
         pred = np.concatenate([pred[:, :4], pred[:, -1:], pred[:, 4:6]], axis=-1)
         bbox = pred[:, :4]  # xywh

@@ -107,15 +107,15 @@ class BaseOnnxInfer:
             tensor, meta = self.preprocess(img)
             meta.ori_img = ori_img
             end = time.time()
-            vision_logger.debug(f"YOLO预处理时间: {end - start:.4f}秒")
+            vision_logger.debug("YOLO预处理时间: {:.4f}秒", end - start)
             start = time.time()
             outputs = self.session.run(self.output_names, {self.input_names[0]: tensor})
             end = time.time()
-            vision_logger.debug(f"YOLO推理时间: {end - start:.4f}秒")
+            vision_logger.debug("YOLO推理时间: {:.4f}秒", end - start)
             start = time.time()
             result = self.post_process(outputs, meta)
             end = time.time()
-            vision_logger.debug(f"YOLO后处理时间: {end - start:.4f}秒")
+            vision_logger.debug("YOLO后处理时间: {:.4f}秒", end - start)
             return result
         except Exception as e:
             # 推理失败必须向上暴露，避免被静默吞成空结果，导致线上故障无法区分
