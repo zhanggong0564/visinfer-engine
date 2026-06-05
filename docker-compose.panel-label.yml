@@ -18,7 +18,7 @@ services:
     container_name: mobile-vision-panel-label
 
     ports:
-      - "3007:3007"
+      - "3001:3001"
 
     deploy:
       resources:
@@ -32,12 +32,18 @@ services:
       - TZ=Asia/Shanghai
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # 业务代码热更新覆盖层：PYTHONPATH 排在 site-packages 之前，pkg/ 里的新 .so
+      # 包会盖掉镜像内置旧版；pkg/ 为空则自动回退镜像内置版（全新部署无需 pkg/）。
+      - PYTHONPATH=/app/workspace/pkg
 
     volumes:
       # 运行日志（按天切分）持久化到宿主
       - ./logs:/app/workspace/logs
       # 数据回流图片 + 记录（按 型号/ok|ng 分目录）持久化到宿主，避免随容器重建丢失
       - ./data:/app/workspace/data
+      # 业务 .so 热更新层：scripts/sync-plugin.sh 同步编译后的包到此，restart 即生效，
+      # 免去重打整镜像（几个 G）重传。只读挂载，容器无法改写宿主交付物。
+      - ./pkg:/app/workspace/pkg:ro
 
     restart: unless-stopped
 
