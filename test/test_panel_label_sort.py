@@ -74,6 +74,30 @@ def test_qf2_rows_real_coords():
     assert _order_names(named_pts, get_sort_mode("QF2")) == _pt.PRODUCT_TYPE["QF2"]
 
 
+def test_tcu_rows_top_pair_height_jitter():
+    """TCU：rows:2 —— 顶部电源 2 根 + 底部 Reader/DO 8 根。
+
+    坐标取自真实误报图（FCU1202，原图 3000x4000）：顶部右侧 12V- 标签比左侧
+    12V+ 悬挂高约 27px。linear 主轴近竖直(u≈(0.16,0.99))，x 差 89px 仅折合
+    14px 投影差，被 y 高低差压过 → 12V- 排到 12V+ 前面产生误报；rows:2 行内
+    按 x 排，不受悬挂高低影响。
+    """
+    named_pts = [
+        ("TCU-12V+", 859, 330), ("TCU-12V-", 948, 303),
+        ("TCU-Reader-RX", 878, 3290), ("TCU-Reader-TX", 932, 3262),
+        ("TCU-Reader-GND", 992, 3244), ("TCU-Reader-5V", 1059, 3230),
+        ("TCU-DO1-2", 1567, 3392), ("TCU-DO1-1", 1629, 3383),
+        ("TCU-DO2-2", 1699, 3370), ("TCU-DO2-1", 1772, 3357),
+    ]
+    random.seed(3)
+    random.shuffle(named_pts)
+    assert get_sort_mode("TCU") == "rows:2"
+    assert _order_names(named_pts, get_sort_mode("TCU")) == _pt.PRODUCT_TYPE["TCU"]
+    # 回归锁定：默认 linear 在该布局下顶部两根会翻转（这是登记 rows:2 的原因）
+    ordered_linear = _order_names(sorted(named_pts), "linear")
+    assert ordered_linear[:2] == ["TCU-12V-", "TCU-12V+"]
+
+
 def _two_rows(xs):
     """上(T, y=100)/下(B, y=400)两行各取 xs 横坐标，名字形如 T100/B400。"""
     return [(f"{r}{x}", x, y) for r, y in [("T", 100), ("B", 400)] for x in xs]
