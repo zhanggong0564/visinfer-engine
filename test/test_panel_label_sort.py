@@ -74,9 +74,14 @@ def test_qf2_rows_real_coords():
     assert _order_names(named_pts, get_sort_mode("QF2")) == _pt.PRODUCT_TYPE["QF2"]
 
 
+def _two_rows(xs):
+    """上(T, y=100)/下(B, y=400)两行各取 xs 横坐标，名字形如 T100/B400。"""
+    return [(f"{r}{x}", x, y) for r, y in [("T", 100), ("B", 400)] for x in xs]
+
+
 def test_rows_two_bands_top_first_left_to_right():
     """rows:2 —— 按 y 间隙分上/下两行（上行先），行内左→右。"""
-    items = [(f"{r}{x}", x, y) for r, y in [("T", 100), ("B", 400)] for x in range(100, 700, 100)]
+    items = _two_rows(range(100, 700, 100))
     random.seed(2)
     random.shuffle(items)
     assert _order_names(items, "rows:2") == [
@@ -87,13 +92,13 @@ def test_rows_two_bands_top_first_left_to_right():
 
 def test_rows_rowrev_bottom_first():
     """rows:2:rowrev —— 行序反向（下行先），行内仍左→右。"""
-    items = [(f"{r}{x}", x, y) for r, y in [("T", 100), ("B", 400)] for x in (100, 200, 300)]
+    items = _two_rows((100, 200, 300))
     assert _order_names(items, "rows:2:rowrev") == ["B100", "B200", "B300", "T100", "T200", "T300"]
 
 
 def test_rows_colrev_right_to_left_in_band():
     """rows:2:colrev —— 行内反向（右→左），行序仍上→下。"""
-    items = [(f"{r}{x}", x, y) for r, y in [("T", 100), ("B", 400)] for x in (100, 200, 300)]
+    items = _two_rows((100, 200, 300))
     assert _order_names(items, "rows:2:colrev") == ["T300", "T200", "T100", "B300", "B200", "B100"]
 
 
