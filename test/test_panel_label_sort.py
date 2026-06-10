@@ -55,16 +55,46 @@ def test_kvm_diagonal_real_coords_default_linear():
     assert [names[i] for i in perm] == ["K2-4", "K2-2", "K2-1"]
 
 
-def test_qf2_columns_rowrev():
-    """QF2：columns:2:rowrev —— 左列先、列内下→上；输入打乱也应稳定还原。"""
-    items = [(f"{c}{y}", x, y) for c, x in [("L", 100), ("R", 400)] for y in range(100, 700, 100)]
-    random.seed(1)
-    random.shuffle(items)
-    assert get_sort_mode("QF2") == "columns:2:rowrev"
-    assert _order_names(items, get_sort_mode("QF2")) == [
-        "L600", "L500", "L400", "L300", "L200", "L100",
-        "R600", "R500", "R400", "R300", "R200", "R100",
+def test_qf2_rows_real_coords():
+    """QF2：rows:2 —— EXIF 旋转后模型坐标系是上下两行（非左右两列）。
+
+    坐标取自真实推理 log（demo/.../QF2/1776223816260.jpg），两束线标在 y 上分成
+    上行(y≈880)、下行(y≈2800)，行内按 x 左→右即为 standard 顺序。历史误设
+    columns:2:rowrev 会按 x 把每行劈成两半导致错排。
+    """
+    named_pts = [
+        ("QF2-1/PE1-J1", 762, 876), ("QF2-3/PE1-J3", 931, 874), ("QF2-5/PE1-J5", 1126, 885),
+        ("FU34-2/KM1-1", 1448, 949), ("FU35-2/KM1-3", 1708, 896), ("FU36-2/KM1-5", 1998, 887),
+        ("QF2-2/T1-38V-a", 604, 2863), ("QF2-4/T1-38V-b", 845, 2881), ("QF2-6/T1-38V-c", 1001, 2894),
+        ("FU34-1/QS2-OUT+2", 1457, 2720), ("FU35-1/QS2-OUT-3", 1629, 2698), ("FU36-1/QS2-OUT+3", 1974, 2767),
     ]
+    random.seed(1)
+    random.shuffle(named_pts)
+    assert get_sort_mode("QF2") == "rows:2"
+    assert _order_names(named_pts, get_sort_mode("QF2")) == _pt.PRODUCT_TYPE["QF2"]
+
+
+def test_rows_two_bands_top_first_left_to_right():
+    """rows:2 —— 按 y 间隙分上/下两行（上行先），行内左→右。"""
+    items = [(f"{r}{x}", x, y) for r, y in [("T", 100), ("B", 400)] for x in range(100, 700, 100)]
+    random.seed(2)
+    random.shuffle(items)
+    assert _order_names(items, "rows:2") == [
+        "T100", "T200", "T300", "T400", "T500", "T600",
+        "B100", "B200", "B300", "B400", "B500", "B600",
+    ]
+
+
+def test_rows_rowrev_bottom_first():
+    """rows:2:rowrev —— 行序反向（下行先），行内仍左→右。"""
+    items = [(f"{r}{x}", x, y) for r, y in [("T", 100), ("B", 400)] for x in (100, 200, 300)]
+    assert _order_names(items, "rows:2:rowrev") == ["B100", "B200", "B300", "T100", "T200", "T300"]
+
+
+def test_rows_colrev_right_to_left_in_band():
+    """rows:2:colrev —— 行内反向（右→左），行序仍上→下。"""
+    items = [(f"{r}{x}", x, y) for r, y in [("T", 100), ("B", 400)] for x in (100, 200, 300)]
+    assert _order_names(items, "rows:2:colrev") == ["T300", "T200", "T100", "B300", "B200", "B100"]
 
 
 def test_d1_columns_top_to_bottom():
