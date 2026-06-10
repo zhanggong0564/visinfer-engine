@@ -111,9 +111,9 @@ COPY --chown=appuser:appuser weights/panel_label /app/workspace/weights/panel_la
 
 USER appuser
 
-EXPOSE 3007
+EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:3007/health || exit 1
+    CMD curl -fsS http://127.0.0.1:3001/health || exit 1
 
 ENTRYPOINT ["python3.10", "app.py"]

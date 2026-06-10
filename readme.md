@@ -100,7 +100,7 @@ mobile_vision/
 │   └── test_yolo.py
 ├── utils/                       # 工具函数
 │   └── logger.py                # 日志工具
-├── weights/                     # 模型权重文件
+├── weights/                     # 模型权重（weights/{场景}/{任务}_{架构}_v{N}，规范见 weights/README.md）
 ├── Dockerfile                   # Docker 构建文件
 ├── requirements.txt             # 依赖包列表
 └── README.md                    # 项目说明文档
@@ -291,6 +291,17 @@ pip install -r requirements.txt
 # 启动服务（生产环境）
 uvicorn app:app --host 0.0.0.0 --port 3007 --workers 4
 ```
+
+### 热更新部署（免重打镜像）
+
+环境不变、只更新业务代码或模型权重时，无需重打整镜像：
+
+```bash
+bash scripts/sync-plugin.sh   # 编译 .so + 增量同步权重到服务器 + 重启容器
+```
+
+代码经 `pkg/` 覆盖层（`PYTHONPATH`）生效，权重经 `./weights` 卷挂载覆盖层生效，
+详细原理与首次启用步骤见 [docs/deploy.md](docs/deploy.md) §3。
 
 ---
 
