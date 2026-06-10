@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     API_TITLE: str = "Mobile Vision alg API"
-    API_VERSION: str = "1.1.2"
+    API_VERSION: str = "1.1.9"
 
     HOST: str = "0.0.0.0"
     PORT: int = 3001
