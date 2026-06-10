@@ -44,11 +44,15 @@ services:
       # 业务 .so 热更新层：scripts/sync-plugin.sh 同步编译后的包到此，restart 即生效，
       # 免去重打整镜像（几个 G）重传。只读挂载，容器无法改写宿主交付物。
       - ./pkg:/app/workspace/pkg:ro
+      # 模型权重热更新层：sync-plugin.sh 增量 rsync 新权重到宿主 ./weights，
+      # restart 即生效，盖掉镜像内置权重。首次启用先从现有容器拷出存量权重落盘：
+      #   docker cp mobile-vision-panel-label:/app/workspace/weights ./weights
+      - ./weights:/app/workspace/weights:ro
 
     restart: unless-stopped
 
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3007/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/health"]
       interval: 30s
       timeout: 10s
       start_period: 120s

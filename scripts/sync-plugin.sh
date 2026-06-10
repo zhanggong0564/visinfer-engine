@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # =========================================================
-# panel_label 业务代码热更新：编译 .so → 解包到 pkg/ → 同步到服务器 → 重启容器
+# panel_label 业务代码 + 模型权重热更新：
+#   编译 .so → 解包到 pkg/ → 同步 pkg/ 与 weights/panel_label/ 到服务器 → 重启容器
 #
-# 适用场景：只改了业务逻辑（框架 services/schemas/routers/utils/config 或
-# panel_label 插件），环境与权重未变。免去重打整镜像（几个 G）重传——
-# 只传几 MB 的 .so。原理见 docker-compose.panel-label.yml 里 PYTHONPATH 覆盖层。
+# 适用场景：改了业务逻辑（框架 services/schemas/routers/utils/config 或
+# panel_label 插件）或更新了模型权重，环境未变。免去重打整镜像（几个 G）
+# 重传——代码只传几 MB 的 .so，权重 rsync 增量只传变化的模型文件。
+# 原理见 docker-compose.panel-label.yml 里 PYTHONPATH 与 weights 覆盖层。
 #
 # 用法（仓库根目录）：
 #   bash scripts/sync-plugin.sh                 # 编译+同步+远程重启（默认服务器）
 #   bash scripts/sync-plugin.sh --local         # 只编译+解包到 pkg/，不连服务器
 #   bash scripts/sync-plugin.sh --no-build      # 跳过编译，用已有 dist/*.whl
+#   bash scripts/sync-plugin.sh --no-weights    # 跳过权重同步，只传代码
 #   REMOTE=user@host REMOTE_DIR=/path bash scripts/sync-plugin.sh   # 覆盖目标
 #
 # ⚠️ ABI：本机用来编译的 Python 必须是 CPython 3.10（与镜像一致），且 glibc 不高于
@@ -32,11 +35,13 @@ COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.panel-label.yml}"
 
 DO_BUILD=1
 DO_PUSH=1
+DO_WEIGHTS=1
 for arg in "$@"; do
   case "$arg" in
-    --no-build) DO_BUILD=0 ;;
-    --local)    DO_PUSH=0 ;;
-    -h|--help)  sed -n '2,33p' "$0"; exit 0 ;;
+    --no-build)   DO_BUILD=0 ;;
+    --local)      DO_PUSH=0 ;;
+    --no-weights) DO_WEIGHTS=0 ;;
+    -h|--help)  sed -n '2,25p' "$0"; exit 0 ;;
     *) echo "未知参数: $arg" >&2; exit 1 ;;
   esac
 done
@@ -66,8 +71,14 @@ if [ "$DO_PUSH" -eq 0 ]; then
   exit 0
 fi
 
-echo "==> [3/3] 同步 pkg/ 到 ${REMOTE}:${REMOTE_DIR}/pkg 并重启容器"
-ssh "$REMOTE" "mkdir -p '${REMOTE_DIR}/pkg'"
+echo "==> [3/3] 同步 pkg/（及权重）到 ${REMOTE}:${REMOTE_DIR} 并重启容器"
+ssh "$REMOTE" "mkdir -p '${REMOTE_DIR}/pkg' '${REMOTE_DIR}/weights/panel_label'"
 rsync -avz --delete pkg/ "${REMOTE}:${REMOTE_DIR}/pkg/"
+if [ "$DO_WEIGHTS" -eq 1 ]; then
+  # 增量同步：内容没变的模型不会重传；--delete 保证远端与本地版本目录一致，
+  # 本地源即远端真相（config 指的模型路径也来自本地，二者天然同步）。
+  # 前提：远端 compose 已挂载 ./weights:/app/workspace/weights:ro 覆盖层。
+  rsync -avz --delete weights/panel_label/ "${REMOTE}:${REMOTE_DIR}/weights/panel_label/"
+fi
 ssh "$REMOTE" "cd '${REMOTE_DIR}' && docker compose -f '${COMPOSE_FILE}' restart"
 echo "==> 完成。验证：bash verify-QF2.sh  （或查日志 docker compose logs -f）"
