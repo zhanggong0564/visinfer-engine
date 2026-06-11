@@ -96,6 +96,9 @@ class CallStatsRecorder:
         finally:
             conn.close()
 
+        # 注意：daily 聚合按 "daily[-1] 是否同日" 增量分组，依赖上方
+        # ORDER BY scene, date 保证同一 (scene, date) 的 verdict 行相邻；
+        # 改排序会静默产生重复日期条目
         for scene_name, day, verdict, count in rows:
             # record() 已做边界校验，此处再防一手历史脏行：未知 verdict 整行跳过，
             # 保证各层 total == ok+ng+error 恒成立
