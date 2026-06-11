@@ -78,10 +78,13 @@ async def access_log_middleware(request: Request, call_next):
         )
         raise
     latency_ms = (time.perf_counter() - start) * 1000
-    vision_logger.info(
-        f"[{request_id}] {request.method} {request.url.path} "
-        f"-> {response.status_code} 耗时={latency_ms:.1f}ms"
-    )
+    # 健康探针等高频端点：响应正常（<400）时静默，不刷访问日志；
+    # 一旦异常或非 2xx（如探针 503）仍照常记录，保留排障可见性。
+    if not (request.url.path in settings.ACCESS_LOG_SKIP_PATHS and response.status_code < 400):
+        vision_logger.info(
+            f"[{request_id}] {request.method} {request.url.path} "
+            f"-> {response.status_code} 耗时={latency_ms:.1f}ms"
+        )
     response.headers["X-Request-ID"] = request_id
     return response
 
