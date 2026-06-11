@@ -49,7 +49,13 @@ class CallStatsRecorder:
         return conn
 
     def record(self, scene: str, verdict: str, day: Optional[str] = None) -> None:
-        """记一笔调用。day 缺省取服务器本地日期（与回流目录 date_dir 一致）。"""
+        """记一笔调用。day 缺省取服务器本地日期（与回流目录 date_dir 一致）。
+
+        verdict 边界校验保证账本里 total == ok+ng+error 恒成立；
+        非法值抛 ValueError，经 record_call 入口时被吞掉并 warning。
+        """
+        if verdict not in _VERDICTS:
+            raise ValueError(f"未知 verdict: {verdict!r}，应为 {_VERDICTS} 之一")
         day = day or date.today().isoformat()
         conn = self._connect()
         try:
@@ -91,6 +97,10 @@ class CallStatsRecorder:
             conn.close()
 
         for scene_name, day, verdict, count in rows:
+            # record() 已做边界校验，此处再防一手历史脏行：未知 verdict 整行跳过，
+            # 保证各层 total == ok+ng+error 恒成立
+            if verdict not in _VERDICTS:
+                continue
             scene_stats = result["scenes"].setdefault(
                 scene_name,
                 {"total": 0, "verdicts": {v: 0 for v in _VERDICTS}, "daily": []},
@@ -99,10 +109,9 @@ class CallStatsRecorder:
             if not daily or daily[-1]["date"] != day:
                 daily.append({"date": day, "ok": 0, "ng": 0, "error": 0, "total": 0})
             day_row = daily[-1]
-            if verdict in day_row:
-                day_row[verdict] += count
+            day_row[verdict] += count
             day_row["total"] += count
-            scene_stats["verdicts"][verdict] = scene_stats["verdicts"].get(verdict, 0) + count
+            scene_stats["verdicts"][verdict] += count
             scene_stats["total"] += count
             result["total"] += count
         return result
