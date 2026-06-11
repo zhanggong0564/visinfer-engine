@@ -66,14 +66,21 @@ unzip -o -q "${FW[-1]}" -d pkg
 unzip -o -q "${PL[-1]}" -d pkg
 echo "    pkg/ 顶层："; ls -1 pkg | sed 's/^/      /'
 
+# app.py 是入口脚本、不进 wheel，pkg/ 的 PYTHONPATH 覆盖不到它；以独立卷下发。
+# 刷新部署包内快照（单一真相源 = 仓库根 app.py），供全新部署整目录传输时携带。
+cp -f app.py deploy/app.py
+echo "    已刷新 deploy/app.py 快照（入口脚本覆盖层）"
+
 if [ "$DO_PUSH" -eq 0 ]; then
   echo "==> [3/3] --local：跳过同步与重启。本地 pkg/ 已就绪。"
   exit 0
 fi
 
-echo "==> [3/3] 同步 pkg/（及权重）到 ${REMOTE}:${REMOTE_DIR} 并重启容器"
+echo "==> [3/3] 同步 pkg/（及权重、入口脚本）到 ${REMOTE}:${REMOTE_DIR} 并重启容器"
 ssh "$REMOTE" "mkdir -p '${REMOTE_DIR}/pkg' '${REMOTE_DIR}/weights/panel_label'"
 rsync -avz --delete pkg/ "${REMOTE}:${REMOTE_DIR}/pkg/"
+# 入口脚本覆盖层：app.py 单文件同步到 compose 同级目录（compose 以 ./app.py:ro 挂载）。
+rsync -avz app.py "${REMOTE}:${REMOTE_DIR}/app.py"
 if [ "$DO_WEIGHTS" -eq 1 ]; then
   # 增量同步：内容没变的模型不会重传；--delete 保证远端与本地版本目录一致，
   # 本地源即远端真相（config 指的模型路径也来自本地，二者天然同步）。
