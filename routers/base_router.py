@@ -12,8 +12,8 @@ import os
 import re
 import time
 from abc import ABC
+from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Optional, Tuple
 
 import cv2
@@ -33,14 +33,21 @@ from utils import vision_logger
 # site-packages，导致落盘埋进 venv 且无法挂载持久化。
 DATA_DIR = os.path.abspath(settings.DATA_DIR)
 
-# 文件名形如 "AI-中压线标检验TK2-1-1764780181920.jpg" / "1+X线标检验PE1-A-1779526099406.jpg":
-#   - 可选前缀 "AI-"（上游 AI 处理标记），先剥掉再解析
-#   - 末段 -<digits> 是 timestamp，去掉扩展名后用贪婪匹配切出
-#   - 型号尾部的 -<digits> 是单面多拍的图片序号（如 TK2-1 的 -1），按型号聚合需去掉
-_FILENAME_TS_RE = re.compile(r"^(.+)-(\d+)$")
-_AI_PREFIX_RE = re.compile(r"^AI-", re.IGNORECASE)
-_MODEL_INDEX_SUFFIX_RE = re.compile(r"-\d+$")
 UNKNOWN_MODEL_DIR = "_unknown_model"
+
+
+@dataclass
+class BackflowTarget:
+    """数据回流落盘的目标路径三要素：场景目录 / 型号目录 / 落盘文件名（不含扩展名）。
+
+    由 ``BaseRouter.resolve_backflow_target`` 产出，是框架与各场景之间的边界：
+    框架只认这三个字段去拼路径、写文件，不关心它们怎么从文件名/参数推导而来；
+    场景专属的命名规则在各自插件 Router 里重写 ``resolve_backflow_target`` 实现。
+    """
+
+    scene_dir: str   # 顶层场景目录
+    model_dir: str   # 型号目录
+    save_stem: str   # 落盘文件名（不含扩展名）
 
 
 class BaseRouter(ABC):
@@ -203,31 +210,28 @@ class BaseRouter(ABC):
         #     image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
         return image, False
 
-    @staticmethod
-    def _parse_filename(filename: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """从文件名解析 (场景, 型号, timestamp)。
+    def resolve_backflow_target(
+        self,
+        original_filename: str,
+        fallback_product_type: Optional[str] = None,
+    ) -> BackflowTarget:
+        """决定数据回流落盘路径，框架对场景命名规则的唯一扩展点。
 
-        形如 'AI-中压线标检验TK2-1-1764780181920.jpg' / '1+X线标检验PE1-A-...':
-        去扩展名 → 剥掉可选 'AI-' 前缀 → 末尾 -<digits> 切出 timestamp →
-        前半段最后一个中文字符之前是场景名，之后是型号 → 型号尾部 -<digits>
-        图片序号去掉（TK2-1 → TK2）。不符合规则时返回 (None, None, None)，
-        由调用方走 detector_type / _unknown_model 兜底。
+        框架默认实现【不解析文件名】，保持场景无关：
+          - 场景目录 = ``detector_type``
+          - 型号目录 = ``fallback_product_type``（来自请求 product_type），缺省回退 ``_unknown_model``
+          - 落盘文件名 = 原始文件名去扩展名
+
+        需要从文件名拆分场景/型号（如线标的 'AI-中压线标检验TK2-1-<ts>.jpg'）的场景，
+        在各自插件 Router 里重写本方法即可，框架代码无需改动。
         """
-        stem = _AI_PREFIX_RE.sub("", Path(filename).stem, count=1)
-        m = _FILENAME_TS_RE.match(stem)
-        if not m:
-            return None, None, None
-        body, timestamp = m.group(1), m.group(2)
-        last_cjk_idx = -1
-        for i, ch in enumerate(body):
-            if "一" <= ch <= "鿿":
-                last_cjk_idx = i
-        if last_cjk_idx < 0:
-            return None, None, None
-        scene = body[: last_cjk_idx + 1]
-        raw_model = body[last_cjk_idx + 1 :]
-        model = _MODEL_INDEX_SUFFIX_RE.sub("", raw_model, count=1) or raw_model
-        return scene, model, timestamp
+        stem = os.path.splitext(original_filename)[0] or f"unknown_{int(time.time() * 1000)}"
+        model_dir = (
+            self._sanitize_dir_name(fallback_product_type)
+            if fallback_product_type
+            else UNKNOWN_MODEL_DIR
+        )
+        return BackflowTarget(scene_dir=self.detector_type, model_dir=model_dir, save_stem=stem)
 
     @staticmethod
     def _sanitize_dir_name(name: str) -> str:
@@ -260,36 +264,26 @@ class BaseRouter(ABC):
     ) -> None:
         """后台数据回流：image + json 分文件夹落盘。失败只 warning，不影响接口。
 
-        型号目录兜底链：文件名解析 → fallback_product_type → _unknown_model
+        落盘路径（场景目录 / 型号目录 / 文件名）由 ``resolve_backflow_target`` 决定，
+        场景专属命名规则在各插件 Router 重写该钩子；本方法只负责通用的目录与 IO。
         """
         try:
-            scene, parsed_model, timestamp = self._parse_filename(original_filename)
+            target = self.resolve_backflow_target(original_filename, fallback_product_type)
             ext = os.path.splitext(original_filename)[1] or ".jpg"
             date_dir = received_at[:10]  # YYYY-MM-DD
 
-            if parsed_model and timestamp:
-                model_dir_name = parsed_model
-                save_stem = timestamp
-            elif fallback_product_type:
-                model_dir_name = self._sanitize_dir_name(fallback_product_type)
-                save_stem = os.path.splitext(original_filename)[0] or f"unknown_{int(time.time() * 1000)}"
-            else:
-                model_dir_name = UNKNOWN_MODEL_DIR
-                save_stem = os.path.splitext(original_filename)[0] or f"unknown_{int(time.time() * 1000)}"
-
-            # 顶层目录用文件名解析出的中文场景名（已去 AI- 前缀），解析失败回退 detector_type；
-            # 例：data/中压线标检验/2026-06-05/TK2/ng/images/1764780181920.jpg
-            scene_dir = self._sanitize_dir_name(scene) if scene else self.detector_type
-
             # 在型号目录下再按检测结论分 ok / ng（未检出信息归 ng）
+            # 例：data/中压线标检验/2026-06-05/TK2/ng/images/1764780181920.jpg
             verdict_dir = self._classify_result(result_dict)
-            model_dir = os.path.join(DATA_DIR, scene_dir, date_dir, model_dir_name, verdict_dir)
+            model_dir = os.path.join(
+                DATA_DIR, target.scene_dir, date_dir, target.model_dir, verdict_dir
+            )
             image_dir = os.path.join(model_dir, "images")
             record_dir = os.path.join(model_dir, "records")
             os.makedirs(image_dir, exist_ok=True)
             os.makedirs(record_dir, exist_ok=True)
-            image_path = os.path.join(image_dir, f"{save_stem}{ext}")
-            record_path = os.path.join(record_dir, f"{save_stem}.json")
+            image_path = os.path.join(image_dir, f"{target.save_stem}{ext}")
+            record_path = os.path.join(record_dir, f"{target.save_stem}.json")
 
             if not cv2.imwrite(image_path, image):
                 vision_logger.warning(f"数据回流图片写入失败 path={image_path}")
@@ -304,10 +298,8 @@ class BaseRouter(ABC):
                 "received_at": received_at,
                 "detector_type": self.detector_type,
                 "original_filename": original_filename,
-                "scene_from_filename": scene,
-                "model_from_filename": parsed_model,
-                "saved_scene_dir": scene_dir,
-                "saved_model_dir": model_dir_name,
+                "saved_scene_dir": target.scene_dir,
+                "saved_model_dir": target.model_dir,
                 "verdict": verdict_dir,
                 "request_params": request_params,
                 "latency_ms": latency_ms,
