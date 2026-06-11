@@ -290,3 +290,10 @@ class TestStatsEndpoint:
             self._call(monkeypatch, recorder, start_date=bad)
         with pytest.raises(InvalidParamsError):
             self._call(monkeypatch, recorder, end_date=bad)
+
+    def test_inverted_date_range_rejected(self, monkeypatch, recorder):
+        """起止日期倒置显式报错，避免与"无数据"的空结果混淆。"""
+        with pytest.raises(InvalidParamsError):
+            self._call(
+                monkeypatch, recorder, start_date="2026-06-10", end_date="2026-06-01"
+            )
