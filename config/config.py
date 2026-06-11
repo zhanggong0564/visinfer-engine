@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # 设为可配置 + cwd 锚定，便于通过卷挂载持久化到宿主，避免编译为 .so 后写入 venv 内。
     DATA_DIR: str = "data"
     LOG_LEVEL: str = "INFO"
+    # 健康探针等高频端点的访问日志静默名单：命中且响应正常（<400）时不打 INFO，
+    # 避免 30s 一次的 /health 把访问日志刷爆；非 2xx/异常仍照常记录以便排障。
+    ACCESS_LOG_SKIP_PATHS: set[str] = {"/health"}
     WORKERS: int = 1
     # 开发模式热重载；生产应保持 False（reload=True 时 WORKERS 会被 uvicorn 忽略）
     RELOAD: bool = False
