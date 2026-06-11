@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # 健康探针等高频端点的访问日志静默名单：命中且响应正常（<400）时不打 INFO，
     # 避免 30s 一次的 /health 把访问日志刷爆；非 2xx/异常仍照常记录以便排障。
     ACCESS_LOG_SKIP_PATHS: set[str] = {"/health"}
+    # 启用的检测场景白名单（按 detector_type，如 panel_label / dc_fuse）。
+    # 留空 = 全部启用（向后兼容）；指定后仅注册并预加载列表内场景，未列出的场景
+    # 路由不注册、模型不预加载——便于单场景部署（如服务器只上线 panel_label），
+    # 避免缺失其它场景权重导致启动报错或刷无关日志。基础路由（如 /stats）不受影响。
+    ENABLED_SCENES: set[str] = set()
     WORKERS: int = 1
     # 开发模式热重载；生产应保持 False（reload=True 时 WORKERS 会被 uvicorn 忽略）
     RELOAD: bool = False
