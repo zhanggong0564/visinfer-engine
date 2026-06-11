@@ -58,3 +58,4 @@ plugins/
 deploy/
 # 运行期数据回流落盘目录（图片 + 记录）
 data/
+scripts
