@@ -25,6 +25,7 @@ from config import settings
 from schemas import CommonResponse, ErrorCode, ERROR_CODE_MESSAGES
 from schemas.exceptions import InvalidParamsError, InvalidImageError, InternalError
 from services import detection_factory
+from services.call_stats import record_call
 from utils import vision_logger
 
 # 数据回流根目录：按 settings.DATA_DIR（相对路径锚定运行 cwd）解析为绝对路径。
@@ -76,6 +77,21 @@ class BaseRouter(ABC):
         background_tasks: BackgroundTasks,
         file: UploadFile = File(..., description="检测图片(jpg/png格式)"),
         json_data: str = Form(..., description="产品/物料号/模型参数的JSON字符串"),
+    ):
+        # 调用统计埋点：每一次调用都要计数——参数校验失败、图片非法等
+        # 进不了检测的请求也算，统一记 error；成功路径在内层按检测结论记
+        # ok/ng。record_call 自吞异常，统计失败绝不影响检测主流程。
+        try:
+            return await self._process_detect_request(background_tasks, file, json_data)
+        except Exception:
+            await run_in_threadpool(record_call, self.detector_type, "error")
+            raise
+
+    async def _process_detect_request(
+        self,
+        background_tasks: BackgroundTasks,
+        file: UploadFile,
+        json_data: str,
     ):
         received_at = datetime.now().isoformat(timespec="milliseconds")
         original_filename = file.filename or "unknown.jpg"
@@ -132,6 +148,11 @@ class BaseRouter(ABC):
             latency_ms=latency_ms,
             received_at=received_at,
             fallback_product_type=fallback_product_type,
+        )
+        # 调用统计：按检测结论记 ok/ng（与回流落盘共用 _classify_result 二分；
+        # 异常路径在外层 _handle_request 统一记 error，比落盘目录多一个分类）
+        background_tasks.add_task(
+            record_call, self.detector_type, self._classify_result(result_dict)
         )
         return result
 
