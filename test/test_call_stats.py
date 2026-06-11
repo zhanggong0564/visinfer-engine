@@ -247,3 +247,46 @@ class TestCallStatsHook:
                     json_data='{"modelParams": {"product_type": "FU211"}}',
                 )
             )
+
+
+class TestStatsEndpoint:
+    def _call(self, monkeypatch, recorder, **params):
+        from routers import stats_routers
+
+        monkeypatch.setattr(stats_routers, "call_stats_recorder", recorder)
+        kwargs = {"scene": None, "start_date": None, "end_date": None}
+        kwargs.update(params)
+        return asyncio.run(stats_routers.get_call_stats(**kwargs))
+
+    def test_query_all(self, monkeypatch, recorder):
+        recorder.record("panel_label", "ok", day="2026-06-10")
+        recorder.record("plate_screw", "ng", day="2026-06-10")
+        body = self._call(monkeypatch, recorder)
+        assert body["code"] == 1
+        assert body["message"] == "查询成功"
+        assert body["result"]["total"] == 2
+        assert set(body["result"]["scenes"]) == {"panel_label", "plate_screw"}
+
+    def test_query_with_filters(self, monkeypatch, recorder):
+        recorder.record("panel_label", "ok", day="2026-06-01")
+        recorder.record("panel_label", "ok", day="2026-06-10")
+        body = self._call(
+            monkeypatch,
+            recorder,
+            scene="panel_label",
+            start_date="2026-06-05",
+            end_date="2026-06-10",
+        )
+        assert body["result"]["total"] == 1
+        assert body["result"]["scenes"]["panel_label"]["daily"][0]["date"] == "2026-06-10"
+
+    def test_query_empty_db(self, monkeypatch, recorder):
+        body = self._call(monkeypatch, recorder)
+        assert body["result"] == {"total": 0, "scenes": {}}
+
+    @pytest.mark.parametrize("bad", ["2026/06/10", "20260610", "2026-6-1", "abc"])
+    def test_invalid_date_param_rejected(self, monkeypatch, recorder, bad):
+        with pytest.raises(InvalidParamsError):
+            self._call(monkeypatch, recorder, start_date=bad)
+        with pytest.raises(InvalidParamsError):
+            self._call(monkeypatch, recorder, end_date=bad)
