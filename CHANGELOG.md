@@ -9,6 +9,32 @@
 
 ---
 
+## [2.0.0] - 2026-06-11
+
+> 重大架构升级：框架与场景彻底解耦，主版本号 +1。框架本体（`vie-framework`）仅保留
+> 基类与插件发现机制，不含任何具体场景；既可通过 `entry_points` 装载独立插件包
+> （`vie-plugin-*`），也兼容老的"服务内场景"形态（`services/{场景}/` + 目录扫描）。
+
+### 新增
+- **插件化架构**：场景下沉为独立 wheel 包 `vie-plugin-*`，通过 `entry_points`（`vie.plugins` 组）被框架自动发现，框架对插件零知晓
+- **模板方法基类**：`BusinessLogicBase.detect()` 固定编排 `build_context → preprocess_hook → infer → business_post_process → normalize_hook → finalize_hook`，每请求态收敛到 `InferenceContext`，单例可并发
+- **无状态推理层**：`BaseOnnxInfer` / `YoloOnnxInfer` 去除每请求成员状态，预处理元数据改由 `PreprocMeta` 局部传递
+- **异常体系**：`VisionAPIError` 子类（`ProductNotRegisteredError` / `ModelInferenceError` / `InvalidParamsError` 等）+ 全局处理器统一返回 `HTTP 200 + CommonResponse`
+- **路由双发现**：`router_registry` 同时支持目录扫描（`routers/*_routers.py`）与 `entry_points` 插件发现
+- **二进制打包**：`scripts/build_wheels.py` 一键将框架与插件 Cython 编译为 `.so` wheel，业务源码不落明文
+- **dc_fuse 服务形态集成 demo**：在新框架上以"服务内场景"形态（非插件）重建 dc_fuse，验证框架对老场景布局的兼容
+
+### 变更
+- **场景后处理契约**：`business_logic_post_process(result, product_type) -> MoMResult`（返回值）改为 `business_post_process(ctx) -> None`（写 `ctx.result`）
+- **schema 迁移**：`services/data_base.py` 等迁移至 `schemas/`（`data_base` / `common` / `exceptions` / `inference_context`）
+- **配置解耦**：`LOG_DIR` / `DATA_DIR` 按运行 cwd 解析，避免编译为 `.so` 后路径埋入 venv
+- **目录重组**：`services/` 仅保留框架共享层（`base/` / `yolo.py` / `api.py` / `utils/`），各场景迁出至 `plugins/vie-plugin-*`
+
+### 迁移指引
+- 老场景适配新框架仅需 3 处机械改动：① 后处理钩子签名 ② import 路径迁至 `schemas.*` ③ 配置取值改走独立配置文件（不再依赖全局 `Settings.{场景}`）
+
+---
+
 ## [1.1.9] - 2026-06-10
 
 ### 新增

@@ -6,7 +6,12 @@
 
 ## 当前版本
 
-**v1.1.6**
+**v2.0.0**
+
+> **v2.0.0 重大架构升级**：框架与场景彻底解耦。框架本体（`vie-framework`）仅保留基类与
+> 插件发现机制，不含任何具体场景；场景既可作为独立 wheel 包（`vie-plugin-*`）通过
+> `entry_points` 装载，也兼容老的"服务内场景"形态（`services/{场景}/` + 路由目录扫描）。
+> 详细变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -51,59 +56,48 @@
 
 ## 项目结构
 
+> **架构说明**：各检测场景已插件化，框架（`vie-framework`）仅保留基类与插件发现机制，
+> 不含任何具体场景；场景代码、配置、schema、路由均下沉到 `plugins/vie-plugin-*` 各自独立维护，
+> 通过 `entry_points`（`vie.plugins` 组）被框架自动发现。
+
 ```text
 mobile_vision/
-├── app.py                       # 应用入口文件
-├── config/                      # 配置文件目录
-│   ├── config.py                # 主配置文件
-│   └── plate_screw_config.py    # 铁片螺丝检测配置
-├── demo/                        # 演示示例
-│   ├── dc_fuse.py               # 直流熔丝检测演示
-│   ├── indicator_light.py       # 指示灯检测演示
-│   └── data/                    # 演示数据
-├── logs/                        # 日志目录
-├── routers/                     # 路由定义
-│   ├── base_router.py           # 基础路由类
-│   ├── plate_routers.py         # 铁片螺丝检测路由
-│   └── router_registry.py       # 路由注册器
-├── schemas/                     # 数据模型定义
-│   ├── common.py                # 通用请求模型
-│   └── data_base.py             # 基础数据结构
-├── services/                    # 算法服务层
-│   ├── api.py                   # 服务工厂类
-│   ├── base                     
-│   │   ├── business_logic_base.py # 基础业务逻辑类
-│   │   ├── __init__.py
-│   │   └── onnx_base.py         # ONNX推理模型基础类
-│   ├── __init__.py
-│   ├── panel_label              # 线标 OCR 检测服务层
-│   │   ├── business_logic.py
-│   │   ├── __init__.py
-│   │   ├── panel_label_detect.py
-│   │   ├── product_type.py
-│   │   └── utils.py
-│   ├── plate_screw              # 铁片螺丝检测服务层
-│   │   ├── business_logic.py
-│   │   ├── __init__.py
-│   │   ├── plate_screw_detect.py
-│   │   └── tools.py
-│   ├── utils                    # 工具函数
-│   │   ├── box.py
-│   │   ├── __init__.py
-│   │   └── utils.py
-│   └── yolo.py                  # YOLO ONNX推理模型类
-├── test/                       # 测试用例目录
-│   ├── test_base.py
-│   ├── test_config.py
-│   ├── test_data_base.py
-│   ├── test_plateResponse.py
-│   └── test_yolo.py
-├── utils/                       # 工具函数
-│   └── logger.py                # 日志工具
+├── app.py                       # 应用入口（启动器，不入 wheel）
+├── config/                      # 框架配置
+│   └── config.py                # 主配置（Pydantic Settings）
+├── routers/                     # API 路由框架
+│   ├── base_router.py           # 基础路由类（统一请求处理 + 数据回流）
+│   └── router_registry.py       # 路由自动发现（目录扫描 + entry_points）
+├── schemas/                     # Pydantic 数据模型
+│   ├── common.py                # 通用响应模型
+│   ├── data_base.py             # 基础数据结构（DetectResult / MoMResult / ...）
+│   ├── error_codes.py           # 错误码定义
+│   ├── exceptions.py            # 自定义异常（VisionAPIError 体系）
+│   └── inference_context.py     # 推理上下文 InferenceContext
+├── services/                    # 框架服务层（仅共享基类，不含具体场景）
+│   ├── api.py                   # 检测工厂 detection_factory
+│   ├── base/
+│   │   ├── business_logic_base.py # 业务逻辑基类（模板方法 + 钩子）
+│   │   ├── detector.py
+│   │   └── onnx_base.py         # ONNX 推理基类（无状态）
+│   ├── yolo.py                  # YOLO ONNX 推理
+│   └── utils/                   # 辅助工具（box.py / utils.py）
+├── plugins/                     # 场景插件（独立维护，通过 entry_points 发现）
+│   ├── vie-plugin-dc-fuse/         # 直流熔丝
+│   ├── vie-plugin-indicator-light/ # 指示灯
+│   ├── vie-plugin-lap-surf/        # 搭接面
+│   ├── vie-plugin-line-squeeze/    # 线序
+│   ├── vie-plugin-panel-label/     # 线标 OCR
+│   └── vie-plugin-plate-screw/     # 铁片螺丝
+│       ├── pyproject.toml          # 元数据 + entry_point 声明
+│       ├── setup.py                # 二进制（.so）wheel 构建
+│       └── vie_plugin_plate_screw/ # plugin.py / business_logic.py / config.py / ...
+├── scripts/build_wheels.py      # 一键构建框架 + 全部插件二进制 wheel
 ├── weights/                     # 模型权重（weights/{场景}/{任务}_{架构}_v{N}，规范见 weights/README.md）
-├── Dockerfile                   # Docker 构建文件
+├── Dockerfile                   # 多阶段构建（编译加密 + 运行时）
+├── docker-compose.yml           # 编排（GPU + 健康检查 + 日志卷）
 ├── requirements.txt             # 依赖包列表
-└── README.md                    # 项目说明文档
+└── readme.md                    # 项目说明文档
 ```
 
 ---
@@ -144,16 +138,19 @@ python app.py
 
 ### 检测接口
 
-各场景的检测接口采用统一的 RESTful 风格，示例：
+各场景检测接口统一前缀 `/api/v1`，由各场景路由自描述 `api_path`，示例：
 
-- `POST /api/v1/dc_fuse_detection`
-- `POST /api/v1/indicator_detection`
-- `POST /api/v1/lap_surf_detection`
-- `POST /api/v1/plate_detection`
+- `POST /api/v1/dcfuse_detect`（直流熔丝）
+- `POST /api/v1/indicator_light_detect`（指示灯）
+- `POST /api/v1/lap_surf_detect`（搭接面）
+- `POST /api/v1/plate_screw_detect`（铁片螺丝）
+- `POST /api/v1/panel_label_detect`（线标 OCR）
+- `POST /api/v1/line_squeeze_recognition`（线序）
 
 #### 请求参数
 
-- `image`：图片文件（`multipart/form-data`）
+- `file`：图片文件（`multipart/form-data`）
+- `json_data`：产品/物料号/模型参数的 JSON 字符串（`multipart/form-data`）
 
 #### 响应格式
 
@@ -181,88 +178,102 @@ python app.py
 
 ## 如何集成新场景
 
-### 1. 创建场景目录结构
+v2.0.0 起场景有两种接入形态，**核心契约一致**（工厂注册 + `business_post_process(ctx)` 模板钩子 +
+`BaseRouter`），区别仅在「打包/发现方式」：
 
-```bash
-mkdir -p services/new_scene
-```
+| 形态 | 发现方式 | 适用 | 推荐度 |
+|------|---------|------|--------|
+| **插件包** `vie-plugin-*` | `entry_points`（`vie.plugins` 组） | 独立维护、二进制分发、按需部署 | ⭐ 推荐 |
+| **服务内场景** `services/{场景}/` | 路由目录扫描（`routers/*_routers.py`） | 快速原型、兼容老场景布局 | 兼容 |
 
-### 2. 实现算法服务层
+下面以**服务内场景**形态演示（插件形态把同样的文件放进 `plugins/vie-plugin-xxx/` 并在
+`pyproject.toml` 声明 `entry_point` 即可，详见各插件目录）。
 
-在 `services/new_scene/` 目录下创建：
-
-- `__init__.py`：模块初始化文件 
-- `detect.py`：onnx模型推理实现  
-  ```python
-  from ..yolo import YoloOnnxInfer
-
-  class NewSceneDetector(YoloOnnxInfer):
-      def __init__(self, model_path, confThreshold=0.5, nmsThreshold=0.5, task="det"):
-          super().__init__(model_path, nc=12, confThreshold=confThreshold, nmsThreshold=nmsThreshold, task=task)
-          self.id2name = {
-              0: "brass_plate_6",
-              ...
-          }
-
-  ``` 
-- `business_logic.py`：业务逻辑实现  
-  ```python
-    @detection_factory.register("new_scene")
-    class new_sceneDetectorAPI(BusinessLogicBase):
-        def __init__(self, settings):
-            super().__init__(settings)
-            pass
-
-        def _initialize_model(self, settings):
-          """初始化模型"""
-            pass
-
-        def business_logic_post_process(self, result: DetectResult, product_type: str) -> MoMResult:
-            """业务逻辑后处理"""
-            pass
-            return mom_result
-  ```
-
-
-
-### 3. 创建路由
-
-在 `routers/` 目录下创建 `new_scene_routers.py`，实现路由处理：
+### 1. 实现推理层 `services/new_scene/new_scene_detect.py`
 
 ```python
-from fastapi import APIRouter, UploadFile, File
-from .base_router import BaseRouter
-from schemas.new_scene_schemas import DetectionResponse
-from services.new_scene import business_logic
+from services.yolo import YoloOnnxInfer
 
-class NewSceneRouter(BaseRouter):
-    def __init__(self):
-        super().__init__(detector_type="new_scene")
-    
-    async def detect(self, file: UploadFile = File(...)):
-        # 实现检测逻辑
-        pass
-
-new_scene_router = NewSceneRouter()
+class NewSceneDetector(YoloOnnxInfer):
+    def __init__(self, model_path, confThreshold=0.5, nmsThreshold=0.5, task="det"):
+        super().__init__(model_path, nc=12, confThreshold=confThreshold,
+                         nmsThreshold=nmsThreshold, task=task)
+        self.id2name = {0: "label_0", 1: "label_1"}  # 类别映射
 ```
 
-### 5. 添加配置
+### 2. 实现业务层 `services/new_scene/business_logic.py`
 
-在 `config/config.py` 中添加新场景的配置：
+> **v2.0.0 契约变更**：后处理钩子由旧的 `business_logic_post_process(result, product_type) -> MoMResult`
+> 改为 `business_post_process(ctx) -> None`——从 `ctx.raw_result` 读检测结果，把 `MoMResult` 写回
+> `ctx.result`；坐标输出像素值，归一化交给基类 `normalize_hook` 统一处理。
+
+```python
+from services.api import detection_factory
+from services.base import BusinessLogicBase
+from schemas.data_base import MoMResult, DetectionItem, MessageType
+from schemas.inference_context import InferenceContext
+from config.new_scene_config import NewSceneConfig
+from .new_scene_detect import NewSceneDetector
+
+@detection_factory.register("new_scene")
+class NewSceneDetectorAPI(BusinessLogicBase):
+    def _initialize_model(self, settings):
+        cfg = NewSceneConfig()
+        self.detector = NewSceneDetector(cfg.model_path, cfg.confThreshold)
+
+    def business_post_process(self, ctx: InferenceContext) -> None:
+        result = ctx.raw_result                      # DetectResult
+        mom = MoMResult(status=True, message=MessageType.SUCCESS.value)
+        for box, score, name in zip(result.boxes, result.scores, result.class_names):
+            mom.detailList.append(DetectionItem(status=True, scene=name,
+                                                coordinate=box, accuracy=score))
+        ctx.result = mom                             # 写回 ctx，基类后续归一化
+```
+
+### 3. 定义 schema `schemas/new_scene_schemas.py`
+
+```python
+from pydantic import BaseModel, Field
+
+class NewSceneRequest(BaseModel):
+    product_model: str = Field(..., description="产品型号")
+```
+
+### 4. 创建路由 `routers/new_scene_routers.py`
+
+```python
+import numpy as np
+from .base_router import BaseRouter
+from schemas.new_scene_schemas import NewSceneRequest
+from schemas.data_base import InputParamsBusiness
+import services.new_scene  # noqa: F401  导入即触发 @detection_factory.register
+
+class NewSceneRouter(BaseRouter):
+    def request_schema(self, json_dict):
+        return NewSceneRequest(**json_dict)
+
+    def get_inputs(self, request_params, image: np.ndarray):
+        return InputParamsBusiness(image=image, product_type=request_params.product_model)
+
+new_scene_router = NewSceneRouter(
+    router_name="new_scene_router", api_path="/new_scene_detect",
+    summary="新场景检测", description="...", detector_type="new_scene", tag="新场景检测",
+)
+```
+
+### 5. 添加配置 `config/new_scene_config.py`
+
+> v2.0.0 起场景配置独立成文件（不再挂到全局 `Settings.{场景}`），由业务层直接 import，保持"加场景不动框架"。
 
 ```python
 class NewSceneConfig:
-    model_path: str = "./weights/new_scene_model.onnx"
-    confThreshold: float = 0.5
-
-class Settings(BaseSettings):
-    # 其他配置...
-    new_scene: NewSceneConfig = NewSceneConfig()
+    model_path = "./weights/new_scene/det_yolo_v1.onnx"
+    confThreshold = 0.5
 ```
 
 ### 6. 重启服务
 
-重启服务后，新场景的路由将自动注册到 API 服务中。
+路由由 `router_registry` 目录扫描自动发现（文件名含 `routers` 即可），重启后端点自动注册。
 
 ---
 
