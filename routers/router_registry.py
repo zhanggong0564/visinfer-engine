@@ -122,6 +122,7 @@ class RouterRegistry:
             'dc_fuse_routers': '直流熔丝检测',
             'indicator_routers': '指示灯检测',
             'lap_surf_routers': '搭接面检测',
+            'stats_routers': '调用统计',
             # 兼容历史裸场景名键
             'dc_fuse': '直流熔丝检测',
             'indicator': '指示灯检测',
