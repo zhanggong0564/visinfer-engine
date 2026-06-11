@@ -85,27 +85,22 @@ def test_persist_called_when_detect_fails(monkeypatch):
     assert calls[0]["original_filename"] == "线标检验FU211-1779526099406.jpg"
 
 
-@pytest.mark.parametrize(
-    "filename, expected",
-    [
-        # AI- 前缀剥掉、型号序号 -1 去掉
-        ("AI-中压线标检验TK2-1-1764780181920.jpg", ("中压线标检验", "TK2", "1764780181920")),
-        # 无 AI- 前缀，效果一致
-        ("中压线标检验TK2-1-1764780181920.jpg", ("中压线标检验", "TK2", "1764780181920")),
-        # 旧式：型号尾部非数字（-A）不应被当序号去掉
-        ("1+X线标检验PE1-A-1779526099406.jpg", ("1+X线标检验", "PE1-A", "1779526099406")),
-        # 型号本身无序号后缀
-        ("中压线标检验TK2-1764780181920.jpg", ("中压线标检验", "TK2", "1764780181920")),
-        # AI- 大小写不敏感
-        ("ai-中压线标检验TK2-2-1764780181920.png", ("中压线标检验", "TK2", "1764780181920")),
-    ],
-)
-def test_parse_filename(filename, expected):
-    """文件名解析：AI- 前缀剥离、型号图片序号去除、场景/型号/时间戳切分。"""
-    assert BaseRouter._parse_filename(filename) == expected
+def test_default_backflow_target_is_scene_agnostic():
+    """框架默认 resolve_backflow_target 不解析文件名：场景=detector_type，
+    型号取 product_type 兜底，文件名沿用原名（线标式中文场景解析归插件）。"""
+    router = _Router()  # detector_type="panel_label"，未重写钩子 → 用框架默认
+    target = router.resolve_backflow_target(
+        "AI-中压线标检验TK2-1-1764780181920.jpg", fallback_product_type="TK2"
+    )
+    assert target.scene_dir == "panel_label"
+    assert target.model_dir == "TK2"
+    assert target.save_stem == "AI-中压线标检验TK2-1-1764780181920"
 
 
-@pytest.mark.parametrize("filename", ["random.jpg", "noscene-123.jpg", "纯中文.jpg"])
-def test_parse_filename_unparseable(filename):
-    """不符合规则的文件名返回三元 None，由调用方走兜底。"""
-    assert BaseRouter._parse_filename(filename) == (None, None, None)
+def test_default_backflow_target_unknown_model():
+    """无 product_type 兜底时型号目录回退 _unknown_model。"""
+    from routers.base_router import UNKNOWN_MODEL_DIR
+
+    router = _Router()
+    target = router.resolve_backflow_target("anything.jpg", fallback_product_type=None)
+    assert target.model_dir == UNKNOWN_MODEL_DIR
