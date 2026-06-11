@@ -33,6 +33,10 @@ async def get_call_stats(
     for name, value in (("start_date", start_date), ("end_date", end_date)):
         if value is not None and not _DATE_RE.match(value):
             raise InvalidParamsError(f"{name} 格式非法，应为 YYYY-MM-DD")
+    # 起止倒置会静默返回空结果，与"无数据"无法区分，显式拒绝
+    # （零填充 ISO 日期字符串可直接按字典序比较）
+    if start_date and end_date and start_date > end_date:
+        raise InvalidParamsError("start_date 不应晚于 end_date")
     # sqlite 读为同步操作，丢线程池避免阻塞事件循环
     result = await run_in_threadpool(
         call_stats_recorder.query, scene=scene, start_date=start_date, end_date=end_date
