@@ -114,8 +114,12 @@ class _Router(BaseRouter):
         return None
 
 
-def _make_router(monkeypatch, detect_side_effect):
-    """构造测试路由：跳过解码/落盘，捕获 record_call 调用。"""
+def _make_router(monkeypatch, detect_side_effect, patch_record_call=True):
+    """构造测试路由：跳过解码/落盘，默认捕获 record_call 调用。
+
+    patch_record_call=False 时保留真实 record_call，用于验证
+    统计底层故障不影响检测主流程的集成契约。
+    """
     router = _Router()
 
     async def _fake_process_image(file):
@@ -131,10 +135,11 @@ def _make_router(monkeypatch, detect_side_effect):
     monkeypatch.setattr(router, "_persist_record", lambda **kw: None)
 
     calls = []
-    monkeypatch.setattr(
-        "routers.base_router.record_call",
-        lambda scene, verdict: calls.append((scene, verdict)),
-    )
+    if patch_record_call:
+        monkeypatch.setattr(
+            "routers.base_router.record_call",
+            lambda scene, verdict: calls.append((scene, verdict)),
+        )
     return router, calls
 
 
@@ -200,3 +205,45 @@ class TestCallStatsHook:
                 )
             )
         assert calls == [("panel_label", "error")]
+
+    def test_stats_failure_never_breaks_detection(self, monkeypatch):
+        """统计底层故障（recorder 抛异常）不影响成功响应，也不替换原始检测异常。
+
+        不 patch record_call（走真实埋点入口），只让底层 recorder.record 抛异常，
+        锁定"统计绝不影响检测主流程"的集成契约。
+        """
+        import services.call_stats as cs
+
+        def _raise_record(*args, **kwargs):
+            raise RuntimeError("stats db down")
+
+        monkeypatch.setattr(cs.call_stats_recorder, "record", _raise_record)
+
+        # 成功路径：响应正常返回，后台 record_call 吞掉 recorder 异常
+        router, _ = _make_router(
+            monkeypatch, lambda: dict(_OK_RESULT), patch_record_call=False
+        )
+        bg = BackgroundTasks()
+        result = asyncio.run(
+            router._handle_request(
+                background_tasks=bg,
+                file=_FakeUpload(),
+                json_data='{"modelParams": {"product_type": "FU211"}}',
+            )
+        )
+        asyncio.run(bg())
+        assert result.code == 1
+
+        # 异常路径：原始检测异常原样上抛，不被统计异常替换
+        def _boom():
+            raise RuntimeError("inference boom")
+
+        router2, _ = _make_router(monkeypatch, _boom, patch_record_call=False)
+        with pytest.raises(RuntimeError, match="inference boom"):
+            asyncio.run(
+                router2._handle_request(
+                    background_tasks=BackgroundTasks(),
+                    file=_FakeUpload(),
+                    json_data='{"modelParams": {"product_type": "FU211"}}',
+                )
+            )
