@@ -59,6 +59,12 @@ class TestCallStatsRecorder:
         """库文件尚未创建（零调用）时返回空结构，不报错。"""
         assert recorder.query() == {"total": 0, "scenes": {}}
 
+    def test_record_rejects_unknown_verdict(self, recorder):
+        """verdict 边界校验：非法值拒绝入账，保证 total == ok+ng+error 恒成立。"""
+        with pytest.raises(ValueError):
+            recorder.record("panel_label", "timeout")
+        assert recorder.query() == {"total": 0, "scenes": {}}
+
 
 class TestRecordCall:
     def test_record_call_swallows_exceptions(self, monkeypatch):
@@ -70,3 +76,7 @@ class TestRecordCall:
 
         monkeypatch.setattr(cs.call_stats_recorder, "record", _raise)
         record_call("panel_label", "ok")  # 不应抛出
+
+    def test_record_call_swallows_unknown_verdict(self):
+        """非法 verdict 经埋点入口同样被吞掉（record 在建连前已拒绝，不落盘）。"""
+        record_call("panel_label", "timeout")  # 不应抛出
