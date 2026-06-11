@@ -90,6 +90,13 @@ class RouterRegistry:
                 self.router_configs[module_name] = config
                 vision_logger.info(f"发现路由模块 {module_name}，标签为 {config['tags']}")
             elif isinstance(attr, BaseRouter):
+                # 场景白名单过滤：未启用的场景不注册路由、也不进 base_routers（即不预加载），
+                # 留空表示全部启用。便于单场景部署，避免缺失权重导致启动失败。
+                if not self._scene_enabled(attr.detector_type):
+                    vision_logger.info(
+                        f"跳过未启用场景 {module_name}（detector_type={attr.detector_type}）"
+                    )
+                    continue
                 # 只做路由发现/注册，重型模型加载延后到 preload_all（lifespan）
                 router = attr.get_router()
                 if isinstance(router, APIRouter):
@@ -99,6 +106,14 @@ class RouterRegistry:
                     self.router_configs[module_name] = config
                     vision_logger.info(f"发现路由模块 {module_name}，标签为 {config['tags']}")
         return routers
+
+    def _scene_enabled(self, detector_type: str) -> bool:
+        """按 settings.ENABLED_SCENES 判定某检测场景是否启用。
+
+        白名单留空 = 全部启用（向后兼容）；非空时仅放行列表内的 detector_type。
+        """
+        enabled = settings.ENABLED_SCENES
+        return not enabled or detector_type in enabled
 
     def _make_router_config(self, module_name: str, tag: str = None) -> Dict:
         return {
