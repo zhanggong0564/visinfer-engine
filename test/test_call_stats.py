@@ -262,10 +262,26 @@ class TestStatsEndpoint:
         recorder.record("panel_label", "ok", day="2026-06-10")
         recorder.record("plate_screw", "ng", day="2026-06-10")
         body = self._call(monkeypatch, recorder)
-        assert body["code"] == 1
-        assert body["message"] == "查询成功"
-        assert body["result"]["total"] == 2
-        assert set(body["result"]["scenes"]) == {"panel_label", "plate_screw"}
+        assert body["sysKey"] == "mobile_vision"
+        assert body["sysName"] == "移动视觉检测服务"
+        assert len(body["info"]) == 2
+        fun_keys = {item["funKey"] for item in body["info"]}
+        assert fun_keys == {"panel_label", "plate_screw"}
+
+    def test_query_info_fields(self, monkeypatch, recorder):
+        """info 各字段类型与格式：date 为 YYYYMMDD，数值均为字符串。"""
+        recorder.record("panel_label", "ok", day="2026-06-10")
+        recorder.record("panel_label", "ng", day="2026-06-10")
+        recorder.record("panel_label", "error", day="2026-06-10")
+        body = self._call(monkeypatch, recorder)
+        item = body["info"][0]
+        assert item["funKey"] == "panel_label"
+        assert item["funName"] == "线标OCR检测"
+        assert item["date"] == "20260610"
+        assert item["summary"] == "3"
+        assert item["ok"] == "1"
+        assert item["ng"] == "1"
+        assert item["error"] == "1"
 
     def test_query_with_filters(self, monkeypatch, recorder):
         recorder.record("panel_label", "ok", day="2026-06-01")
@@ -277,12 +293,14 @@ class TestStatsEndpoint:
             start_date="2026-06-05",
             end_date="2026-06-10",
         )
-        assert body["result"]["total"] == 1
-        assert body["result"]["scenes"]["panel_label"]["daily"][0]["date"] == "2026-06-10"
+        assert len(body["info"]) == 1
+        assert body["info"][0]["date"] == "20260610"
+        assert body["info"][0]["summary"] == "1"
 
     def test_query_empty_db(self, monkeypatch, recorder):
         body = self._call(monkeypatch, recorder)
-        assert body["result"] == {"total": 0, "scenes": {}}
+        assert body["sysKey"] == "mobile_vision"
+        assert body["info"] == []
 
     @pytest.mark.parametrize("bad", ["2026/06/10", "20260610", "2026-6-1", "abc"])
     def test_invalid_date_param_rejected(self, monkeypatch, recorder, bad):
