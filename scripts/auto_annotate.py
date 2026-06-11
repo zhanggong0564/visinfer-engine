@@ -85,8 +85,8 @@ class AutoAnnotator:
     """
 
     # 与 PanelLabelConfig 保持一致的默认参数
-    _DEFAULT_ORIENT_PATH = "./weights/panel_label/textline_ori_lcnet_v3"
-    _DEFAULT_REC_PATH = "./weights/panel_label/text_rec_plane_ppocrv5s_v3"
+    _DEFAULT_ORIENT_PATH = "./weights/panel_label/textline_ori_lcnet_v4"
+    _DEFAULT_REC_PATH = "./weights/panel_label/text_rec_ppocrv5s_v4"
 
     def __init__(
         self,
