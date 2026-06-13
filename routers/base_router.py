@@ -8,6 +8,7 @@
 '''
 
 import json
+import inspect
 import os
 import re
 import time
@@ -19,7 +20,6 @@ from typing import Any, Optional, Tuple
 import cv2
 import numpy as np
 from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
-from fastapi.concurrency import run_in_threadpool
 
 from config import settings
 from schemas import CommonResponse, ErrorCode, ERROR_CODE_MESSAGES
@@ -27,6 +27,7 @@ from schemas.exceptions import InvalidParamsError, InvalidImageError, InternalEr
 from services import detection_factory
 from services.call_stats import record_call
 from utils import vision_logger
+from utils.async_utils import run_sync
 
 # 数据回流根目录：按 settings.DATA_DIR（相对路径锚定运行 cwd）解析为绝对路径。
 # 不再基于 __file__ 推算——本模块会被编译成 .so 装进 venv，__file__ 会指向
@@ -34,6 +35,7 @@ from utils import vision_logger
 DATA_DIR = os.path.abspath(settings.DATA_DIR)
 
 UNKNOWN_MODEL_DIR = "_unknown_model"
+SAFE_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}
 
 
 @dataclass
@@ -91,7 +93,7 @@ class BaseRouter(ABC):
         try:
             return await self._process_detect_request(background_tasks, file, json_data)
         except Exception:
-            await run_in_threadpool(record_call, self.detector_type, "error")
+            await run_sync(record_call, self.detector_type, "error")
             raise
 
     async def _process_detect_request(
@@ -110,18 +112,20 @@ class BaseRouter(ABC):
 
         image, _ = await self._process_image(file)
         inputs = self.get_inputs(request_params, image)
+        if inspect.isawaitable(inputs):
+            inputs = await inputs
         detector = self.get_detector_singleton()
         fallback_product_type = self._extract_product_type(request_params)
         start = time.time()
         # detect 是同步 CPU/GPU 密集操作，丢到线程池执行，避免阻塞事件循环
         try:
-            result_info = await run_in_threadpool(detector.detect, inputs)
+            result_info = await run_sync(detector.detect, inputs)
         except Exception as exc:
             # 检测失败（如型号未注册）也要落盘：数据回流的核心价值之一就是
             # 收集这些"没见过"的新型号样本去标注、补型号。异常会跳过下方
             # background_tasks 注册，故此处内联落盘后再重抛，交全局异常处理器响应。
             latency_ms = (time.time() - start) * 1000
-            await run_in_threadpool(
+            await run_sync(
                 self._persist_record,
                 image=image,
                 original_filename=original_filename,
@@ -147,6 +151,7 @@ class BaseRouter(ABC):
         vision_logger.info("返回检测结果")
 
         background_tasks.add_task(
+            run_sync,
             self._persist_record,
             image=image,
             original_filename=original_filename,
@@ -159,7 +164,10 @@ class BaseRouter(ABC):
         # 调用统计：按检测结论记 ok/ng（与回流落盘共用 _classify_result 二分；
         # 异常路径在外层 _handle_request 统一记 error，比落盘目录多一个分类）
         background_tasks.add_task(
-            record_call, self.detector_type, self._classify_result(result_dict)
+            run_sync,
+            record_call,
+            self.detector_type,
+            self._classify_result(result_dict),
         )
         return result
 
@@ -199,7 +207,7 @@ class BaseRouter(ABC):
             raise InvalidImageError(f"图片大小超过上限 {settings.MAX_UPLOAD_MB}MB")
         img_array = np.frombuffer(img_bytes, dtype=np.uint8)
         # imdecode 为同步 CPU 操作，丢到线程池避免阻塞事件循环
-        image = await run_in_threadpool(cv2.imdecode, img_array, cv2.IMREAD_COLOR)
+        image = await run_sync(cv2.imdecode, img_array, cv2.IMREAD_COLOR)
         if image is None:
             vision_logger.error("图片读取失败")
             raise InvalidImageError("图片读取失败，请检查文件格式")
@@ -225,7 +233,8 @@ class BaseRouter(ABC):
         需要从文件名拆分场景/型号（如线标的 'AI-中压线标检验TK2-1-<ts>.jpg'）的场景，
         在各自插件 Router 里重写本方法即可，框架代码无需改动。
         """
-        stem = os.path.splitext(original_filename)[0] or f"unknown_{int(time.time() * 1000)}"
+        safe_filename = self._safe_client_filename(original_filename)
+        stem = os.path.splitext(safe_filename)[0] or f"unknown_{int(time.time() * 1000)}"
         model_dir = (
             self._sanitize_dir_name(fallback_product_type)
             if fallback_product_type
@@ -236,7 +245,23 @@ class BaseRouter(ABC):
     @staticmethod
     def _sanitize_dir_name(name: str) -> str:
         """把 product_type 当目录名前清洗，去掉路径分隔符避免越界。"""
-        return re.sub(r"[\\/]+", "_", name).strip() or UNKNOWN_MODEL_DIR
+        sanitized = re.sub(r"[\\/]+", "_", str(name)).strip().strip(".")
+        return sanitized or UNKNOWN_MODEL_DIR
+
+    @staticmethod
+    def _safe_client_filename(filename: str) -> str:
+        """只保留客户端文件名本身，兼容 Windows 与 POSIX 路径分隔符。"""
+        normalized = (filename or "unknown.jpg").replace("\\", "/")
+        return normalized.rsplit("/", 1)[-1] or "unknown.jpg"
+
+    @staticmethod
+    def _safe_path(root: str, *parts: str) -> str:
+        """构造并校验路径，确保规范化后的结果仍位于 root 下。"""
+        root_path = os.path.realpath(root)
+        candidate = os.path.realpath(os.path.join(root_path, *parts))
+        if os.path.commonpath((root_path, candidate)) != root_path:
+            raise ValueError("数据回流路径越界")
+        return candidate
 
     @staticmethod
     def _classify_result(result_dict: dict) -> str:
@@ -269,21 +294,27 @@ class BaseRouter(ABC):
         """
         try:
             target = self.resolve_backflow_target(original_filename, fallback_product_type)
-            ext = os.path.splitext(original_filename)[1] or ".jpg"
+            safe_filename = self._safe_client_filename(original_filename)
+            ext = os.path.splitext(safe_filename)[1].lower()
+            if ext not in SAFE_IMAGE_EXTENSIONS:
+                ext = ".jpg"
             date_dir = received_at[:10]  # YYYY-MM-DD
 
             # 在型号目录下再按检测结论分 ok / ng（未检出信息归 ng）
             # 例：data/中压线标检验/2026-06-05/TK2/ng/images/1764780181920.jpg
             verdict_dir = self._classify_result(result_dict)
-            model_dir = os.path.join(
-                DATA_DIR, target.scene_dir, date_dir, target.model_dir, verdict_dir
+            scene_dir = self._sanitize_dir_name(target.scene_dir)
+            target_model_dir = self._sanitize_dir_name(target.model_dir)
+            save_stem = self._sanitize_dir_name(target.save_stem)
+            model_dir = self._safe_path(
+                DATA_DIR, scene_dir, date_dir, target_model_dir, verdict_dir
             )
-            image_dir = os.path.join(model_dir, "images")
-            record_dir = os.path.join(model_dir, "records")
+            image_dir = self._safe_path(model_dir, "images")
+            record_dir = self._safe_path(model_dir, "records")
             os.makedirs(image_dir, exist_ok=True)
             os.makedirs(record_dir, exist_ok=True)
-            image_path = os.path.join(image_dir, f"{target.save_stem}{ext}")
-            record_path = os.path.join(record_dir, f"{target.save_stem}.json")
+            image_path = self._safe_path(image_dir, f"{save_stem}{ext}")
+            record_path = self._safe_path(record_dir, f"{save_stem}.json")
 
             if not cv2.imwrite(image_path, image):
                 vision_logger.warning(f"数据回流图片写入失败 path={image_path}")
@@ -298,8 +329,8 @@ class BaseRouter(ABC):
                 "received_at": received_at,
                 "detector_type": self.detector_type,
                 "original_filename": original_filename,
-                "saved_scene_dir": target.scene_dir,
-                "saved_model_dir": target.model_dir,
+                "saved_scene_dir": scene_dir,
+                "saved_model_dir": target_model_dir,
                 "verdict": verdict_dir,
                 "request_params": request_params,
                 "latency_ms": latency_ms,

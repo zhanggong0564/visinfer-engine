@@ -9,10 +9,10 @@ import re
 from typing import Optional
 
 from fastapi import APIRouter, Query
-from fastapi.concurrency import run_in_threadpool
 
 from schemas.exceptions import InvalidParamsError
 from services.call_stats import call_stats_recorder
+from utils.async_utils import run_sync
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -70,7 +70,7 @@ async def get_call_stats(
             raise InvalidParamsError(f"{name} 格式非法，应为 YYYY-MM-DD")
     if start_date and end_date and start_date > end_date:
         raise InvalidParamsError("start_date 不应晚于 end_date")
-    stats = await run_in_threadpool(
+    stats = await run_sync(
         call_stats_recorder.query, scene=scene, start_date=start_date, end_date=end_date
     )
     return _build_response(stats)
