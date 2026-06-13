@@ -7,15 +7,17 @@
 @Description  :
 '''
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+
     API_TITLE: str = "Mobile Vision alg API"
     API_VERSION: str = "2.0.1"
 
     HOST: str = "0.0.0.0"
-    PORT: int = 3001
+    PORT: int = 3007
 
     LOG_DIR: str = "logs"
     # 数据回流落盘根目录（相对路径按运行 cwd 解析；容器内 cwd=/app/workspace）。
@@ -24,7 +26,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     # 健康探针等高频端点的访问日志静默名单：命中且响应正常（<400）时不打 INFO，
     # 避免 30s 一次的 /health 把访问日志刷爆；非 2xx/异常仍照常记录以便排障。
-    ACCESS_LOG_SKIP_PATHS: set[str] = {"/health"}
+    ACCESS_LOG_SKIP_PATHS: set[str] = {"/health", "/health/ready"}
     # 启用的检测场景白名单（按 detector_type，如 panel_label / dc_fuse）。
     # 留空 = 全部启用（向后兼容）；指定后仅注册并预加载列表内场景，未列出的场景
     # 路由不注册、模型不预加载——便于单场景部署（如服务器只上线 panel_label），
@@ -37,9 +39,5 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = 20
     # 严格启动：任一检测器预加载失败则拒绝启动（生产建议 True，避免带病运行、端点静默缺失）
     STRICT_STARTUP: bool = False
-
-    class Config:
-        env_file = ".env"
-
 
 settings = Settings()
