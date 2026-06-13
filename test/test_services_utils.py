@@ -89,6 +89,24 @@ class TestNumpyNms:
         keep = numpy_nms(boxes, scores, 1.0)
         assert len(keep) == 2
 
+    def test_does_not_build_full_iou_matrix(self, monkeypatch):
+        """NMS 只能计算当前框对剩余框的一维 IoU，不能构造 N×N 矩阵。"""
+        monkeypatch.setattr(
+            "services.utils.box.box_iou",
+            lambda *args: (_ for _ in ()).throw(
+                AssertionError("full IoU matrix must not be used")
+            ),
+        )
+        boxes = np.array(
+            [[i, 0, i + 10, 10] for i in range(1000)], dtype=np.float32
+        )
+        scores = np.linspace(1.0, 0.0, len(boxes), dtype=np.float32)
+
+        keep = numpy_nms(boxes, scores, 0.5)
+
+        assert keep.dtype == np.int64
+        assert keep[0] == 0
+
 
 class TestNonMaxSuppressionV8:
     def test_det_mode_empty_result(self):

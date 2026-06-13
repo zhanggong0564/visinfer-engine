@@ -12,6 +12,15 @@ from routers.base_router import BaseRouter
 from schemas.exceptions import ProductNotRegisteredError
 
 
+def _run(coro):
+    """兼容 PPOCR 环境 Python 3.10.0 的 executor 关闭问题。"""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 class _FakeUpload:
     """最小 UploadFile 替身：只需 filename + async read。"""
 
@@ -72,7 +81,7 @@ def test_persist_called_when_detect_fails(monkeypatch):
     bg = BackgroundTasks()
 
     with pytest.raises(ProductNotRegisteredError):
-        asyncio.run(
+        _run(
             router._handle_request(
                 background_tasks=bg,
                 file=_FakeUpload(),
@@ -104,3 +113,31 @@ def test_default_backflow_target_unknown_model():
     router = _Router()
     target = router.resolve_backflow_target("anything.jpg", fallback_product_type=None)
     assert target.model_dir == UNKNOWN_MODEL_DIR
+
+
+def test_default_backflow_target_strips_client_path():
+    """客户端文件名中的目录部分不能进入回流保存名。"""
+    router = _Router()
+    target = router.resolve_backflow_target("../../escape.jpg", fallback_product_type="TK2")
+    assert target.save_stem == "escape"
+
+
+def test_persist_record_keeps_outputs_under_data_dir(monkeypatch, tmp_path):
+    """恶意文件名和型号不能让回流文件逃出 DATA_DIR。"""
+    monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
+    router = _Router()
+
+    router._persist_record(
+        image=np.zeros((4, 4, 3), dtype=np.uint8),
+        original_filename="../../escape.php",
+        raw_json="{}",
+        result_dict={"status": "true"},
+        latency_ms=1.0,
+        received_at="2026-06-12T10:00:00.000",
+        fallback_product_type="../model",
+    )
+
+    files = [path for path in tmp_path.rglob("*") if path.is_file()]
+    assert files
+    assert all(path.resolve().is_relative_to(tmp_path.resolve()) for path in files)
+    assert any(path.suffix == ".jpg" for path in files)

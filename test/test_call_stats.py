@@ -11,6 +11,26 @@ from schemas.exceptions import InvalidParamsError
 from services.call_stats import CallStatsRecorder, record_call
 
 
+def _run(coro):
+    """兼容 PPOCR 环境 Python 3.10.0 的 executor 关闭问题。"""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+async def _handle_with_background(router, background_tasks, file, json_data):
+    """按真实 ASGI 生命周期在同一事件循环内执行响应后台任务。"""
+    result = await router._handle_request(
+        background_tasks=background_tasks,
+        file=file,
+        json_data=json_data,
+    )
+    await background_tasks()
+    return result
+
+
 @pytest.fixture
 def recorder(tmp_path):
     return CallStatsRecorder(str(tmp_path / "stats.db"))
@@ -152,28 +172,28 @@ class TestCallStatsHook:
         """status=true 的成功响应记一笔 ok（经 background task）。"""
         router, calls = _make_router(monkeypatch, lambda: dict(_OK_RESULT))
         bg = BackgroundTasks()
-        asyncio.run(
-            router._handle_request(
-                background_tasks=bg,
-                file=_FakeUpload(),
-                json_data='{"modelParams": {"product_type": "FU211"}}',
+        _run(
+            _handle_with_background(
+                router,
+                bg,
+                _FakeUpload(),
+                '{"modelParams": {"product_type": "FU211"}}',
             )
         )
-        asyncio.run(bg())  # 显式执行后台任务
         assert calls == [("panel_label", "ok")]
 
     def test_success_ng_recorded(self, monkeypatch):
         """status=false 记一笔 ng。"""
         router, calls = _make_router(monkeypatch, lambda: dict(_NG_RESULT))
         bg = BackgroundTasks()
-        asyncio.run(
-            router._handle_request(
-                background_tasks=bg,
-                file=_FakeUpload(),
-                json_data='{"modelParams": {"product_type": "FU211"}}',
+        _run(
+            _handle_with_background(
+                router,
+                bg,
+                _FakeUpload(),
+                '{"modelParams": {"product_type": "FU211"}}',
             )
         )
-        asyncio.run(bg())
         assert calls == [("panel_label", "ng")]
 
     def test_detect_exception_recorded_as_error(self, monkeypatch):
@@ -185,7 +205,7 @@ class TestCallStatsHook:
         router, calls = _make_router(monkeypatch, _raise)
         bg = BackgroundTasks()
         with pytest.raises(RuntimeError):
-            asyncio.run(
+            _run(
                 router._handle_request(
                     background_tasks=bg,
                     file=_FakeUpload(),
@@ -199,7 +219,7 @@ class TestCallStatsHook:
         router, calls = _make_router(monkeypatch, lambda: dict(_OK_RESULT))
         bg = BackgroundTasks()
         with pytest.raises(InvalidParamsError):
-            asyncio.run(
+            _run(
                 router._handle_request(
                     background_tasks=bg, file=_FakeUpload(), json_data="not-json"
                 )
@@ -224,14 +244,14 @@ class TestCallStatsHook:
             monkeypatch, lambda: dict(_OK_RESULT), patch_record_call=False
         )
         bg = BackgroundTasks()
-        result = asyncio.run(
-            router._handle_request(
-                background_tasks=bg,
-                file=_FakeUpload(),
-                json_data='{"modelParams": {"product_type": "FU211"}}',
+        result = _run(
+            _handle_with_background(
+                router,
+                bg,
+                _FakeUpload(),
+                '{"modelParams": {"product_type": "FU211"}}',
             )
         )
-        asyncio.run(bg())
         assert result.code == 1
 
         # 异常路径：原始检测异常原样上抛，不被统计异常替换
@@ -240,7 +260,7 @@ class TestCallStatsHook:
 
         router2, _ = _make_router(monkeypatch, _boom, patch_record_call=False)
         with pytest.raises(RuntimeError, match="inference boom"):
-            asyncio.run(
+            _run(
                 router2._handle_request(
                     background_tasks=BackgroundTasks(),
                     file=_FakeUpload(),
@@ -256,7 +276,7 @@ class TestStatsEndpoint:
         monkeypatch.setattr(stats_routers, "call_stats_recorder", recorder)
         kwargs = {"scene": None, "start_date": None, "end_date": None}
         kwargs.update(params)
-        return asyncio.run(stats_routers.get_call_stats(**kwargs))
+        return _run(stats_routers.get_call_stats(**kwargs))
 
     def test_query_all(self, monkeypatch, recorder):
         recorder.record("panel_label", "ok", day="2026-06-10")

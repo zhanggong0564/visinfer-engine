@@ -1,8 +1,9 @@
-"""全局异常处理器集成测试（FastAPI TestClient）"""
+"""全局异常处理器集成测试（HTTPX ASGITransport）。"""
+import asyncio
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from fastapi.exceptions import RequestValidationError
+import httpx
 from pydantic import BaseModel
 
 from schemas.exceptions import (
@@ -10,6 +11,33 @@ from schemas.exceptions import (
     ModelInferenceError, InternalError, VisionAPIError,
 )
 from schemas.error_codes import ErrorCode
+
+
+class _ASGIClient:
+    """绕开 PPOCR Python 3.10.0 下 AnyIO blocking portal 的测试客户端。"""
+
+    def __init__(self, app):
+        self.app = app
+
+    def request(self, method, path, **kwargs):
+        async def _send():
+            transport = httpx.ASGITransport(app=self.app, raise_app_exceptions=False)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://testserver"
+            ) as client:
+                return await client.request(method, path, **kwargs)
+
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(_send())
+        finally:
+            loop.close()
+
+    def get(self, path, **kwargs):
+        return self.request("GET", path, **kwargs)
+
+    def post(self, path, **kwargs):
+        return self.request("POST", path, **kwargs)
 
 
 @pytest.fixture
@@ -27,39 +55,39 @@ def client():
     app.add_exception_handler(Exception, global_exception_handler)
 
     @app.get("/raise/invalid_params")
-    def _r1():
+    async def _r1():
         raise InvalidParamsError("json_data 格式非法")
 
     @app.get("/raise/invalid_image")
-    def _r2():
+    async def _r2():
         raise InvalidImageError("图片解码失败")
 
     @app.get("/raise/product_not_registered")
-    def _r3():
+    async def _r3():
         raise ProductNotRegisteredError(
             "产品型号 'X1_2' 未注册", product_type="X1_2", scenario="panel_label"
         )
 
     @app.get("/raise/model_inference")
-    def _r4():
+    async def _r4():
         raise ModelInferenceError("ONNX 推理失败")
 
     @app.get("/raise/internal")
-    def _r5():
+    async def _r5():
         raise InternalError()
 
     @app.get("/raise/uncaught")
-    def _r6():
+    async def _r6():
         raise ValueError("意外异常")
 
     class _Req(BaseModel):
         x: int
 
     @app.post("/raise/validation")
-    def _r7(req: _Req):
+    async def _r7(req: _Req):
         return {"ok": True}
 
-    return TestClient(app, raise_server_exceptions=False)
+    return _ASGIClient(app)
 
 
 class TestExceptionHandlers:
@@ -131,7 +159,7 @@ class TestBaseRouterExceptionTranslation:
     @pytest.fixture
     def real_app_client(self):
         from app import app
-        return TestClient(app, raise_server_exceptions=False)
+        return _ASGIClient(app)
 
     def test_invalid_json_data(self, real_app_client):
         """传入非法 JSON 字符串 → code=1001"""

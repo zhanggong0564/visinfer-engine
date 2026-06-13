@@ -30,6 +30,7 @@ class TestRouterRegistry:
 
 
 import types
+from types import SimpleNamespace
 from routers.base_router import BaseRouter
 
 
@@ -118,3 +119,69 @@ def test_find_plugin_routers_module_without_routers(monkeypatch):
     )
     reg = RouterRegistry()
     assert reg.find_plugin_routers() == []
+
+
+def test_preload_all_records_each_scene_status(monkeypatch):
+    reg = RouterRegistry()
+
+    def _raise():
+        raise RuntimeError("load failed")
+
+    reg.base_routers = [
+        SimpleNamespace(detector_type="ok_scene", get_detector_singleton=lambda: object()),
+        SimpleNamespace(detector_type="bad_scene", get_detector_singleton=_raise),
+    ]
+    monkeypatch.setattr("routers.router_registry.settings.STRICT_STARTUP", False)
+
+    reg.preload_all()
+
+    assert reg.preload_status == {
+        "ok_scene": {"ready": True, "error": ""},
+        "bad_scene": {"ready": False, "error": "load failed"},
+    }
+    assert reg.is_ready() is False
+    assert reg.failed_scenes() == ["bad_scene"]
+
+
+def test_preload_all_strict_mode_records_failure_before_raising(monkeypatch):
+    reg = RouterRegistry()
+
+    def _raise():
+        raise RuntimeError("load failed")
+
+    reg.base_routers = [
+        SimpleNamespace(detector_type="bad_scene", get_detector_singleton=_raise),
+    ]
+    monkeypatch.setattr("routers.router_registry.settings.STRICT_STARTUP", True)
+
+    with pytest.raises(RuntimeError, match="严格启动模式"):
+        reg.preload_all()
+
+    assert reg.preload_status["bad_scene"] == {
+        "ready": False,
+        "error": "load failed",
+    }
+
+
+def test_registry_without_preloaded_scenes_is_not_ready():
+    reg = RouterRegistry()
+    assert reg.is_ready() is False
+
+
+def test_duplicate_scene_success_does_not_hide_earlier_failure(monkeypatch):
+    reg = RouterRegistry()
+
+    def _raise():
+        raise RuntimeError("first instance failed")
+
+    reg.base_routers = [
+        SimpleNamespace(detector_type="same_scene", get_detector_singleton=_raise),
+        SimpleNamespace(detector_type="same_scene", get_detector_singleton=lambda: object()),
+    ]
+    monkeypatch.setattr("routers.router_registry.settings.STRICT_STARTUP", False)
+
+    reg.preload_all()
+
+    assert reg.is_ready() is False
+    assert reg.failed_scenes() == ["same_scene"]
+    assert reg.preload_status["same_scene"]["error"] == "first instance failed"
