@@ -133,6 +133,6 @@ EXPOSE 3007
 
 # 模型加载耗时较长（paddlepaddle + onnxruntime 大模型），start-period 设为 120s
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:3007/health || exit 1
+    CMD curl -fsS http://127.0.0.1:3007/health/ready || exit 1
 
 ENTRYPOINT ["python3.10", "app.py"]

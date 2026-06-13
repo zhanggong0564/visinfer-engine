@@ -35,18 +35,20 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-    # ----- 持久化日志目录 -----
+    # ----- 持久化日志与运行数据 -----
     # 容器内 /app/workspace/logs → 宿主机 ./logs
+    # 容器内 /app/workspace/data → 宿主机 ./data（回流图片、记录、stats.db）
     # 模型权重已打包进镜像，无需额外挂载
     volumes:
       - ./logs:/app/workspace/logs
+      - ./data:/app/workspace/data
 
     # ----- 重启策略 -----
     restart: unless-stopped
 
     # ----- 健康检查（与 Dockerfile 保持一致） -----
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3007/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3007/health/ready"]
       interval: 30s
       timeout: 10s
       start_period: 120s      # 大模型加载需要时间
