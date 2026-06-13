@@ -161,6 +161,23 @@ async def health_check():
     return {"code": 1, "message": "服务健康", "result": {"status": "healthy", "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}}
 
 
+@app.get("/health/ready", tags=["健康检查"])
+async def readiness_check():
+    """就绪检查：启用场景的模型全部预加载成功后才对外接流量。"""
+    ready = router_registry.is_ready()
+    failed_scenes = router_registry.failed_scenes()
+    content = {
+        "code": 1 if ready else int(ErrorCode.INTERNAL_ERROR),
+        "message": "服务已就绪" if ready else "服务未就绪",
+        "result": {
+            "status": "ready" if ready else "not_ready",
+            "failed_scenes": failed_scenes,
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        },
+    }
+    return JSONResponse(status_code=200 if ready else 503, content=content)
+
+
 # API文档自定义配置
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():

@@ -27,6 +27,7 @@ class RouterRegistry:
         self.router_configs: Dict[str, Dict] = {}
         # 发现到的 BaseRouter 实例，模型预加载延后到 lifespan 统一处理
         self.base_routers: List[BaseRouter] = []
+        self.preload_status: Dict[str, Dict[str, object]] = {}
 
     def find_routers(self, package_name: str) -> List[Tuple[str, APIRouter, Dict]]:
         """
@@ -154,16 +155,42 @@ class RouterRegistry:
         默认单个失败仅记录并跳过（对应端点首请求时再懒加载）；STRICT_STARTUP=True
         时任一失败直接拒绝启动，避免服务"看似健康"却静默缺端点。
         """
+        self.preload_status = {}
         for br in self.base_routers:
             try:
                 br.get_detector_singleton()
+                if br.detector_type not in self.preload_status:
+                    self.preload_status[br.detector_type] = {
+                        "ready": True,
+                        "error": "",
+                    }
                 vision_logger.info(f"预加载 {br.detector_type} 模型完成")
             except Exception as e:
+                previous = self.preload_status.get(br.detector_type)
+                if previous is None or previous["ready"]:
+                    self.preload_status[br.detector_type] = {
+                        "ready": False,
+                        "error": str(e),
+                    }
                 vision_logger.exception(f"预加载 {br.detector_type} 模型失败: {e}")
                 if settings.STRICT_STARTUP:
                     raise RuntimeError(
                         f"严格启动模式下 {br.detector_type} 预加载失败，拒绝启动"
                     ) from e
+
+    def is_ready(self) -> bool:
+        """至少有一个已预加载场景，且所有场景均成功时才 ready。"""
+        return bool(self.preload_status) and all(
+            bool(item["ready"]) for item in self.preload_status.values()
+        )
+
+    def failed_scenes(self) -> List[str]:
+        """返回预加载失败的 detector_type，保持发现顺序。"""
+        return [
+            scene
+            for scene, item in self.preload_status.items()
+            if not item["ready"]
+        ]
 
     def register_all_routers(self, app: FastAPI, package_name: str) -> int:
         """
