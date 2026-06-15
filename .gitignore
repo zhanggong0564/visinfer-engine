@@ -20,6 +20,7 @@ weights
 **.zip
 demo/data/panel_label/*
 temp_data
+temp_zhongya/
 demo/data/test
 demo/data/charging_pile_test
 demo/data/ng
