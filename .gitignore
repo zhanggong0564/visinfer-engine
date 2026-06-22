@@ -1,8 +1,8 @@
 **.pyc
 **.log
-**.json
-**.jpg
-**.so
+**/*.json
+**/*.jpg
+**/*.so
 encrypted
 **.whl
 **.sh
