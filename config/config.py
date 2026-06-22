@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     API_VERSION: str = "2.0.1"
 
     HOST: str = "0.0.0.0"
-    PORT: int = 3007
+    PORT: int = 3001
 
     LOG_DIR: str = "logs"
     # 数据回流落盘根目录（相对路径按运行 cwd 解析；容器内 cwd=/app/workspace）。
@@ -39,5 +39,6 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = 20
     # 严格启动：任一检测器预加载失败则拒绝启动（生产建议 True，避免带病运行、端点静默缺失）
     STRICT_STARTUP: bool = False
+
 
 settings = Settings()
