@@ -106,6 +106,7 @@ WORKDIR /app/workspace
 
 # 业务代码已作为 .so 装入 venv；运行期只需启动器 + 本场景权重。
 COPY --chown=appuser:appuser app.py /app/workspace/app.py
+COPY --chown=appuser:appuser static /app/workspace/static
 # 只带 panel_label 权重（路径见各插件 config.py，相对启动 cwd）
 COPY --chown=appuser:appuser weights/panel_label /app/workspace/weights/panel_label
 

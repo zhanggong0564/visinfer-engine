@@ -125,6 +125,7 @@ WORKDIR /app/workspace
 # 业务代码已作为 .so 随 venv 装入 site-packages（见 builder 编译加密阶段），
 # 运行期工作目录仅需：启动器 app.py + 模型权重 weights/（路径相对 cwd）。
 COPY --chown=appuser:appuser app.py /app/workspace/app.py
+COPY --chown=appuser:appuser static /app/workspace/static
 COPY --chown=appuser:appuser weights /app/workspace/weights
 
 USER appuser
