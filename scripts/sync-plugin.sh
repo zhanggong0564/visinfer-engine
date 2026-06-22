@@ -67,25 +67,51 @@ unzip -o -q "${PL[-1]}" -d pkg
 echo "    pkg/ 顶层："; ls -1 pkg | sed 's/^/      /'
 
 # app.py 是入口脚本、不进 wheel，pkg/ 的 PYTHONPATH 覆盖不到它；以独立卷下发。
-# 刷新部署包内快照（单一真相源 = 仓库根 app.py），供全新部署整目录传输时携带。
+# 刷新部署包内快照（单一真相源 = 仓库根 app.py/static），供全新部署整目录传输时携带。
 cp -f app.py deploy/app.py
+rm -rf deploy/static
+mkdir -p deploy/static
+cp -R static/swagger-ui deploy/static/
 echo "    已刷新 deploy/app.py 快照（入口脚本覆盖层）"
+echo "    已刷新 deploy/static/ 快照（Swagger UI 离线资源）"
 
 if [ "$DO_PUSH" -eq 0 ]; then
   echo "==> [3/3] --local：跳过同步与重启。本地 pkg/ 已就绪。"
   exit 0
 fi
 
-echo "==> [3/3] 同步 pkg/（及权重、入口脚本）到 ${REMOTE}:${REMOTE_DIR} 并重启容器"
-ssh "$REMOTE" "mkdir -p '${REMOTE_DIR}/pkg' '${REMOTE_DIR}/weights/panel_label'"
+echo "==> [3/3] 同步 pkg/（及权重、入口脚本、离线文档资源）到 ${REMOTE}:${REMOTE_DIR} 并应用 compose"
+ssh "$REMOTE" "mkdir -p '${REMOTE_DIR}/pkg' '${REMOTE_DIR}/weights/panel_label' '${REMOTE_DIR}/static'"
 rsync -avz --delete pkg/ "${REMOTE}:${REMOTE_DIR}/pkg/"
 # 入口脚本覆盖层：app.py 单文件同步到 compose 同级目录（compose 以 ./app.py:ro 挂载）。
 rsync -avz app.py "${REMOTE}:${REMOTE_DIR}/app.py"
+# 部署编排与 Swagger UI 离线资源覆盖层：新增挂载需要 up -d 应用，而不是仅 restart。
+rsync -avz deploy/docker-compose.panel-label.yml "${REMOTE}:${REMOTE_DIR}/docker-compose.panel-label.yml"
+rsync -avz --delete deploy/static/ "${REMOTE}:${REMOTE_DIR}/static/"
 if [ "$DO_WEIGHTS" -eq 1 ]; then
-  # 增量同步：内容没变的模型不会重传；--delete 保证远端与本地版本目录一致，
-  # 本地源即远端真相（config 指的模型路径也来自本地，二者天然同步）。
+  # 只同步插件 config.py 实际引用的权重，不整目录推送未用的大模型（旧 rec/det/orient 版本）。
+  # 单一真相源 = config.py：从中解析所有 ./weights/panel_label/<...> 字面量，config 改了自动跟随，
+  # 不在脚本里写死模型名。--delete + 过滤规则让远端 weights/panel_label/ 严格等于"已用集"，
+  # 多余旧模型一并清掉（回滚换模型走 config.py 改路径 → 重跑本脚本即自愈，勿清空 pkg/ 回基线）。
   # 前提：远端 compose 已挂载 ./weights:/app/workspace/weights:ro 覆盖层。
-  rsync -avz --delete weights/panel_label/ "${REMOTE}:${REMOTE_DIR}/weights/panel_label/"
+  CFG="plugins/vie-plugin-panel-label/vie_plugin_panel_label/config.py"
+  mapfile -t USED < <(grep -oE '\./weights/panel_label/[^"]+' "$CFG" \
+                      | sed 's#^\./weights/panel_label/##' | sort -u)
+  if [ "${#USED[@]}" -eq 0 ]; then
+    echo "!! 未能从 $CFG 解析出权重路径，放弃权重同步以免 --delete 误删远端" >&2
+    exit 1
+  fi
+  for w in "${USED[@]}"; do
+    [ -e "weights/panel_label/$w" ] || {
+      echo "!! 本地缺失 config 引用的权重 weights/panel_label/$w，放弃同步" >&2; exit 1; }
+  done
+  echo "    仅同步 config.py 引用的权重（${#USED[@]} 项）："
+  printf '      %s\n' "${USED[@]}"
+  FILTER=(--include='*/')
+  for w in "${USED[@]}"; do FILTER+=(--include="/${w}" --include="/${w}/***"); done
+  FILTER+=(--exclude='*')
+  rsync -avz --delete --prune-empty-dirs "${FILTER[@]}" \
+    weights/panel_label/ "${REMOTE}:${REMOTE_DIR}/weights/panel_label/"
 fi
-ssh "$REMOTE" "cd '${REMOTE_DIR}' && docker compose -f '${COMPOSE_FILE}' restart"
+ssh "$REMOTE" "cd '${REMOTE_DIR}' && docker compose -f '${COMPOSE_FILE}' up -d"
 echo "==> 完成。验证：bash verify-QF2.sh  （或查日志 docker compose logs -f）"
