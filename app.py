@@ -138,11 +138,17 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """未捕获服务端异常 → INTERNAL_ERROR 兜底"""
+    """未捕获服务端异常 → INTERNAL_ERROR 兜底。
+
+    对外只回固定文案，不把 str(exc)（含路径/栈片段等内部细节）透传给调用方；
+    异常详情仅进日志（含 request-id 由访问日志中间件输出）便于排障。
+    """
     vision_logger.exception(f"未捕获异常: {exc}")
     return JSONResponse(
         status_code=200,
-        content=_build_error_response(ErrorCode.INTERNAL_ERROR, str(exc)),
+        content=_build_error_response(
+            ErrorCode.INTERNAL_ERROR, ERROR_CODE_MESSAGES[ErrorCode.INTERNAL_ERROR]
+        ),
     )
 
 
