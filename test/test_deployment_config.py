@@ -11,8 +11,8 @@ def test_compose_persists_data_directory():
 def test_container_healthchecks_use_readiness_endpoint():
     compose = Path("docker-compose.yml").read_text(encoding="utf-8")
     dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
-    assert "http://127.0.0.1:3007/health/ready" in compose
-    assert "http://127.0.0.1:3007/health/ready" in dockerfile
+    assert "http://127.0.0.1:3001/health/ready" in compose
+    assert "http://127.0.0.1:3001/health/ready" in dockerfile
 
 
 def test_swagger_ui_uses_local_static_assets():
