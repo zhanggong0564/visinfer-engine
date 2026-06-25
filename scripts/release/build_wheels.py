@@ -1,7 +1,7 @@
 """一键构建 vie-framework 与场景插件的二进制 wheel(.so) 到 dist/。
 
 用法（仓库根目录）：
-    python scripts/build_wheels.py [--out dist] [--no-isolation] [--plugins NAME ...]
+    python scripts/release/build_wheels.py [--out dist] [--no-isolation] [--plugins NAME ...]
 
   --no-isolation  用当前环境构建（需已装 Cython/setuptools/wheel），更快、复用本机编译器。
   --plugins       只构建指定插件（可空格分隔多个），名字接受
@@ -21,7 +21,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# 本脚本位于 scripts/release/，距仓库根两级（release → scripts → root）
+ROOT = Path(__file__).resolve().parent.parent.parent
 PLUGINS = sorted((ROOT / "plugins").glob("vie-plugin-*"))
 
 

@@ -22,7 +22,8 @@ from distutils.core import setup
 from Cython.Build import cythonize
 
 
-PROJECT_ROOT = Path(__file__).parent.parent
+# 本脚本位于 scripts/release/，距仓库根两级（release → scripts → root）
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # 非加密模块（完整复制，排除 __pycache__）
 COPY_MODULES = ["schemas", "routers", "config", "utils"]
