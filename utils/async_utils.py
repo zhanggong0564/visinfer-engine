@@ -2,27 +2,18 @@
 
 import asyncio
 import contextvars
-import threading
 from functools import partial
 
 
 async def run_sync(func, /, *args, **kwargs):
-    """在线程中执行同步函数，通过 Future 实现零轮询等待。
+    """在线程池中执行同步函数，返回 awaitable，零轮询等待。
 
-    用 loop.call_soon_threadsafe 把结果/异常从工作线程回送到事件循环，
-    避免 asyncio.sleep 忙等轮询（推理等耗时操作会产生数百次无效唤醒）。
+    走事件循环默认的 ThreadPoolExecutor（有界：默认 min(32, cpu+4)），而非每次
+    裸起一个 threading.Thread——单请求会多次 run_sync（解码/推理/落盘/埋点），
+    无界建线程在高并发下会把线程数顶爆。contextvars 通过 ctx.run 显式传播，
+    保证工作线程看到调用方的上下文。
     """
-    context = contextvars.copy_context()
-    call = partial(func, *args, **kwargs)
     loop = asyncio.get_running_loop()
-    fut: asyncio.Future = loop.create_future()
-
-    def worker():
-        try:
-            result = context.run(call)
-            loop.call_soon_threadsafe(fut.set_result, result)
-        except BaseException as exc:
-            loop.call_soon_threadsafe(fut.set_exception, exc)
-
-    threading.Thread(target=worker, daemon=True).start()
-    return await fut
+    context = contextvars.copy_context()
+    call = partial(context.run, func, *args, **kwargs)
+    return await loop.run_in_executor(None, call)
