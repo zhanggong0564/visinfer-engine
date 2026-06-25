@@ -13,7 +13,7 @@ class TestRouterRegistry:
         reg = RouterRegistry()
         assert reg._get_tag_from_filename("dc_fuse") == "直流熔丝检测"
         assert reg._get_tag_from_filename("indicator") == "指示灯检测"
-        assert reg._get_tag_from_filename("lap_surf") == "搭界面检测"
+        assert reg._get_tag_from_filename("lap_surf") == "搭接面检测"
         assert reg._get_tag_from_filename("plate") == "铁片检测"
 
     def test_get_tag_from_filename_fallback(self):

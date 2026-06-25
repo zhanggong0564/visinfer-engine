@@ -10,7 +10,7 @@ from schemas.exceptions import (
     InvalidParamsError, InvalidImageError, ProductNotRegisteredError,
     ModelInferenceError, InternalError, VisionAPIError,
 )
-from schemas.error_codes import ErrorCode
+from schemas.error_codes import ErrorCode, ERROR_CODE_MESSAGES
 
 
 class _ASGIClient:
@@ -136,7 +136,9 @@ class TestExceptionHandlers:
         assert resp.status_code == 200
         body = resp.json()
         assert body["code"] == int(ErrorCode.INTERNAL_ERROR)
-        assert "意外异常" in body["result"]["error_msg"]
+        # 未捕获异常对外只回固定文案，不透传 str(exc) 内部细节（防信息泄露）
+        assert body["result"]["error_msg"] == ERROR_CODE_MESSAGES[ErrorCode.INTERNAL_ERROR]
+        assert "意外异常" not in body["result"]["error_msg"]
 
     def test_request_validation_error(self, client):
         resp = client.post("/raise/validation", json={"x": "not_an_int"})
