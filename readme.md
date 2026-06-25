@@ -121,11 +121,11 @@ pip install -r requirements.txt
 python app.py
 ```
 
-服务将在 `http://0.0.0.0:3007` 启动。
+服务将在 `http://0.0.0.0:3001` 启动。
 
 ### 4. 访问 API 文档
 
-打开浏览器访问：`http://localhost:3007/docs`，可以看到 Swagger UI 界面，用于调试和测试 API。
+打开浏览器访问：`http://localhost:3001/docs`，可以看到 Swagger UI 界面，用于调试和测试 API。
 
 ---
 
@@ -290,7 +290,7 @@ docker build -t mobile-vision .
 2. 运行 Docker 容器：
 
 ```bash
-docker run -d -p 3007:3007 --name mobile-vision mobile-vision
+docker run -d -p 3001:3001 --name mobile-vision mobile-vision
 ```
 
 ### 直接部署
@@ -300,7 +300,7 @@ docker run -d -p 3007:3007 --name mobile-vision mobile-vision
 pip install -r requirements.txt
 
 # 启动服务（生产环境）
-uvicorn app:app --host 0.0.0.0 --port 3007 --workers 4
+uvicorn app:app --host 0.0.0.0 --port 3001 --workers 4
 ```
 
 ### 热更新部署（免重打镜像）
