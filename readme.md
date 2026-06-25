@@ -92,7 +92,9 @@ mobile_vision/
 │       ├── pyproject.toml          # 元数据 + entry_point 声明
 │       ├── setup.py                # 二进制（.so）wheel 构建
 │       └── vie_plugin_plate_screw/ # plugin.py / business_logic.py / config.py / ...
-├── scripts/build_wheels.py      # 一键构建框架 + 全部插件二进制 wheel
+├── scripts/release/             # 构建发布工具（build_wheels / sync-plugin / pack / py2so）
+│   └── build_wheels.py          # 一键构建框架 + 全部插件二进制 wheel
+├── scripts/data/                # OCR 数据集与标注工具（auto_annotate / export_ocr / ...）
 ├── weights/                     # 模型权重（weights/{场景}/{任务}_{架构}_v{N}，规范见 weights/README.md）
 ├── Dockerfile                   # 多阶段构建（编译加密 + 运行时）
 ├── docker-compose.yml           # 编排（GPU + 健康检查 + 日志卷）
@@ -308,7 +310,7 @@ uvicorn app:app --host 0.0.0.0 --port 3001 --workers 4
 环境不变、只更新业务代码或模型权重时，无需重打整镜像：
 
 ```bash
-bash scripts/sync-plugin.sh   # 编译 .so + 增量同步权重到服务器 + 重启容器
+bash scripts/release/sync-plugin.sh   # 编译 .so + 增量同步权重到服务器 + 重启容器
 ```
 
 代码经 `pkg/` 覆盖层（`PYTHONPATH`）生效，权重经 `./weights` 卷挂载覆盖层生效，
