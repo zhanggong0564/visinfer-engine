@@ -89,19 +89,6 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleu
     return img, r, dw, dh
 
 
-def scale_coords(coords, gain, dw, dh, target_shape):
-    if len(coords) == 0:
-        return coords
-    pad = (dw, dh, dw, dh)
-    coords -= pad  # x padding
-    coords /= gain
-    coords[:, 0] = coords[:, 0].clip(0, target_shape[1])  # x1
-    coords[:, 1] = coords[:, 1].clip(0, target_shape[0])  # y1
-    coords[:, 2] = coords[:, 2].clip(0, target_shape[1])  # x2
-    coords[:, 3] = coords[:, 3].clip(0, target_shape[0])  # y2
-    return coords
-
-
 def visualize(img, bbox_array, scores, labels):
     for temp, s, l in zip(bbox_array, scores, labels):
         xmin = int(temp[0])
@@ -142,15 +129,6 @@ def visualizeobb(img, bbox_array, scores, labels):
             color,
             4,
         )
-        # img = cv2.putText(
-        #     img,
-        #     "class:" + str(clas) + " " + str(round(score, 2)),
-        #     (xmin, int(ymin) - 5),
-        #     cv2.FONT_HERSHEY_SIMPLEX,
-        #     0.5,
-        #     (105, 237, 249),
-        #     1,
-        # )
 
         tf = 2  # font thickness
         w, h = cv2.getTextSize(label_txt, 0, fontScale=1, thickness=tf)[0]  # text width, height
@@ -167,15 +145,6 @@ def visualizeobb(img, bbox_array, scores, labels):
             thickness=tf,
             lineType=cv2.LINE_AA,
         )
-        # img = cv2.putText(
-        #     img,
-        #     "class:" + str(class2name[clas]) + " " + str(round(score, 2)),
-        #     (int(p1[0]), int(p1[1]) - 5),
-        #     cv2.FONT_HERSHEY_SIMPLEX,
-        #     0.5,
-        #     (105, 237, 249),
-        #     1,
-        # )
     return img
 
 
@@ -194,8 +163,11 @@ def sort_boxes(boxes: List[List[Any]]) -> Tuple[List[List[Any]], List[int]]:
     x_mins, y_mins, x_maxs, y_maxs = coords.T
     center_xs = (x_mins + x_maxs) / 2
 
-    # 行分组阈值（基于平均高度）
+    # 行分组阈值（基于平均高度）。退化兜底：单框/零高度时 mean≤0 会把每个框
+    # 拆成独立行，丢失同行从左到右的排序；取一个正的下限保证仍能正常分组。
     row_threshold = np.mean(y_maxs - y_mins)
+    if not np.isfinite(row_threshold) or row_threshold <= 0:
+        row_threshold = 1.0
 
     # 按 Y 坐标排序
     y_order = np.argsort(y_mins)
@@ -234,20 +206,25 @@ def decode2cv(image_base64):
     return img_src
 
 
+def _restore_hwc_mask_stack(masks: np.ndarray) -> np.ndarray:
+    """Keep OpenCV single-channel resize results in HWC mask-stack form."""
+    if masks.ndim == 2:
+        return masks[..., None]
+    return masks
+
+
 def process_mask(protos, masks_in, bboxes, shape):
     """
     Apply masks to bounding boxes using the output of the mask head.
 
     Args:
-        protos (torch.Tensor): A tensor of shape [mask_dim, mask_h, mask_w].
-        masks_in (torch.Tensor): A tensor of shape [n, mask_dim], where n is the number of masks after NMS.
-        bboxes (torch.Tensor): A tensor of shape [n, 4], where n is the number of masks after NMS.
+        protos (np.ndarray): A tensor of shape [batch, mask_dim, mask_h, mask_w].
+        masks_in (np.ndarray): A tensor of shape [n, mask_dim], where n is the number of masks after NMS.
+        bboxes (np.ndarray): A tensor of shape [n, 4], where n is the number of masks after NMS.
         shape (tuple): A tuple of integers representing the size of the input image in the format (h, w).
-        upsample (bool): A flag to indicate whether to upsample the mask to the original image size. Default is False.
 
     Returns:
-        (torch.Tensor): A binary mask tensor of shape [n, h, w], where n is the number of masks after NMS, and h and w
-            are the height and width of the input image. The mask is applied to the bounding boxes.
+        np.ndarray: Binary mask stack in HWC layout, shape [h, w, n].
     """
     if len(masks_in) == 0:
         return masks_in
@@ -265,37 +242,8 @@ def process_mask(protos, masks_in, bboxes, shape):
     # chw->hwc
     masks = masks.transpose(1, 2, 0)
     masks = cv2.resize(masks, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+    masks = _restore_hwc_mask_stack(masks)
     masks = (sigmoid(masks) > 0.9).astype(np.uint8) * 255
-
-    # def process_single_mask(mask):
-    #     resized_mask = cv2.resize(mask, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
-    #     # resized_mask = cv2.GaussianBlur(resized_mask, (5, 5), 0)
-    #     # resized_mask = cv2.GaussianBlur(resized_mask, (15, 15), 0.5)
-    #     binary_mask = (sigmoid(resized_mask) > 0.9).astype(np.uint8)
-    #     # mask_polygons = masks2segments(binary_mask)[0]
-    #     # x, y = mask_polygons[:, 0], mask_polygons[:, 1]
-    #     # tck, u = splprep([x, y], s=20)  # s 控制平滑程度
-    #     # new_points = splev(np.linspace(0, 1, 100), tck)
-    #     # # 将平滑后的点转换为整数
-    #     # smooth_contour = np.array(new_points).T.astype(np.int32)
-    #     # binary_mask = segments2masks([smooth_contour], binary_mask.shape)
-
-    #     # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-    #     # binary_mask = cv2.morphologyEx(binary_mask * 255, cv2.MORPH_OPEN, kernel, iterations=2)
-    #     # binary_mask = cv2.erode(binary_mask, kernel, iterations=1)
-    #     # binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel, iterations=3)
-    #     return binary_mask
-
-    # with ThreadPoolExecutor(max_workers=8) as executor:
-    #     final_masks = list(executor.map(process_single_mask, masks))
-    # process_time = time.time() - start - matrix_time - crop_time
-    # vision_logger.info(f"process_time: {process_time:.4f}秒")
-
-    # final_masks = []
-    # for mask in masks:
-    #     resized_mask = cv2.resize(mask, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
-    #     binary_mask = (resized_mask > 0.5).astype(np.uint8)
-    #     final_masks.append(binary_mask)
     return masks
 
 
@@ -320,24 +268,29 @@ def crop_mask(masks, boxes):
 
 def scale_masks(masks, shape, gain, dw, dh):
     """
-    Rescale segment masks to shape.
+    Rescale segment masks from letterboxed input size to original image size.
 
     Args:
-        masks (torch.Tensor): (N, C, H, W).
-        shape (tuple): Height and width.
-        padding (bool): If True, assuming the boxes is based on image augmented by yolo style. If False then do regular
-            rescaling.
+        masks (np.ndarray): Binary mask stack in HWC layout, shape [h, w, n].
+        shape (tuple): Output size in OpenCV order, (width, height).
+        gain (float): Letterbox scale ratio.
+        dw (float): Letterbox x padding.
+        dh (float): Letterbox y padding.
+
+    Returns:
+        np.ndarray: Rescaled mask stack in HWC layout, shape [height, width, n].
     """
     if len(masks) == 0:
         return masks
-    blur_size = (int(1 / gain), int(1 / gain))
+    if masks.ndim != 3:
+        raise ValueError(f"scale_masks expects HWC masks with shape [h, w, n], got {masks.shape}")
     mh, mw, _ = masks.shape
     pad = (dw, dh)
     top, left = (int(pad[1]), int(pad[0]))  # y, x
     bottom, right = (int(mh - pad[1]), int(mw - pad[0]))
     masks = masks[top:bottom, left:right]
     masks = cv2.resize(masks, shape)
-    # masks = cv2.blur(masks, blur_size)
+    masks = _restore_hwc_mask_stack(masks)
     return masks
 
 
