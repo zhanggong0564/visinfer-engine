@@ -103,7 +103,8 @@ def non_max_suppression_v8(
             v = np.zeros((len(lb), nc + nm + 5))
             v[:, :4] = lb[:, 1:5]  # box
             v[np.arange(len(lb)), lb[:, 0].astype(int) + 4] = 1.0  # cls
-            x = np.concatenate((x[xc], v), axis=0)
+            # x 已在上面按 xc[xi] 过滤过，这里直接拼先验标签，不能再用整张 xc 二次索引
+            x = np.concatenate((x, v), axis=0)
 
         if not x.shape[0]:
             continue
