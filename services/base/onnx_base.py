@@ -64,8 +64,24 @@ class BaseOnnxInfer:
         vision_logger.info(f"输入维度: {self._input_model_shape}, 输出数量: {len(self.output_names)}")
 
     def _warmup(self):
-        """预热模型"""
-        dummy_input = np.zeros(self._input_model_shape, dtype=np.float32)
+        """预热模型。
+
+        ONNX 动态轴会以字符串（如 'batch'）或 -1/None 出现在 input shape 里，
+        直接 np.zeros 会崩。这里把 batch 维兜底为 1，其余非法维若无法定形则
+        跳过预热（仅 warning），避免动态尺寸模型一加载就报错。
+        """
+        concrete_shape = []
+        for idx, dim in enumerate(self._input_model_shape):
+            if isinstance(dim, int) and dim > 0:
+                concrete_shape.append(dim)
+            elif idx == 0:
+                concrete_shape.append(1)  # 动态 batch 维兜底为 1
+            else:
+                vision_logger.warning(
+                    f"模型输入含动态维度 {self._input_model_shape}，跳过预热"
+                )
+                return
+        dummy_input = np.zeros(concrete_shape, dtype=np.float32)
         start = time.perf_counter()
         self.session.run(self.output_names, {self.input_names[0]: dummy_input})
         end = time.perf_counter()
