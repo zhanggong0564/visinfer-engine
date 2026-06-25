@@ -80,7 +80,7 @@ if [ "$DO_PUSH" -eq 0 ]; then
   exit 0
 fi
 
-echo "==> [3/3] 同步 pkg/（及权重、入口脚本、离线文档资源）到 ${REMOTE}:${REMOTE_DIR} 并应用 compose"
+echo "==> [3/3] 同步 pkg/（及权重、入口脚本、离线文档资源）到 ${REMOTE}:${REMOTE_DIR} 并强制重建容器"
 ssh "$REMOTE" "mkdir -p '${REMOTE_DIR}/pkg' '${REMOTE_DIR}/weights/panel_label' '${REMOTE_DIR}/static'"
 rsync -avz --delete pkg/ "${REMOTE}:${REMOTE_DIR}/pkg/"
 # 入口脚本覆盖层：app.py 单文件同步到 compose 同级目录（compose 以 ./app.py:ro 挂载）。
@@ -113,5 +113,5 @@ if [ "$DO_WEIGHTS" -eq 1 ]; then
   rsync -avz --delete --prune-empty-dirs "${FILTER[@]}" \
     weights/panel_label/ "${REMOTE}:${REMOTE_DIR}/weights/panel_label/"
 fi
-ssh "$REMOTE" "cd '${REMOTE_DIR}' && docker compose -f '${COMPOSE_FILE}' up -d"
+ssh "$REMOTE" "cd '${REMOTE_DIR}' && docker compose -f '${COMPOSE_FILE}' up -d --force-recreate"
 echo "==> 完成。验证：bash verify-QF2.sh  （或查日志 docker compose logs -f）"
