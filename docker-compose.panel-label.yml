@@ -41,7 +41,7 @@ services:
       - ./logs:/app/workspace/logs
       # 数据回流图片 + 记录（按 型号/ok|ng 分目录）持久化到宿主，避免随容器重建丢失
       - ./data:/app/workspace/data
-      # 业务 .so 热更新层：scripts/sync-plugin.sh 同步编译后的包到此，restart 即生效，
+      # 业务 .so 热更新层：scripts/release/sync-plugin.sh 同步编译后的包到此，restart 即生效，
       # 免去重打整镜像（几个 G）重传。只读挂载，容器无法改写宿主交付物。
       - ./pkg:/app/workspace/pkg:ro
       # 模型权重热更新层：sync-plugin.sh 增量 rsync 新权重到宿主 ./weights，

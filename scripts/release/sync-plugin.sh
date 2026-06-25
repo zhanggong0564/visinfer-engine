@@ -9,23 +9,24 @@
 # 原理见 docker-compose.panel-label.yml 里 PYTHONPATH 与 weights 覆盖层。
 #
 # 用法（仓库根目录）：
-#   bash scripts/sync-plugin.sh                 # 编译+同步+远程重启（默认服务器）
-#   bash scripts/sync-plugin.sh --local         # 只编译+解包到 pkg/，不连服务器
-#   bash scripts/sync-plugin.sh --no-build      # 跳过编译，用已有 dist/*.whl
-#   bash scripts/sync-plugin.sh --no-weights    # 跳过权重同步，只传代码
-#   REMOTE=user@host REMOTE_DIR=/path bash scripts/sync-plugin.sh   # 覆盖目标
+#   bash scripts/release/sync-plugin.sh                 # 编译+同步+远程重启（默认服务器）
+#   bash scripts/release/sync-plugin.sh --local         # 只编译+解包到 pkg/，不连服务器
+#   bash scripts/release/sync-plugin.sh --no-build      # 跳过编译，用已有 dist/*.whl
+#   bash scripts/release/sync-plugin.sh --no-weights    # 跳过权重同步，只传代码
+#   REMOTE=user@host REMOTE_DIR=/path bash scripts/release/sync-plugin.sh   # 覆盖目标
 #
 # ⚠️ ABI：本机用来编译的 Python 必须是 CPython 3.10（与镜像一致），且 glibc 不高于
 #    容器（ubuntu22.04 / glibc 2.35）。本机 WSL ubuntu22.04 或 conda py310 一般满足。
 #    若远程 import 报 .so 版本/符号错误，改在 builder 容器里编：
 #      docker build --target builder -f Dockerfile.panel-label -t vie:builder .
 #      docker run --rm -v "$PWD":/src -w /src vie:builder \
-#        python scripts/build_wheels.py --no-isolation --plugins panel-label
-#    再 bash scripts/sync-plugin.sh --no-build 同步。
+#        python scripts/release/build_wheels.py --no-isolation --plugins panel-label
+#    再 bash scripts/release/sync-plugin.sh --no-build 同步。
 # =========================================================
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# 脚本现位于 scripts/release/，距仓库根两级，故上溯 ../..
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 PYTHON="${PYTHON:-python}"
@@ -50,7 +51,7 @@ if [ "$DO_BUILD" -eq 1 ]; then
   echo "==> [1/3] 编译 framework + panel_label → dist/*.whl"
   # 先清旧 wheel，避免跨多次构建堆积、后续 glob 选到陈旧版本
   rm -f dist/vie_framework-*.whl dist/vie_plugin_panel_label-*.whl
-  "$PYTHON" scripts/build_wheels.py --no-isolation --plugins panel-label
+  "$PYTHON" scripts/release/build_wheels.py --no-isolation --plugins panel-label
 fi
 
 echo "==> [2/3] 解包 wheel 到 pkg/（PYTHONPATH 覆盖层）"

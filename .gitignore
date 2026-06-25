@@ -7,7 +7,7 @@ encrypted
 **.whl
 **.sh
 # 部署热更新脚本需纳入版本库（**.sh 默认忽略，单独放行）
-!scripts/sync-plugin.sh
+!scripts/release/sync-plugin.sh
 **.onnx
 **.txt
 **.JPG
