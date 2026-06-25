@@ -28,6 +28,12 @@ def test_swagger_ui_uses_local_static_assets():
     assert "fastapi.tiangolo.com" not in app
 
 
+def test_detection_routes_publish_common_response_schema_to_openapi():
+    router = Path("routers/base_router.py").read_text(encoding="utf-8")
+
+    assert "response_model=CommonResponse" in router
+
+
 def test_docker_images_include_offline_swagger_assets():
     for dockerfile_name in ("Dockerfile", "Dockerfile.panel-label"):
         dockerfile = Path(dockerfile_name).read_text(encoding="utf-8")
