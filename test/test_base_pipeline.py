@@ -20,7 +20,9 @@ import threading
 import time
 import numpy as np
 from unittest.mock import MagicMock
+from schemas import CommonResponse, ErrorCode, ERROR_CODE_MESSAGES
 from schemas.data_base import MoMResult, DetectionItem, InputParamsBusiness
+from routers.base_router import BaseRouter
 from services.base.business_logic_base import BusinessLogicBase
 
 
@@ -109,3 +111,25 @@ class TestStatelessConcurrency:
             t.join()
         # 每个请求的业务结果都与自己的宽度一致 → 无串台
         assert all(results[w] is True for w in widths)
+
+
+class TestResponseDetailNameSanitize:
+    def test_none_detail_name_is_converted_before_common_response_validation(self):
+        response_data = {
+            "detailList": [
+                {"status": "false", "scene": "line", "coordinate": [], "accuracy": 0.9, "name": None},
+            ],
+            "status": "false",
+            "error_msg": "",
+            "message": "mismatch",
+        }
+
+        BaseRouter._sanitize_detail_list_names(response_data)
+        response = CommonResponse(
+            code=int(ErrorCode.SUCCESS),
+            message=ERROR_CODE_MESSAGES[ErrorCode.SUCCESS],
+            result=response_data,
+        )
+
+        assert response_data["detailList"][0]["name"] == ""
+        assert response.model_dump()["result"]["detailList"][0]["name"] == ""

@@ -109,13 +109,20 @@ class BaseRouter(ABC):
         vision_logger.info(f"接收{self.router_name}请求：图片={original_filename}, json_data={json_preview}")
         request_params = await self._validate_and_parse_params(json_data)
         vision_logger.info(f"校验参数：{request_params}")
+        fallback_product_type = self._extract_product_type(request_params)
 
         image, _ = await self._process_image(file)
+        await run_sync(
+            self._persist_image,
+            image=image,
+            original_filename=original_filename,
+            received_at=received_at,
+            fallback_product_type=fallback_product_type,
+        )
         inputs = self.get_inputs(request_params, image)
         if inspect.isawaitable(inputs):
             inputs = await inputs
         detector = self.get_detector_singleton()
-        fallback_product_type = self._extract_product_type(request_params)
         start = time.time()
         # detect 是同步 CPU/GPU 密集操作，丢到线程池执行，避免阻塞事件循环
         try:
@@ -143,11 +150,28 @@ class BaseRouter(ABC):
         vision_logger.info("检测耗时：{:.4f}秒", end - start)
         vision_logger.debug("原始检测结果：{}", result_info)
         result_dict = result_info if isinstance(result_info, dict) else result_info.to_dict()
-        result = CommonResponse(
-            code=int(ErrorCode.SUCCESS),
-            message=ERROR_CODE_MESSAGES[ErrorCode.SUCCESS],
-            result=result_dict,
-        )
+        try:
+            self._sanitize_detail_list_names(result_dict)
+            result = CommonResponse(
+                code=int(ErrorCode.SUCCESS),
+                message=ERROR_CODE_MESSAGES[ErrorCode.SUCCESS],
+                result=result_dict,
+            )
+        except Exception as exc:
+            # 响应封装失败会跳过 FastAPI BackgroundTasks；此处必须同步回流，
+            # 否则"检测成功但 CommonResponse 校验失败"的关键样本会丢失。
+            vision_logger.exception("响应封装失败，执行同步数据回流 filename={}: {}", original_filename, exc)
+            await run_sync(
+                self._persist_record,
+                image=image,
+                original_filename=original_filename,
+                raw_json=json_data,
+                result_dict={"error": str(exc), "result": result_dict},
+                latency_ms=latency_ms,
+                received_at=received_at,
+                fallback_product_type=fallback_product_type,
+            )
+            raise
         vision_logger.info("返回检测结果")
 
         background_tasks.add_task(
@@ -172,8 +196,45 @@ class BaseRouter(ABC):
         return result
 
     @staticmethod
+    def _sanitize_detail_list_names(result_dict: Any) -> None:
+        """CommonResponse validation 前兜底清洗 detailList.name，避免 None 触发 500。"""
+        if not isinstance(result_dict, dict):
+            return
+        result_data = result_dict.get("result") if isinstance(result_dict.get("result"), dict) else result_dict
+        detail_list = result_data.get("detailList", [])
+        if not isinstance(detail_list, list):
+            return
+        name_list = []
+        for idx, item in enumerate(detail_list):
+            if not isinstance(item, dict):
+                name_list.append(None)
+                vision_logger.warning("detailList item is not dict, idx={}, item={}", idx, item)
+                continue
+            name = item.get("name")
+            if name is None:
+                vision_logger.warning("detailList item name is None, idx={}, item={}", idx, item)
+                item["name"] = ""
+                name = ""
+            elif not isinstance(name, str):
+                vision_logger.warning(
+                    "detailList item name is not str, idx={}, name_type={}, item={}",
+                    idx,
+                    type(name).__name__,
+                    item,
+                )
+                item["name"] = str(name)
+                name = item["name"]
+            name_list.append(name)
+        vision_logger.info("detailList name list={}", name_list)
+
+    @staticmethod
     def _extract_product_type(request_params: Any) -> Optional[str]:
         """从请求参数里取 product_type 作为型号兜底；schema 不同的子类可重写。"""
+        if isinstance(request_params, dict):
+            model_params = request_params.get("modelParams")
+            if isinstance(model_params, dict):
+                return model_params.get("product_type")
+            return None
         model_params = getattr(request_params, "modelParams", None)
         if model_params is None:
             return None
@@ -277,6 +338,64 @@ class BaseRouter(ABC):
             return "ok"
         return "ng"
 
+    def _resolve_backflow_paths(
+        self,
+        original_filename: str,
+        received_at: str,
+        fallback_product_type: Optional[str],
+        verdict_dir: str,
+    ) -> dict:
+        target = self.resolve_backflow_target(original_filename, fallback_product_type)
+        safe_filename = self._safe_client_filename(original_filename)
+        ext = os.path.splitext(safe_filename)[1].lower()
+        if ext not in SAFE_IMAGE_EXTENSIONS:
+            ext = ".jpg"
+        date_dir = received_at[:10]  # YYYY-MM-DD
+        scene_dir = self._sanitize_dir_name(target.scene_dir)
+        target_model_dir = self._sanitize_dir_name(target.model_dir)
+        save_stem = self._sanitize_dir_name(target.save_stem)
+        model_dir = self._safe_path(
+            DATA_DIR, scene_dir, date_dir, target_model_dir, verdict_dir
+        )
+        image_dir = self._safe_path(model_dir, "images")
+        record_dir = self._safe_path(model_dir, "records")
+        image_path = self._safe_path(image_dir, f"{save_stem}{ext}")
+        record_path = self._safe_path(record_dir, f"{save_stem}.json")
+        return {
+            "scene_dir": scene_dir,
+            "model_dir": target_model_dir,
+            "save_stem": save_stem,
+            "verdict_dir": verdict_dir,
+            "image_dir": image_dir,
+            "record_dir": record_dir,
+            "image_path": image_path,
+            "record_path": record_path,
+        }
+
+    def _persist_image(
+        self,
+        image: np.ndarray,
+        original_filename: str,
+        received_at: str,
+        fallback_product_type: Optional[str] = None,
+        verdict_dir: str = "pending",
+    ) -> None:
+        """图片解码后立即落盘。最终 ok/ng 记录由 _persist_record 补齐。"""
+        try:
+            paths = self._resolve_backflow_paths(
+                original_filename,
+                received_at,
+                fallback_product_type,
+                verdict_dir,
+            )
+            os.makedirs(paths["image_dir"], exist_ok=True)
+            if not cv2.imwrite(paths["image_path"], image):
+                vision_logger.warning(f"数据回流图片写入失败 path={paths['image_path']}")
+                return
+            vision_logger.info(f"数据回流图片已即时落盘 path={paths['image_path']}")
+        except Exception as e:
+            vision_logger.warning(f"数据回流图片即时落盘失败 filename={original_filename}: {e}")
+
     def _persist_record(
         self,
         image: np.ndarray,
@@ -293,32 +412,34 @@ class BaseRouter(ABC):
         场景专属命名规则在各插件 Router 重写该钩子；本方法只负责通用的目录与 IO。
         """
         try:
-            target = self.resolve_backflow_target(original_filename, fallback_product_type)
-            safe_filename = self._safe_client_filename(original_filename)
-            ext = os.path.splitext(safe_filename)[1].lower()
-            if ext not in SAFE_IMAGE_EXTENSIONS:
-                ext = ".jpg"
-            date_dir = received_at[:10]  # YYYY-MM-DD
-
-            # 在型号目录下再按检测结论分 ok / ng（未检出信息归 ng）
+            # 在型号目录下再按检测结论分 ok / ng；程序异常失败保留 pending，不移动图片。
             # 例：data/中压线标检验/2026-06-05/TK2/ng/images/1764780181920.jpg
-            verdict_dir = self._classify_result(result_dict)
-            scene_dir = self._sanitize_dir_name(target.scene_dir)
-            target_model_dir = self._sanitize_dir_name(target.model_dir)
-            save_stem = self._sanitize_dir_name(target.save_stem)
-            model_dir = self._safe_path(
-                DATA_DIR, scene_dir, date_dir, target_model_dir, verdict_dir
+            is_error_record = isinstance(result_dict, dict) and "error" in result_dict
+            verdict_dir = "pending" if is_error_record else self._classify_result(result_dict)
+            paths = self._resolve_backflow_paths(
+                original_filename,
+                received_at,
+                fallback_product_type,
+                verdict_dir,
             )
-            image_dir = self._safe_path(model_dir, "images")
-            record_dir = self._safe_path(model_dir, "records")
-            os.makedirs(image_dir, exist_ok=True)
-            os.makedirs(record_dir, exist_ok=True)
-            image_path = self._safe_path(image_dir, f"{save_stem}{ext}")
-            record_path = self._safe_path(record_dir, f"{save_stem}.json")
+            os.makedirs(paths["record_dir"], exist_ok=True)
 
-            if not cv2.imwrite(image_path, image):
-                vision_logger.warning(f"数据回流图片写入失败 path={image_path}")
-                return
+            if not is_error_record:
+                os.makedirs(paths["image_dir"], exist_ok=True)
+                pending_paths = self._resolve_backflow_paths(
+                    original_filename,
+                    received_at,
+                    fallback_product_type,
+                    "pending",
+                )
+                if os.path.exists(pending_paths["image_path"]):
+                    os.replace(pending_paths["image_path"], paths["image_path"])
+                    vision_logger.info(
+                        f"数据回流图片移动完成 src={pending_paths['image_path']} dst={paths['image_path']}"
+                    )
+                elif not cv2.imwrite(paths["image_path"], image):
+                    vision_logger.warning(f"数据回流图片写入失败 path={paths['image_path']}")
+                    return
 
             try:
                 request_params = json.loads(raw_json)
@@ -329,14 +450,14 @@ class BaseRouter(ABC):
                 "received_at": received_at,
                 "detector_type": self.detector_type,
                 "original_filename": original_filename,
-                "saved_scene_dir": scene_dir,
-                "saved_model_dir": target_model_dir,
-                "verdict": verdict_dir,
+                "saved_scene_dir": paths["scene_dir"],
+                "saved_model_dir": paths["model_dir"],
+                "verdict": "error" if is_error_record else verdict_dir,
                 "request_params": request_params,
                 "latency_ms": latency_ms,
                 "result": result_dict,
             }
-            with open(record_path, "w", encoding="utf-8") as f:
+            with open(paths["record_path"], "w", encoding="utf-8") as f:
                 json.dump(record, f, ensure_ascii=False, indent=2)
         except Exception as e:
             vision_logger.warning(f"数据回流落盘失败 filename={original_filename}: {e}")
