@@ -16,6 +16,8 @@ from services.utils.utils import (
     clip_boxes,
     letterbox,
     crop_mask,
+    process_mask,
+    scale_masks,
 )
 
 
@@ -273,3 +275,29 @@ class TestCropMask:
         # result[i,i] 对应第 i 个 mask 被第 i 个 box crop
         assert result[0, 0, 2, 2] == 1.0  # inside box0
         assert result[0, 0, 0, 0] == 0.0  # outside box0
+
+
+class TestScaleMasks:
+    def test_single_mask_keeps_channel_dimension(self):
+        masks = np.ones((8, 10, 1), dtype=np.uint8)
+
+        result = scale_masks(masks, shape=(20, 16), gain=1.0, dw=0, dh=0)
+
+        assert result.shape == (16, 20, 1)
+
+    def test_rejects_ambiguous_2d_input(self):
+        masks = np.ones((8, 10), dtype=np.uint8)
+
+        with pytest.raises(ValueError, match="HWC"):
+            scale_masks(masks, shape=(20, 16), gain=1.0, dw=0, dh=0)
+
+    def test_process_and_scale_single_mask_keeps_detection_axis(self):
+        protos = np.ones((1, 1, 4, 4), dtype=np.float32) * 10
+        masks_in = np.ones((1, 1), dtype=np.float32)
+        bboxes = np.array([[0, 0, 8, 8]], dtype=np.float32)
+
+        processed = process_mask(protos, masks_in, bboxes, shape=(8, 8))
+        scaled = scale_masks(processed, shape=(16, 16), gain=1.0, dw=0, dh=0)
+
+        assert processed.shape == (8, 8, 1)
+        assert scaled.transpose(2, 0, 1).shape == (1, 16, 16)
