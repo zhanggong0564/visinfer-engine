@@ -142,7 +142,7 @@ class RouterRegistry:
             # 兼容历史裸场景名键
             'dc_fuse': '直流熔丝检测',
             'indicator': '指示灯检测',
-            'lap_surf': '搭界面检测',
+            'lap_surf': '搭接面检测',
             'plate': '铁片检测',
         }
         return tag_map.get(filename, filename.replace('_', ' ').title())
