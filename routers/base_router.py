@@ -68,6 +68,8 @@ class BaseRouter(ABC):
             api_path,
             summary=summary,
             description=description,
+            response_model=CommonResponse,
+            response_description="统一检测响应",
         )(self._handle_request)
 
     def get_detector_singleton(self):
