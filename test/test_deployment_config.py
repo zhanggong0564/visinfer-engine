@@ -79,7 +79,7 @@ def test_deploy_bundle_includes_offline_swagger_assets():
 
 
 def test_sync_script_pushes_offline_swagger_assets_and_applies_compose():
-    script = Path("scripts/sync-plugin.sh").read_text(encoding="utf-8")
+    script = Path("scripts/release/sync-plugin.sh").read_text(encoding="utf-8")
 
     assert "deploy/static/" in script
     assert "docker-compose.panel-label.yml" in script
