@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = 20
     # 严格启动：任一检测器预加载失败则拒绝启动（生产建议 True，避免带病运行、端点静默缺失）
     STRICT_STARTUP: bool = False
+    # 服务端可视化：检测响应里始终返回绘制好的结果图(JPEG base64)，经 result.vis_image 提供。
+    VIS_ENABLED: bool = True       # 全局开关 / kill-switch，关闭后 vis_image 为空串
+    VIS_MAX_SIDE: int = 1280       # 缩图长边上限（像素），提升传输效率
+    VIS_JPEG_QUALITY: int = 85     # 可视化图 JPEG 编码质量
 
 
 settings = Settings()

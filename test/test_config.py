@@ -66,3 +66,11 @@ def test_env_override():
     assert settings.PORT == 8080
     assert settings.LOG_LEVEL == "DEBUG"
     assert settings.WORKERS == 4
+
+
+def test_visualization_defaults():
+    from config.config import Settings
+    s = Settings()
+    assert s.VIS_ENABLED is True
+    assert s.VIS_MAX_SIDE == 1280
+    assert s.VIS_JPEG_QUALITY == 85
