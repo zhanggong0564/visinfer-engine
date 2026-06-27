@@ -1,0 +1,81 @@
+# =========================================================
+# VisInfer Engine (VIE) - scenes 服务编排：除线标(panel_label)外的全部场景
+#
+# 跑【统一 runtime 镜像】(mobile_vision:runtime，仅框架，不烤插件/权重)，
+# 本服务的 5 个场景靠下面的 pkg/ + weights/ + ENABLED_SCENES 覆盖层挂入：
+#   dc_fuse / indicator_light / lap_surf / line_squeeze / plate_screw
+# 设计文档：docs/superpowers/specs/2026-06-26-unified-runtime-image-design.md
+#
+# 镜像构建（一次，与场景无关）：docker build -f Dockerfile.runtime -t mobile_vision:runtime .
+# 启动：    docker compose -f docker-compose.scenes.yml up -d        # ←【不要】加 --build
+# 推场景：  bash scripts/release/sync-plugin-scenes.sh               # 编译5场景 .so + 推 pkg/weights → 重启
+# 查看日志：docker compose -f docker-compose.scenes.yml logs -f
+# 停止：    docker compose -f docker-compose.scenes.yml down
+#
+# 容器名加 -scenes 后缀，可与 panel-label 服务（同一 runtime 镜像，端口 3001）并存。
+# =========================================================
+
+services:
+  mobile-vision-scenes:
+    # 与场景无关的统一运行镜像；用 Dockerfile.runtime 单独构建，compose 不负责 build。
+    image: mobile_vision:runtime
+    container_name: mobile-vision-scenes
+
+    # panel-label 占用 3001；本服务用 3005 以便同机并存。单独部署可改回 3001。
+    ports:
+      - "3005:3001"
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    environment:
+      - TZ=Asia/Shanghai
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # 场景白名单：仅注册/预加载这 5 个场景；未列出的（如 panel_label）即便代码在镜像里也不启用。
+      # 改部署场景只动这一行（JSON 数组，pydantic-settings 解析为 set）。
+      - ENABLED_SCENES=["dc_fuse","indicator_light","lap_surf","line_squeeze","plate_screw"]
+      # 业务代码热更新覆盖层：PYTHONPATH 排在 site-packages 之前，pkg/ 里的新 .so
+      # 包会盖掉镜像内置旧版；pkg/ 为空则自动回退镜像内置版（全新部署无需 pkg/）。
+      - PYTHONPATH=/app/workspace/pkg
+
+    volumes:
+      # 运行日志（按天切分）持久化到宿主
+      - ./logs:/app/workspace/logs
+      # 数据回流图片 + 记录（按 场景/型号/ok|ng 分目录）持久化到宿主
+      - ./data:/app/workspace/data
+      # 业务 .so 热更新层：scripts/release/sync-plugin-scenes.sh 同步编译后的包到此，
+      # restart 即生效，免去重打整镜像重传。只读挂载。
+      - ./pkg:/app/workspace/pkg:ro
+      # 模型权重层：runtime 镜像【不烤权重】，全部由此挂入。sync-plugin-scenes.sh
+      # 会增量 rsync 5 场景 + common 的权重到宿主 ./weights，restart 即生效。
+      # 首次部署：compose up 后跑 sync-plugin-scenes.sh 推送权重（无需从镜像 docker cp）。
+      - ./weights:/app/workspace/weights:ro
+      # 入口脚本覆盖层：app.py 不进 wheel，pkg/ 的 PYTHONPATH 覆盖不到，单独挂载盖掉镜像内置版。
+      - ./app.py:/app/workspace/app.py:ro
+      # Swagger UI 离线静态资源，避免 /docs 访问外网 CDN
+      - ./static:/app/workspace/static:ro
+
+    restart: unless-stopped
+
+    # 就绪探针：所有启用场景模型预加载成功才算就绪（与 Dockerfile.runtime 一致）
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/health/ready"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+
+    # 共享内存（paddlepaddle 多进程推理需要；线序场景用到）
+    shm_size: "2gb"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
