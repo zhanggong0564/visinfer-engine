@@ -39,20 +39,20 @@ class ResultResponse(BaseModel):
     """顶层返回的result对象模型"""
 
     detailList: List[DetectionItem] = Field(..., description="检测详情列表")
-    status: Literal["true", "false"] = Field(..., description="整体检测状态(false=正常,true=异常)")
-    error_msg: str = Field(..., description="错误信息(无错误则为空字符串)")
-    message: str = Field(..., description="检测结果描述(如检测成功)")
+    status: Literal["true", "false"] = Field(..., description="整体检测状态（false=正常，true=异常）")
+    error_msg: str = Field(..., description="错误信息（无错误则为空字符串）")
+    message: str = Field(..., description="检测结果描述（如“检测成功”）")
     vis_image: str = Field(
         default="",
-        description="检测结果可视化图(JPEG base64,不含 data URI 前缀);缩图长边<=1280;绘制失败或无原图时为空串",
+        description="检测结果可视化图(JPEG base64，不含 data URI 前缀)；缩图长边≤1280；绘制失败或无原图时为空串",
     )
 
 
 class CommonResponse(BaseModel):
-    """接口顶层返回模型(完全匹配示例)"""
+    """接口顶层返回模型（完全匹配示例）"""
 
-    code: int = Field(..., description="错误码,1=成功,其它见 ErrorCode 定义")
-    message: str = Field(..., description="返回消息(如成功)")
+    code: int = Field(..., description="错误码，1=成功，其它见 ErrorCode 定义")
+    message: str = Field(..., description="返回消息（如“成功”）")
     result: ResultResponse = Field(..., description="检测结果详情对象")
 
 
