@@ -26,6 +26,7 @@ from schemas import CommonResponse, ErrorCode, ERROR_CODE_MESSAGES
 from schemas.exceptions import InvalidParamsError, InvalidImageError, InternalError
 from services import detection_factory
 from services.call_stats import record_call
+from services.utils.visualize import render_detection_overlay
 from utils import vision_logger
 from utils.async_utils import run_sync
 
@@ -154,10 +155,22 @@ class BaseRouter(ABC):
         result_dict = result_info if isinstance(result_info, dict) else result_info.to_dict()
         try:
             self._sanitize_detail_list_names(result_dict)
+            response_result = result_dict
+            if settings.VIS_ENABLED:
+                # 绘制+JPEG 编码是 CPU 操作，丢线程池避免阻塞事件循环
+                vis_b64 = await run_sync(
+                    render_detection_overlay,
+                    image,
+                    result_dict.get("detailList", []),
+                    max_side=settings.VIS_MAX_SIDE,
+                    jpeg_quality=settings.VIS_JPEG_QUALITY,
+                )
+                # 注入副本：vis_image 只进响应，不进数据回流 record.json（落盘已有原图）
+                response_result = {**result_dict, "vis_image": vis_b64}
             result = CommonResponse(
                 code=int(ErrorCode.SUCCESS),
                 message=ERROR_CODE_MESSAGES[ErrorCode.SUCCESS],
-                result=result_dict,
+                result=response_result,
             )
         except Exception as exc:
             # 响应封装失败会跳过 FastAPI BackgroundTasks；此处必须同步回流，
