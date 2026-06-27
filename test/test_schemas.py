@@ -223,3 +223,16 @@ class TestCommonResponseCodeIsInt:
         for c in (1001, 1002, 1003, 5000, 5001):
             resp = CommonResponse(code=c, message="x", result=result)
             assert resp.code == c
+
+
+def test_result_response_vis_image_defaults_empty():
+    from schemas.common import ResultResponse
+    r = ResultResponse(detailList=[], status="true", error_msg="", message="ok")
+    assert r.vis_image == ""
+
+
+def test_result_response_vis_image_roundtrip():
+    from schemas.common import ResultResponse
+    r = ResultResponse(detailList=[], status="true", error_msg="", message="ok",
+                       vis_image="QUJD")
+    assert r.model_dump()["vis_image"] == "QUJD"
