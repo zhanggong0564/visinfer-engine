@@ -74,7 +74,7 @@ def _draw_dashed_rect(img, x1, y1, x2, y2, color, thickness, dash=12, gap=8):
     _draw_dashed_line(img, (x1, y2), (x1, y1), color, thickness, dash, gap)
 
 
-_LABEL_ALPHA = 0.7  # 旋转文字底条+文字整体合成不透明度
+_LABEL_ALPHA = 0.45  # 旋转文字底条+文字整体合成不透明度（调低让原始线标透出，不被盖住）
 
 
 def _draw_rotated_label(canvas, text, pts, color, font_scale, thickness):
