@@ -10,7 +10,7 @@ from services.utils.visualize import (
     _coords_to_points,
     _draw_dashed_rect,
     _draw_index_badge,
-    _append_legend_panel,
+    _draw_legend,
 )
 
 
@@ -154,25 +154,26 @@ class TestIndexBadge:
         _draw_index_badge(canvas, (300, 300), 1, (0, 255, 255), 16)  # 越界不抛异常
 
 
-class TestLegendPanel:
-    def test_panel_widens_canvas(self):
-        canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
-        out = _append_legend_panel(canvas, [(1, "S2-14/PD-J22-1", (0, 255, 0))])
-        assert out.shape[0] == 200          # 高度不变
-        assert out.shape[1] > 200           # 右侧拼接了面板，变宽
+class TestLegend:
+    def test_legend_draws_in_place_topleft(self):
+        canvas = np.full((200, 400, 3), 0, dtype=np.uint8)  # 黑底便于检测改动
+        before = canvas.copy()
+        _draw_legend(canvas, [(1, "S2-14/PD-J22-1", (0, 255, 0))])
+        assert canvas.shape == before.shape          # 不扩展画布
+        assert not np.array_equal(canvas[:60, :200], before[:60, :200])  # 左上角被绘制
 
-    def test_empty_entries_returns_same(self):
-        canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
-        out = _append_legend_panel(canvas, [])
-        assert out.shape == canvas.shape
+    def test_empty_entries_no_change(self):
+        canvas = np.full((200, 400, 3), 0, dtype=np.uint8)
+        before = canvas.copy()
+        _draw_legend(canvas, [])
+        assert np.array_equal(canvas, before)
 
-    def test_chinese_text_still_widens_no_crash(self):
-        canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
-        out = _append_legend_panel(canvas, [(1, "中文标签", (0, 255, 0))])  # 中文留空但不崩
-        assert out.shape[1] > 200
+    def test_chinese_text_no_crash(self):
+        canvas = np.full((200, 400, 3), 0, dtype=np.uint8)
+        _draw_legend(canvas, [(1, "中文标签", (0, 255, 0))])  # 中文留空但不崩
 
-    def test_render_end_to_end_widens(self):
-        img = np.full((200, 200, 3), 255, dtype=np.uint8)
+    def test_render_end_to_end_not_widened(self):
+        img = np.full((200, 400, 3), 255, dtype=np.uint8)
         item = {
             "status": "true", "scene": "x", "name": "S2-14",
             "coordinate": [40, 90, 160, 90, 160, 110, 40, 110], "color": "#20ff4f",
@@ -180,4 +181,4 @@ class TestLegendPanel:
         b64 = render_detection_overlay(img, [item])
         out = _decode_b64_jpeg(b64)
         assert out is not None
-        assert out.shape[1] > 200  # 含右侧图例面板，比原图宽
+        assert out.shape[:2] == (200, 400)  # 图例就地绘制，画布尺寸不变

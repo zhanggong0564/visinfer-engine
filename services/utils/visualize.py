@@ -93,45 +93,59 @@ def _draw_index_badge(canvas, center, number, color, radius):
                 cv2.FONT_HERSHEY_SIMPLEX, fs, _label_text_color(color), 1, cv2.LINE_AA)
 
 
-def _append_legend_panel(canvas, entries):
-    """画布右侧拼接白底图例面板，逐行列 "序号徽标 + 文本"（文本仅 ASCII，中文留空）。
+def _short_edge_top_mid(pts):
+    """取多边形较短两条边里更靠上(y 较小)那条的中点，用于把编号放到短边上方。"""
+    pts = np.asarray(pts, dtype=np.float64).reshape(-1, 2)
+    n = len(pts)
+    edges = [(pts[i], pts[(i + 1) % n]) for i in range(n)]
+    order = sorted(range(n), key=lambda i: np.hypot(*(edges[i][1] - edges[i][0])))
+    short = order[:2] if n >= 4 else order[:1]
+    mids = [(edges[i][0] + edges[i][1]) / 2.0 for i in short]
+    return min(mids, key=lambda m: m[1])
 
-    entries: list[(number, text, color)]；空则原样返回 canvas。
-    文本用深色保证白底可读，状态(绿/黄)由徽标底色表达。
+
+def _draw_legend(canvas, entries):
+    """在原图左上角就地画半透明白底图例，逐行列 "序号徽标 + 文本"（文本仅 ASCII）。
+
+    entries: list[(number, text, color)]；空则不改 canvas。原图零扩展，仅占左上空白区。
     """
     if not entries:
-        return canvas
-    H = canvas.shape[0]
+        return
+    H, W = canvas.shape[:2]
     font = cv2.FONT_HERSHEY_SIMPLEX
-    rows = len(entries)
-    row_h = max(20, min(44, H // rows))
-    fs = max(0.4, min(0.9, row_h / 48.0))
-    r = max(8, int(row_h * 0.32))
-    text_x = 12 + 2 * r + 10
+    fs = max(0.45, min(0.9, W / 1400.0))
+    line_h = max(20, int(34 * fs))
+    r = max(7, int(line_h * 0.3))
+    pad = 8
+    text_x0 = pad + 2 * r + 8
 
     max_tw = 0
     for _, text, _ in entries:
         t = text if (text and text.isascii()) else ""
         (tw, _), _ = cv2.getTextSize(t, font, fs, 1)
         max_tw = max(max_tw, tw)
-    panel_w = text_x + max_tw + 16
-    panel = np.full((H, panel_w, 3), 255, dtype=np.uint8)
+
+    x0, y0 = 6, 6
+    block_w = min(W - x0, text_x0 + max_tw + pad)
+    block_h = min(H - y0, pad + len(entries) * line_h + pad)
+
+    # 半透明白底，保证文字在任意背景上可读
+    roi = canvas[y0:y0 + block_h, x0:x0 + block_w].astype(np.float32)
+    canvas[y0:y0 + block_h, x0:x0 + block_w] = (roi * 0.25 + 255 * 0.75).astype(np.uint8)
 
     for i, (number, text, color) in enumerate(entries):
-        cy = int(i * row_h + row_h / 2)
-        bx = 12 + r
-        cv2.circle(panel, (bx, cy), r, color, -1)
-        cv2.circle(panel, (bx, cy), r, (180, 180, 180), 1, cv2.LINE_AA)
+        cy = y0 + pad + i * line_h + line_h // 2
+        bx = x0 + pad + r
+        cv2.circle(canvas, (bx, cy), r, color, -1)
+        cv2.circle(canvas, (bx, cy), r, (180, 180, 180), 1, cv2.LINE_AA)
         ntxt = str(number)
-        nfs = max(0.35, r / 14.0)
+        nfs = max(0.3, r / 14.0)
         (ntw, nth), _ = cv2.getTextSize(ntxt, font, nfs, 1)
-        cv2.putText(panel, ntxt, (bx - ntw // 2, cy + nth // 2),
+        cv2.putText(canvas, ntxt, (bx - ntw // 2, cy + nth // 2),
                     font, nfs, _label_text_color(color), 1, cv2.LINE_AA)
         t = text if (text and text.isascii()) else ""
         (tw, th), _ = cv2.getTextSize(t, font, fs, 1)
-        cv2.putText(panel, t, (text_x, cy + th // 2), font, fs, (20, 20, 20), 1, cv2.LINE_AA)
-
-    return np.hstack([canvas, panel])
+        cv2.putText(canvas, t, (x0 + text_x0, cy + th // 2), font, fs, (20, 20, 20), 1, cv2.LINE_AA)
 
 
 def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, jpeg_quality=85):
@@ -195,16 +209,16 @@ def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, 
                     cv2.fillPoly(overlay, [pts], color)
             canvas = cv2.addWeighted(overlay, _FILL_ALPHA, canvas, 1.0 - _FILL_ALPHA, 0)
 
-        # 目标框 + 编号徽标（文字移到右侧图例，不遮挡原始线标）
+        # 目标框 + 编号徽标（放短边上方，不压线标文字；识别文本移到左上角图例）
         badge_r = max(10, int(round(max(new_w, new_h) / 80)))
         legend_entries = []
         for i, (pts, color, _, label) in enumerate(drawables, start=1):
             cv2.polylines(canvas, [pts], True, color, thickness)
-            _draw_index_badge(canvas, pts.mean(axis=0), i, color, badge_r)
+            _draw_index_badge(canvas, _short_edge_top_mid(pts), i, color, badge_r)
             legend_entries.append((i, label, color))
 
-        # 右侧白底图例面板：序号 + 识别文本，原图零遮挡
-        canvas = _append_legend_panel(canvas, legend_entries)
+        # 左上角半透明白底图例：序号 + 识别文本，避免覆盖线标文字
+        _draw_legend(canvas, legend_entries)
 
         ok, buf = cv2.imencode(".jpg", canvas, [int(cv2.IMWRITE_JPEG_QUALITY), int(jpeg_quality)])
         if not ok:
