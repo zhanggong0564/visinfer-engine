@@ -4,13 +4,13 @@ import pytest
 
 
 def test_compose_persists_data_directory():
-    compose = Path("docker-compose.yml").read_text(encoding="utf-8")
+    compose = Path("docker-compose.scenes.yml").read_text(encoding="utf-8")
     assert "./data:/app/workspace/data" in compose
 
 
 def test_container_healthchecks_use_readiness_endpoint():
-    compose = Path("docker-compose.yml").read_text(encoding="utf-8")
-    dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+    compose = Path("docker-compose.scenes.yml").read_text(encoding="utf-8")
+    dockerfile = Path("Dockerfile.runtime").read_text(encoding="utf-8")
     assert "http://127.0.0.1:3001/health/ready" in compose
     assert "http://127.0.0.1:3001/health/ready" in dockerfile
 
@@ -35,7 +35,8 @@ def test_detection_routes_publish_common_response_schema_to_openapi():
 
 
 def test_docker_images_include_offline_swagger_assets():
-    for dockerfile_name in ("Dockerfile", "Dockerfile.panel-label"):
+    # CI 重构后收敛为统一 runtime 镜像（删除场景专用 Dockerfile.panel-label）
+    for dockerfile_name in ("Dockerfile.runtime",):
         dockerfile = Path(dockerfile_name).read_text(encoding="utf-8")
         assert "static /app/workspace/static" in dockerfile
 
