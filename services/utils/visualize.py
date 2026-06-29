@@ -16,6 +16,7 @@ from utils import vision_logger
 _GREEN_BGR = (79, 255, 32)
 _YELLOW_BGR = (0, 255, 255)
 _FILL_ALPHA = 0.3  # NG 半透明填充权重
+_BLUE_BGR = (255, 0, 0)  # 引导框：蓝色(BGR)，区别于检测框绿/黄
 
 
 def _hex_to_bgr(hex_color, default=_GREEN_BGR):
@@ -47,7 +48,33 @@ def _coords_to_points(coord, new_w, new_h, scale):
     return pts.astype(np.int32)
 
 
-def render_detection_overlay(image, detail_list, *, max_side=1280, jpeg_quality=85):
+def _draw_dashed_line(img, p1, p2, color, thickness, dash=12, gap=8):
+    """两点间画虚线（OpenCV 无原生虚线，按 dash/gap 分段画实线段）。"""
+    x1, y1 = p1
+    x2, y2 = p2
+    dist = int(round(float(np.hypot(x2 - x1, y2 - y1))))
+    if dist == 0:
+        return
+    step = dash + gap
+    for i in range(0, dist, step):
+        s = i / dist
+        e = min(i + dash, dist) / dist
+        sx = int(round(x1 + (x2 - x1) * s))
+        sy = int(round(y1 + (y2 - y1) * s))
+        ex = int(round(x1 + (x2 - x1) * e))
+        ey = int(round(y1 + (y2 - y1) * e))
+        cv2.line(img, (sx, sy), (ex, ey), color, thickness)
+
+
+def _draw_dashed_rect(img, x1, y1, x2, y2, color, thickness, dash=12, gap=8):
+    """四条边分别画虚线，组成虚线矩形。"""
+    _draw_dashed_line(img, (x1, y1), (x2, y1), color, thickness, dash, gap)
+    _draw_dashed_line(img, (x2, y1), (x2, y2), color, thickness, dash, gap)
+    _draw_dashed_line(img, (x2, y2), (x1, y2), color, thickness, dash, gap)
+    _draw_dashed_line(img, (x1, y2), (x1, y1), color, thickness, dash, gap)
+
+
+def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, jpeg_quality=85):
     """把 detailList 绘制到缩图上并返回 JPEG base64（不含 data: 前缀）。
 
     异常或空图一律返回 ""，绝不抛出，避免影响检测主响应。
@@ -67,8 +94,23 @@ def render_detection_overlay(image, detail_list, *, max_side=1280, jpeg_quality=
         else:
             canvas = image.copy()
 
-        thickness = max(1, int(round(max(new_w, new_h) / 500)))
+        thickness = max(2, int(round(max(new_w, new_h) / 400)))
         font_scale = max(0.4, max(new_w, new_h) / 1600.0)
+
+        # 引导框（归一化 x,y,w,h → 像素），蓝色虚线、细一档，画在检测框之下
+        guide_thickness = max(2, thickness - 1)
+        for g in guides or []:
+            if not isinstance(g, (list, tuple)) or len(g) != 4:
+                continue
+            try:
+                gx, gy, gw, gh = (float(v) for v in g)
+            except (TypeError, ValueError):
+                continue
+            x1 = int(round(gx * new_w))
+            y1 = int(round(gy * new_h))
+            x2 = int(round((gx + gw) * new_w))
+            y2 = int(round((gy + gh) * new_h))
+            _draw_dashed_rect(canvas, x1, y1, x2, y2, _BLUE_BGR, guide_thickness)
 
         # 解析为可绘制元素：(pts, color, is_ng, label)
         drawables = []

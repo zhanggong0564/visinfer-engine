@@ -8,6 +8,7 @@ from services.utils.visualize import (
     render_detection_overlay,
     _hex_to_bgr,
     _coords_to_points,
+    _draw_dashed_rect,
 )
 
 
@@ -98,3 +99,41 @@ class TestRenderDetectionOverlay:
         img = np.zeros((100, 100, 3), dtype=np.uint8)
         b64 = render_detection_overlay(img, [self._item(coordinate=[1, 2, 3])])
         assert _decode_b64_jpeg(b64) is not None
+
+
+class TestGuides:
+    def _decode(self, b64):
+        import base64
+        raw = base64.b64decode(b64)
+        arr = np.frombuffer(raw, np.uint8)
+        return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+    def _blue_pixel_count(self, img):
+        # 蓝(BGR 255,0,0)：B 高、G/R 低
+        b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+        return int(np.count_nonzero((b > 150) & (g < 100) & (r < 100)))
+
+    def test_guides_draw_blue(self):
+        img = np.full((200, 200, 3), 255, dtype=np.uint8)  # 白底
+        b64 = render_detection_overlay(img, [], guides=[(0.2, 0.2, 0.5, 0.5)])
+        out = self._decode(b64)
+        assert self._blue_pixel_count(out) > 0
+
+    def test_no_guides_no_blue(self):
+        img = np.full((200, 200, 3), 255, dtype=np.uint8)
+        b64 = render_detection_overlay(img, [], guides=None)
+        out = self._decode(b64)
+        assert self._blue_pixel_count(out) == 0
+
+    def test_malformed_guide_skipped(self):
+        img = np.full((200, 200, 3), 255, dtype=np.uint8)
+        b64 = render_detection_overlay(img, [], guides=[(0.1, 0.1, 0.5)])  # 长度非4
+        assert self._decode(b64) is not None
+
+    def test_dashed_rect_draws_segments(self):
+        img = np.zeros((100, 100, 3), dtype=np.uint8)
+        _draw_dashed_rect(img, 10, 10, 90, 90, (255, 0, 0), 2)
+        # 虚线：边上有蓝点但不连续（存在间隙）
+        top = img[10, 10:90, 0]
+        assert int(np.count_nonzero(top > 150)) > 0
+        assert int(np.count_nonzero(top <= 150)) > 0
