@@ -100,9 +100,6 @@ def _draw_rotated_label(canvas, text, pts, color, font_scale, thickness):
     elif angle < -90:
         angle += 180
 
-    # 短边半长（用于把文字偏到框外）
-    edge_lens = sorted(float(np.hypot(*(b - a))) for a, b in edges)
-    short_half = (edge_lens[0] if edge_lens else 0.0) / 2.0
     cx, cy = pts.mean(axis=0)
 
     # 渲染文字小图（深色底条 + 彩色字）。文字描边固定细一档，避免发糊发粗。
@@ -115,15 +112,8 @@ def _draw_rotated_label(canvas, text, pts, color, font_scale, thickness):
     cv2.putText(strip, text, (pad, pad + th), font, font_scale, color, text_thickness, cv2.LINE_AA)
     mask = np.full((sh, sw), 255, dtype=np.uint8)
 
-    # 偏到框外：沿最长边法线方向外移 (short_half + 半个底条高 + 留白)
-    rad = np.radians(angle)
-    nx, ny = -np.sin(rad), np.cos(rad)  # 法线
-    off = short_half + sh / 2.0 + 4
-    tx, ty = cx + nx * off, cy + ny * off
-
-    # 引导细线：从框中心拉细线到标签中心，明确"标签↔框"对应（先画，文字底条压其末端）
-    cv2.line(canvas, (int(round(cx)), int(round(cy))), (int(round(tx)), int(round(ty))),
-             color, 1, cv2.LINE_AA)
+    # 文字居中贴在自己的框上（每条文字压在对应线标上，归属一目了然）
+    tx, ty = cx, cy
 
     # 旋转小图+掩膜并放到目标点（warpAffine 到画布尺寸，越界自动裁剪）
     M = cv2.getRotationMatrix2D((sw / 2.0, sh / 2.0), angle, 1.0)
