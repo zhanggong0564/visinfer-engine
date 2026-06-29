@@ -157,11 +157,18 @@ class BaseRouter(ABC):
             self._sanitize_detail_list_names(result_dict)
             response_result = result_dict
             if settings.VIS_ENABLED:
+                # 引导框仅线标等场景经 inputs.extra 下发；其它场景无此键则不画，渲染器保持场景无关
+                vis_guides = None
+                extra = getattr(inputs, "extra", None)
+                guideline = extra.get("guideline") if isinstance(extra, dict) else None
+                if guideline:
+                    vis_guides = [tuple(guideline)]
                 # 绘制+JPEG 编码是 CPU 操作，丢线程池避免阻塞事件循环
                 vis_b64 = await run_sync(
                     render_detection_overlay,
                     image,
                     result_dict.get("detailList", []),
+                    guides=vis_guides,
                     max_side=settings.VIS_MAX_SIDE,
                     jpeg_quality=settings.VIS_JPEG_QUALITY,
                 )

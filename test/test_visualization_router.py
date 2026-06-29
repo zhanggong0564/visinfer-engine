@@ -107,3 +107,51 @@ def test_disabled_returns_empty_vis_image(monkeypatch):
     resp = _run(router._process_detect_request(
         background_tasks=BackgroundTasks(), file=_FakeUpload(), json_data="{}"))
     assert resp.result.vis_image == ""
+
+
+def test_guideline_passed_to_render(monkeypatch):
+    """panel_label 等场景：inputs.extra.guideline 存在时，应作为 guides 传给渲染器。"""
+    from schemas.data_base import InputParamsBusiness
+    monkeypatch.setattr(settings, "VIS_ENABLED", True)
+
+    captured = {}
+
+    def _fake_render(image, detail_list, **kwargs):
+        captured["guides"] = kwargs.get("guides")
+        return "FAKE"
+
+    monkeypatch.setattr("routers.base_router.render_detection_overlay", _fake_render)
+
+    class _GuideRouter(BaseRouter):
+        def __init__(self):
+            super().__init__(router_name="g", api_path="/g", summary="g",
+                             description="g", detector_type="panel_label")
+
+        def request_schema(self, json_dict):
+            return json_dict
+
+        def get_inputs(self, request_params, image):
+            return InputParamsBusiness(
+                image=image, product_type="TK2",
+                extra={"guideline": (0.1, 0.2, 0.5, 0.4)},
+            )
+
+    router = _GuideRouter()
+
+    async def _fake_process_image(file):
+        return np.zeros((20, 20, 3), dtype=np.uint8), False
+
+    monkeypatch.setattr(router, "_process_image", _fake_process_image)
+
+    class _Detector:
+        def detect(self, inputs):
+            return {"detailList": [], "status": "true", "error_msg": "", "message": "ok"}
+
+    monkeypatch.setattr(router, "get_detector_singleton", lambda: _Detector())
+    monkeypatch.setattr("routers.base_router.record_call", lambda scene, verdict: None)
+    monkeypatch.setattr(router, "_persist_image", lambda **kw: None)
+    monkeypatch.setattr(router, "_persist_record", lambda **kw: None)
+
+    _run(router._process_detect_request(
+        background_tasks=BackgroundTasks(), file=_FakeUpload(), json_data="{}"))
+    assert captured["guides"] == [(0.1, 0.2, 0.5, 0.4)]
