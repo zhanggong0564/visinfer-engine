@@ -175,7 +175,9 @@ def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, 
         thickness = max(2, int(round(max(new_w, new_h) / 400)))
 
         # 引导框（归一化 x,y,w,h → 像素），蓝色虚线、细一档，画在检测框之下
-        guide_thickness = max(1, thickness - 1)
+        # 下限取 2：1px 虚线在 JPEG(q85) 压缩后会消失(test_guides_draw_blue 验证)；
+        # 大图 thickness≥3 时仍比框线细一档，达成"参考线"视觉
+        guide_thickness = max(2, thickness - 1)
         for g in guides or []:
             if not isinstance(g, (list, tuple)) or len(g) != 4:
                 continue
