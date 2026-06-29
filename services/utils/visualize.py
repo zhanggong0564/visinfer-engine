@@ -74,60 +74,64 @@ def _draw_dashed_rect(img, x1, y1, x2, y2, color, thickness, dash=12, gap=8):
     _draw_dashed_line(img, (x1, y2), (x1, y1), color, thickness, dash, gap)
 
 
-_LABEL_ALPHA = 0.45  # 旋转文字底条+文字整体合成不透明度（调低让原始线标透出，不被盖住）
+def _label_text_color(bgr):
+    """据底色亮度选前景色：亮底用黑字、暗底用白字，保证序号可读。"""
+    b, g, r = bgr
+    lum = 0.114 * b + 0.587 * g + 0.299 * r
+    return (0, 0, 0) if lum > 140 else (255, 255, 255)
 
 
-def _draw_rotated_label(canvas, text, pts, color, font_scale, thickness):
-    """把 text 渲染成带深色底条的小图，沿框最长边角度旋转，偏到框外一侧贴到 canvas。
+def _draw_index_badge(canvas, center, number, color, radius):
+    """在框中心画状态色实心圆 + 序号，作为与右侧图例一一对应的编号。"""
+    cx, cy = int(round(float(center[0]))), int(round(float(center[1])))
+    cv2.circle(canvas, (cx, cy), radius, color, -1)
+    cv2.circle(canvas, (cx, cy), radius, (255, 255, 255), 1, cv2.LINE_AA)
+    txt = str(number)
+    fs = max(0.35, radius / 14.0)
+    (tw, th), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, fs, 1)
+    cv2.putText(canvas, txt, (cx - tw // 2, cy + th // 2),
+                cv2.FONT_HERSHEY_SIMPLEX, fs, _label_text_color(color), 1, cv2.LINE_AA)
 
-    朝向用最长边角度（不依赖 cv2.minAreaRect 的版本相关 angle）；
-    非 ASCII 文本跳过（仅 ASCII 约定）；越界由 warpAffine 到画布尺寸自然裁剪，不抛异常。
+
+def _append_legend_panel(canvas, entries):
+    """画布右侧拼接白底图例面板，逐行列 "序号徽标 + 文本"（文本仅 ASCII，中文留空）。
+
+    entries: list[(number, text, color)]；空则原样返回 canvas。
+    文本用深色保证白底可读，状态(绿/黄)由徽标底色表达。
     """
-    if not text or not text.isascii():
-        return
-    pts = np.asarray(pts, dtype=np.float64).reshape(-1, 2)
-    if len(pts) < 2:
-        return
-    H, W = canvas.shape[:2]
-
-    # 最长边 → 角度（度），归一到 [-90,90] 防上下颠倒
-    edges = [(pts[i], pts[(i + 1) % len(pts)]) for i in range(len(pts))]
-    (pa, pb) = max(edges, key=lambda e: np.hypot(*(e[1] - e[0])))
-    dx, dy = (pb - pa)
-    angle = float(np.degrees(np.arctan2(dy, dx)))
-    if angle > 90:
-        angle -= 180
-    elif angle < -90:
-        angle += 180
-
-    cx, cy = pts.mean(axis=0)
-
-    # 渲染文字小图（深色底条 + 彩色字）。文字描边固定细一档，避免发糊发粗。
+    if not entries:
+        return canvas
+    H = canvas.shape[0]
     font = cv2.FONT_HERSHEY_SIMPLEX
-    text_thickness = max(1, thickness - 2)
-    (tw, th), baseline = cv2.getTextSize(text, font, font_scale, text_thickness)
-    pad = 4
-    sw, sh = tw + 2 * pad, th + baseline + 2 * pad
-    strip = np.full((sh, sw, 3), 40, dtype=np.uint8)  # 深灰底条
-    cv2.putText(strip, text, (pad, pad + th), font, font_scale, color, text_thickness, cv2.LINE_AA)
-    mask = np.full((sh, sw), 255, dtype=np.uint8)
+    rows = len(entries)
+    row_h = max(20, min(44, H // rows))
+    fs = max(0.4, min(0.9, row_h / 48.0))
+    r = max(8, int(row_h * 0.32))
+    text_x = 12 + 2 * r + 10
 
-    # 文字居中贴在自己的框上（每条文字压在对应线标上，归属一目了然）
-    tx, ty = cx, cy
+    max_tw = 0
+    for _, text, _ in entries:
+        t = text if (text and text.isascii()) else ""
+        (tw, _), _ = cv2.getTextSize(t, font, fs, 1)
+        max_tw = max(max_tw, tw)
+    panel_w = text_x + max_tw + 16
+    panel = np.full((H, panel_w, 3), 255, dtype=np.uint8)
 
-    # 旋转小图+掩膜并放到目标点（warpAffine 到画布尺寸，越界自动裁剪）
-    # 取 -angle：getRotationMatrix2D 正角为逆时针，图像 y 轴向下，取负才使文字平行长边方向
-    M = cv2.getRotationMatrix2D((sw / 2.0, sh / 2.0), -angle, 1.0)
-    M[0, 2] += tx - sw / 2.0
-    M[1, 2] += ty - sh / 2.0
-    rot = cv2.warpAffine(strip, M, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0))
-    rmask = cv2.warpAffine(mask, M, (W, H), flags=cv2.INTER_NEAREST, borderValue=0)
-    idx = rmask > 0
-    if not idx.any():
-        return
-    blended = (canvas.astype(np.float32) * (1 - _LABEL_ALPHA)
-               + rot.astype(np.float32) * _LABEL_ALPHA)
-    canvas[idx] = blended[idx].astype(np.uint8)
+    for i, (number, text, color) in enumerate(entries):
+        cy = int(i * row_h + row_h / 2)
+        bx = 12 + r
+        cv2.circle(panel, (bx, cy), r, color, -1)
+        cv2.circle(panel, (bx, cy), r, (180, 180, 180), 1, cv2.LINE_AA)
+        ntxt = str(number)
+        nfs = max(0.35, r / 14.0)
+        (ntw, nth), _ = cv2.getTextSize(ntxt, font, nfs, 1)
+        cv2.putText(panel, ntxt, (bx - ntw // 2, cy + nth // 2),
+                    font, nfs, _label_text_color(color), 1, cv2.LINE_AA)
+        t = text if (text and text.isascii()) else ""
+        (tw, th), _ = cv2.getTextSize(t, font, fs, 1)
+        cv2.putText(panel, t, (text_x, cy + th // 2), font, fs, (20, 20, 20), 1, cv2.LINE_AA)
+
+    return np.hstack([canvas, panel])
 
 
 def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, jpeg_quality=85):
@@ -151,7 +155,6 @@ def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, 
             canvas = image.copy()
 
         thickness = max(2, int(round(max(new_w, new_h) / 400)))
-        font_scale = max(0.4, max(new_w, new_h) / 1600.0)
 
         # 引导框（归一化 x,y,w,h → 像素），蓝色虚线、细一档，画在检测框之下
         guide_thickness = max(2, thickness - 1)
@@ -192,10 +195,16 @@ def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, 
                     cv2.fillPoly(overlay, [pts], color)
             canvas = cv2.addWeighted(overlay, _FILL_ALPHA, canvas, 1.0 - _FILL_ALPHA, 0)
 
-        # 目标框 + 旋转贴框文字
-        for pts, color, _, label in drawables:
+        # 目标框 + 编号徽标（文字移到右侧图例，不遮挡原始线标）
+        badge_r = max(10, int(round(max(new_w, new_h) / 80)))
+        legend_entries = []
+        for i, (pts, color, _, label) in enumerate(drawables, start=1):
             cv2.polylines(canvas, [pts], True, color, thickness)
-            _draw_rotated_label(canvas, label, pts, color, font_scale, thickness)
+            _draw_index_badge(canvas, pts.mean(axis=0), i, color, badge_r)
+            legend_entries.append((i, label, color))
+
+        # 右侧白底图例面板：序号 + 识别文本，原图零遮挡
+        canvas = _append_legend_panel(canvas, legend_entries)
 
         ok, buf = cv2.imencode(".jpg", canvas, [int(cv2.IMWRITE_JPEG_QUALITY), int(jpeg_quality)])
         if not ok:

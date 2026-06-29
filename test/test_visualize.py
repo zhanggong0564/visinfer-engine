@@ -9,7 +9,8 @@ from services.utils.visualize import (
     _hex_to_bgr,
     _coords_to_points,
     _draw_dashed_rect,
-    _draw_rotated_label,
+    _draw_index_badge,
+    _append_legend_panel,
 )
 
 
@@ -76,14 +77,15 @@ class TestRenderDetectionOverlay:
         assert _decode_b64_jpeg(b64) is not None
 
     def test_downscales_longest_side_to_max(self):
+        # 空 detailList → 无右侧图例，输出即缩图本身，可校验照片区缩放
         img = np.zeros((1000, 2000, 3), dtype=np.uint8)
-        b64 = render_detection_overlay(img, [self._item()], max_side=1280)
+        b64 = render_detection_overlay(img, [], max_side=1280)
         decoded = _decode_b64_jpeg(b64)
         assert max(decoded.shape[:2]) == 1280
 
     def test_small_image_not_upscaled(self):
         img = np.zeros((100, 200, 3), dtype=np.uint8)
-        b64 = render_detection_overlay(img, [self._item()], max_side=1280)
+        b64 = render_detection_overlay(img, [], max_side=1280)
         decoded = _decode_b64_jpeg(b64)
         assert decoded.shape[:2] == (100, 200)
 
@@ -140,38 +142,42 @@ class TestGuides:
         assert int(np.count_nonzero(top <= 150)) > 0
 
 
-class TestRotatedLabel:
-    def test_ascii_label_draws_pixels(self):
+class TestIndexBadge:
+    def test_badge_draws_pixels(self):
         canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
         before = canvas.copy()
-        pts = np.array([[40, 90], [160, 90], [160, 110], [40, 110]], np.int32)  # 横向长框
-        _draw_rotated_label(canvas, "S2-14", pts, (0, 0, 255), 0.8, 2)
-        assert not np.array_equal(canvas, before)  # 确有像素被改（画了字+底条）
+        _draw_index_badge(canvas, (100, 100), 3, (0, 255, 0), 16)
+        assert not np.array_equal(canvas, before)  # 画了圆+序号
 
-    def test_chinese_label_no_change(self):
-        canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
-        before = canvas.copy()
-        pts = np.array([[40, 90], [160, 90], [160, 110], [40, 110]], np.int32)
-        _draw_rotated_label(canvas, "中文标签", pts, (0, 0, 255), 0.8, 2)
-        assert np.array_equal(canvas, before)  # 非 ASCII 跳过
-
-    def test_vertical_box_no_crash(self):
-        canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
-        pts = np.array([[95, 30], [115, 30], [115, 170], [95, 170]], np.int32)  # 纵向长框
-        _draw_rotated_label(canvas, "J27-1", pts, (0, 255, 0), 0.8, 2)  # 不抛异常即可
-
-    def test_out_of_bounds_box_no_crash(self):
+    def test_badge_out_of_bounds_no_crash(self):
         canvas = np.full((100, 100, 3), 255, dtype=np.uint8)
-        pts = np.array([[80, 5], [180, 5], [180, 20], [80, 20]], np.int32)  # 越界到画布外
-        _draw_rotated_label(canvas, "EDGE-1", pts, (0, 255, 0), 0.8, 2)
+        _draw_index_badge(canvas, (300, 300), 1, (0, 255, 255), 16)  # 越界不抛异常
 
-    def test_render_uses_rotated_label_end_to_end(self):
-        import base64
+
+class TestLegendPanel:
+    def test_panel_widens_canvas(self):
+        canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
+        out = _append_legend_panel(canvas, [(1, "S2-14/PD-J22-1", (0, 255, 0))])
+        assert out.shape[0] == 200          # 高度不变
+        assert out.shape[1] > 200           # 右侧拼接了面板，变宽
+
+    def test_empty_entries_returns_same(self):
+        canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
+        out = _append_legend_panel(canvas, [])
+        assert out.shape == canvas.shape
+
+    def test_chinese_text_still_widens_no_crash(self):
+        canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
+        out = _append_legend_panel(canvas, [(1, "中文标签", (0, 255, 0))])  # 中文留空但不崩
+        assert out.shape[1] > 200
+
+    def test_render_end_to_end_widens(self):
         img = np.full((200, 200, 3), 255, dtype=np.uint8)
         item = {
             "status": "true", "scene": "x", "name": "S2-14",
             "coordinate": [40, 90, 160, 90, 160, 110, 40, 110], "color": "#20ff4f",
         }
         b64 = render_detection_overlay(img, [item])
-        arr = np.frombuffer(base64.b64decode(b64), np.uint8)
-        assert cv2.imdecode(arr, cv2.IMREAD_COLOR) is not None
+        out = _decode_b64_jpeg(b64)
+        assert out is not None
+        assert out.shape[1] > 200  # 含右侧图例面板，比原图宽
