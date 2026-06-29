@@ -116,7 +116,8 @@ def _draw_rotated_label(canvas, text, pts, color, font_scale, thickness):
     tx, ty = cx, cy
 
     # 旋转小图+掩膜并放到目标点（warpAffine 到画布尺寸，越界自动裁剪）
-    M = cv2.getRotationMatrix2D((sw / 2.0, sh / 2.0), angle, 1.0)
+    # 取 -angle：getRotationMatrix2D 正角为逆时针，图像 y 轴向下，取负才使文字平行长边方向
+    M = cv2.getRotationMatrix2D((sw / 2.0, sh / 2.0), -angle, 1.0)
     M[0, 2] += tx - sw / 2.0
     M[1, 2] += ty - sh / 2.0
     rot = cv2.warpAffine(strip, M, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0))
