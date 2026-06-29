@@ -83,7 +83,7 @@ def _label_text_color(bgr):
 
 
 def _draw_index_badge(canvas, center, number, color, radius):
-    """在框中心画状态色实心圆 + 序号，作为与右侧图例一一对应的编号。"""
+    """在指定位置画状态色实心圆 + 序号，作为与左上角图例一一对应的编号。"""
     cx, cy = int(round(float(center[0]))), int(round(float(center[1])))
     cv2.circle(canvas, (cx, cy), radius, color, -1)
     cv2.circle(canvas, (cx, cy), radius, (255, 255, 255), 1, cv2.LINE_AA)
@@ -95,7 +95,10 @@ def _draw_index_badge(canvas, center, number, color, radius):
 
 
 def _short_edge_top_mid(pts):
-    """取多边形较短两条边里更靠上(y 较小)那条的中点，用于把编号放到短边上方。"""
+    """取多边形较短两条边里更靠上(y 较小)那条的中点，用于把编号放到短边上方。
+
+    假设框为细长形(线标场景)：最短两条边即两端短边；近方形框可能取到侧边中点，可接受。
+    """
     pts = np.asarray(pts, dtype=np.float64).reshape(-1, 2)
     n = len(pts)
     edges = [(pts[i], pts[(i + 1) % n]) for i in range(n)]
@@ -172,7 +175,7 @@ def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, 
         thickness = max(2, int(round(max(new_w, new_h) / 400)))
 
         # 引导框（归一化 x,y,w,h → 像素），蓝色虚线、细一档，画在检测框之下
-        guide_thickness = max(2, thickness - 1)
+        guide_thickness = max(1, thickness - 1)
         for g in guides or []:
             if not isinstance(g, (list, tuple)) or len(g) != 4:
                 continue
