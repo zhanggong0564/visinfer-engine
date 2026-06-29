@@ -16,6 +16,7 @@ from utils import vision_logger
 _GREEN_BGR = (79, 255, 32)
 _YELLOW_BGR = (0, 255, 255)
 _FILL_ALPHA = 0.3  # NG 半透明填充权重
+_OVERLAY_ALPHA = 0.6  # 标号徽标+图例整体合成不透明度（半透明，不遮挡画面）
 _BLUE_BGR = (255, 0, 0)  # 引导框：蓝色(BGR)，区别于检测框绿/黄
 
 
@@ -209,16 +210,20 @@ def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, 
                     cv2.fillPoly(overlay, [pts], color)
             canvas = cv2.addWeighted(overlay, _FILL_ALPHA, canvas, 1.0 - _FILL_ALPHA, 0)
 
-        # 目标框 + 编号徽标（放短边上方，不压线标文字；识别文本移到左上角图例）
+        # 目标框（实色）+ 短边上方编号徽标 + 左上角图例
         badge_r = max(10, int(round(max(new_w, new_h) / 80)))
-        legend_entries = []
+        items_idx = []
         for i, (pts, color, _, label) in enumerate(drawables, start=1):
             cv2.polylines(canvas, [pts], True, color, thickness)
-            _draw_index_badge(canvas, _short_edge_top_mid(pts), i, color, badge_r)
-            legend_entries.append((i, label, color))
+            items_idx.append((i, pts, color, label))
 
-        # 左上角半透明白底图例：序号 + 识别文本，避免覆盖线标文字
-        _draw_legend(canvas, legend_entries)
+        # 标号徽标 + 图例画到 overlay，再半透明合成（透明色，不遮挡画面/线标）
+        if items_idx:
+            overlay = canvas.copy()
+            for i, pts, color, _ in items_idx:
+                _draw_index_badge(overlay, _short_edge_top_mid(pts), i, color, badge_r)
+            _draw_legend(overlay, [(i, label, color) for i, pts, color, label in items_idx])
+            canvas = cv2.addWeighted(overlay, _OVERLAY_ALPHA, canvas, 1.0 - _OVERLAY_ALPHA, 0)
 
         ok, buf = cv2.imencode(".jpg", canvas, [int(cv2.IMWRITE_JPEG_QUALITY), int(jpeg_quality)])
         if not ok:
