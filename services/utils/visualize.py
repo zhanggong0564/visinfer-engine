@@ -74,6 +74,66 @@ def _draw_dashed_rect(img, x1, y1, x2, y2, color, thickness, dash=12, gap=8):
     _draw_dashed_line(img, (x1, y2), (x1, y1), color, thickness, dash, gap)
 
 
+_LABEL_ALPHA = 0.7  # 旋转文字底条+文字整体合成不透明度
+
+
+def _draw_rotated_label(canvas, text, pts, color, font_scale, thickness):
+    """把 text 渲染成带深色底条的小图，沿框最长边角度旋转，偏到框外一侧贴到 canvas。
+
+    朝向用最长边角度（不依赖 cv2.minAreaRect 的版本相关 angle）；
+    非 ASCII 文本跳过（仅 ASCII 约定）；越界由 warpAffine 到画布尺寸自然裁剪，不抛异常。
+    """
+    if not text or not text.isascii():
+        return
+    pts = np.asarray(pts, dtype=np.float64).reshape(-1, 2)
+    if len(pts) < 2:
+        return
+    H, W = canvas.shape[:2]
+
+    # 最长边 → 角度（度），归一到 [-90,90] 防上下颠倒
+    edges = [(pts[i], pts[(i + 1) % len(pts)]) for i in range(len(pts))]
+    (pa, pb) = max(edges, key=lambda e: np.hypot(*(e[1] - e[0])))
+    dx, dy = (pb - pa)
+    angle = float(np.degrees(np.arctan2(dy, dx)))
+    if angle > 90:
+        angle -= 180
+    elif angle < -90:
+        angle += 180
+
+    # 短边半长（用于把文字偏到框外）
+    edge_lens = sorted(float(np.hypot(*(b - a))) for a, b in edges)
+    short_half = (edge_lens[0] if edge_lens else 0.0) / 2.0
+    cx, cy = pts.mean(axis=0)
+
+    # 渲染文字小图（深色底条 + 彩色字）
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    (tw, th), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+    pad = 4
+    sw, sh = tw + 2 * pad, th + baseline + 2 * pad
+    strip = np.full((sh, sw, 3), 40, dtype=np.uint8)  # 深灰底条
+    cv2.putText(strip, text, (pad, pad + th), font, font_scale, color, thickness, cv2.LINE_AA)
+    mask = np.full((sh, sw), 255, dtype=np.uint8)
+
+    # 偏到框外：沿最长边法线方向外移 (short_half + 半个底条高 + 留白)
+    rad = np.radians(angle)
+    nx, ny = -np.sin(rad), np.cos(rad)  # 法线
+    off = short_half + sh / 2.0 + 4
+    tx, ty = cx + nx * off, cy + ny * off
+
+    # 旋转小图+掩膜并放到目标点（warpAffine 到画布尺寸，越界自动裁剪）
+    M = cv2.getRotationMatrix2D((sw / 2.0, sh / 2.0), angle, 1.0)
+    M[0, 2] += tx - sw / 2.0
+    M[1, 2] += ty - sh / 2.0
+    rot = cv2.warpAffine(strip, M, (W, H), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0))
+    rmask = cv2.warpAffine(mask, M, (W, H), flags=cv2.INTER_NEAREST, borderValue=0)
+    idx = rmask > 0
+    if not idx.any():
+        return
+    blended = (canvas.astype(np.float32) * (1 - _LABEL_ALPHA)
+               + rot.astype(np.float32) * _LABEL_ALPHA)
+    canvas[idx] = blended[idx].astype(np.uint8)
+
+
 def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, jpeg_quality=85):
     """把 detailList 绘制到缩图上并返回 JPEG base64（不含 data: 前缀）。
 
@@ -136,15 +196,10 @@ def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, 
                     cv2.fillPoly(overlay, [pts], color)
             canvas = cv2.addWeighted(overlay, _FILL_ALPHA, canvas, 1.0 - _FILL_ALPHA, 0)
 
-        # 目标框 + 标签
+        # 目标框 + 旋转贴框文字
         for pts, color, _, label in drawables:
             cv2.polylines(canvas, [pts], True, color, thickness)
-            if label and label.isascii():
-                x = int(pts[0][0])
-                y = int(pts[0][1])
-                ty = y - 5 if y - 5 > 0 else y + 15
-                cv2.putText(canvas, label, (x, ty),
-                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
+            _draw_rotated_label(canvas, label, pts, color, font_scale, thickness)
 
         ok, buf = cv2.imencode(".jpg", canvas, [int(cv2.IMWRITE_JPEG_QUALITY), int(jpeg_quality)])
         if not ok:

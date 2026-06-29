@@ -9,6 +9,7 @@ from services.utils.visualize import (
     _hex_to_bgr,
     _coords_to_points,
     _draw_dashed_rect,
+    _draw_rotated_label,
 )
 
 
@@ -137,3 +138,40 @@ class TestGuides:
         top = img[10, 10:90, 0]
         assert int(np.count_nonzero(top > 150)) > 0
         assert int(np.count_nonzero(top <= 150)) > 0
+
+
+class TestRotatedLabel:
+    def test_ascii_label_draws_pixels(self):
+        canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
+        before = canvas.copy()
+        pts = np.array([[40, 90], [160, 90], [160, 110], [40, 110]], np.int32)  # 横向长框
+        _draw_rotated_label(canvas, "S2-14", pts, (0, 0, 255), 0.8, 2)
+        assert not np.array_equal(canvas, before)  # 确有像素被改（画了字+底条）
+
+    def test_chinese_label_no_change(self):
+        canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
+        before = canvas.copy()
+        pts = np.array([[40, 90], [160, 90], [160, 110], [40, 110]], np.int32)
+        _draw_rotated_label(canvas, "中文标签", pts, (0, 0, 255), 0.8, 2)
+        assert np.array_equal(canvas, before)  # 非 ASCII 跳过
+
+    def test_vertical_box_no_crash(self):
+        canvas = np.full((200, 200, 3), 255, dtype=np.uint8)
+        pts = np.array([[95, 30], [115, 30], [115, 170], [95, 170]], np.int32)  # 纵向长框
+        _draw_rotated_label(canvas, "J27-1", pts, (0, 255, 0), 0.8, 2)  # 不抛异常即可
+
+    def test_out_of_bounds_box_no_crash(self):
+        canvas = np.full((100, 100, 3), 255, dtype=np.uint8)
+        pts = np.array([[80, 5], [180, 5], [180, 20], [80, 20]], np.int32)  # 越界到画布外
+        _draw_rotated_label(canvas, "EDGE-1", pts, (0, 255, 0), 0.8, 2)
+
+    def test_render_uses_rotated_label_end_to_end(self):
+        import base64
+        img = np.full((200, 200, 3), 255, dtype=np.uint8)
+        item = {
+            "status": "true", "scene": "x", "name": "S2-14",
+            "coordinate": [40, 90, 160, 90, 160, 110, 40, 110], "color": "#20ff4f",
+        }
+        b64 = render_detection_overlay(img, [item])
+        arr = np.frombuffer(base64.b64decode(b64), np.uint8)
+        assert cv2.imdecode(arr, cv2.IMREAD_COLOR) is not None
