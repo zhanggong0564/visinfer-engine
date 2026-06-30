@@ -8,10 +8,15 @@
 '''
 
 from dataclasses import dataclass, field
+import os
 import numpy as np
 from enum import Enum
-from typing import List
+from typing import List, Optional
 import cv2
+
+# 可视化绘制常量（统一颜色/线宽，避免散落魔法值）
+_DRAW_COLOR = (0, 255, 0)
+_BLEND_ALPHA = 0.7  # 检测框图层与掩膜图层的混合权重
 
 
 @dataclass
@@ -22,44 +27,61 @@ class DetectResult:
     class_names: List[str] = field(default_factory=list)
     masks: List[np.ndarray] = field(default_factory=list)
     mask_polygons: List[List[float]] = field(default_factory=list)
-    ori_img: np.ndarray = field(default_factory=lambda: None)
+    ori_img: Optional[np.ndarray] = None
 
-    def save_img(self, save_path: str):
+    def save_img(self, save_path: str) -> Optional[np.ndarray]:
         '''
-        可视化图像，将检测结果绘制在图像上
+        调试用可视化：把检测结果画到原图副本上并存盘，同时返回渲染后的图像，
+        方便在调试器 / Notebook 里直接查看，无需再读回文件。
+
+        - 无原图（ori_img 为 None）时直接返回 None；
+        - scores / class_names 缺失也能正常画框（只是不画标签），不影响调试中间结果；
+        - 自动创建 save_path 的父目录，写盘失败时抛 IOError 给出明确反馈。
         '''
         if self.ori_img is None:
-            return
-        mask_img = self.ori_img.copy()
+            return None
+
         vis_img = self.ori_img.copy()
-        if len(self.mask_polygons) > 0:
-            # 绘制检测框
-            for box, score, class_name in zip(self.boxes, self.scores, self.class_names):
+        # 中间结果可能只有框、没有 scores/class_names，用 None 兜底对齐长度
+        scores = self.scores or [None] * len(self.boxes)
+        names = self.class_names or [None] * len(self.boxes)
+
+        if self.mask_polygons:
+            # 有掩膜：画轴对齐框 + 标签，再叠加半透明掩膜图层
+            for box, score, name in zip(self.boxes, scores, names):
                 x1, y1, x2, y2 = map(int, box)
-                cv2.rectangle(vis_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(
-                    vis_img,
-                    f"{class_name}: {score:.2f}",
-                    (x1, y1 - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (0, 255, 0),
-                    2,
-                )
+                cv2.rectangle(vis_img, (x1, y1), (x2, y2), _DRAW_COLOR, 2)
+                self._put_label(vis_img, name, score, (x1, y1 - 5))
+            mask_img = self.ori_img.copy()
             for segment in self.mask_polygons:
-                cv2.fillPoly(mask_img, np.int32([segment]), (0, 255, 0))
-            vis_img = cv2.addWeighted(vis_img, 0.7, mask_img, 0.3, 0)
+                cv2.fillPoly(mask_img, np.int32([segment]), _DRAW_COLOR)
+            vis_img = cv2.addWeighted(vis_img, _BLEND_ALPHA, mask_img, 1 - _BLEND_ALPHA, 0)
         else:
-            for box, score, class_name in zip(self.boxes, self.scores, self.class_names):
-                vis_img = cv2.polylines(
-                    vis_img,
-                    [np.asarray(box, dtype=int)],
-                    True,
-                    (0, 255, 0),
-                    4,
-                )
-        # 保存结果图像
-        cv2.imwrite(save_path, vis_img)
+            # 无掩膜：按四边形顶点画闭合多边形 + 标签（reshape 兼容扁平/嵌套两种点格式）
+            for box, score, name in zip(self.boxes, scores, names):
+                pts = np.asarray(box, dtype=int).reshape(-1, 2)
+                cv2.polylines(vis_img, [pts], True, _DRAW_COLOR, 4)
+                self._put_label(vis_img, name, score, (int(pts[0][0]), int(pts[0][1]) - 5))
+
+        parent = os.path.dirname(save_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        if not cv2.imwrite(save_path, vis_img):
+            raise IOError(f"save_img 写盘失败（路径非法或格式不支持）: {save_path}")
+        return vis_img
+
+    @staticmethod
+    def _put_label(img: np.ndarray, name, score, org) -> None:
+        '''把类别名/置信度画到 org 处；两者都缺省时不画。'''
+        if name is None and score is None:
+            return
+        if name is not None and score is not None:
+            text = f"{name}: {score:.2f}"
+        elif name is not None:
+            text = str(name)
+        else:
+            text = f"{score:.2f}"
+        cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.5, _DRAW_COLOR, 2)
 
 
 @dataclass
@@ -132,7 +154,7 @@ class MoMResult:
 
 @dataclass
 class InputParamsBusiness:
-    image: np.ndarray = field(default_factory=np.ndarray)
+    image: np.ndarray = field(default_factory=lambda: np.array([]))
     SN: str = ""
     product_type: str = ""
     is_registered: bool = False
