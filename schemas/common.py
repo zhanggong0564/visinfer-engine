@@ -44,7 +44,7 @@ class ResultResponse(BaseModel):
     message: str = Field(..., description="检测结果描述（如“检测成功”）")
     vis_image: str = Field(
         default="",
-        description="检测结果可视化图(JPEG base64，不含 data URI 前缀)；缩图长边≤1280；绘制失败或无原图时为空串",
+        description="检测结果可视化图(JPEG base64，带 data:image/jpeg;base64, 前缀，可直接用于 <img src>)；缩图长边≤1280；绘制失败或无原图时为空串",
     )
 
 
