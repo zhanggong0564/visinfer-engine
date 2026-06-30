@@ -15,9 +15,19 @@ from services.utils.visualize import (
 
 
 def _decode_b64_jpeg(b64: str):
+    # vis_image 带 data:image/jpeg;base64, 前缀，解码前先剥掉
+    if "," in b64:
+        b64 = b64.split(",", 1)[1]
     raw = base64.b64decode(b64)
     arr = np.frombuffer(raw, np.uint8)
     return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+
+def test_vis_image_has_data_uri_prefix():
+    img = np.zeros((100, 100, 3), dtype=np.uint8)
+    b64 = render_detection_overlay(img, [])
+    assert b64.startswith("data:image/jpeg;base64,")
+    assert _decode_b64_jpeg(b64) is not None
 
 
 class TestHexToBgr:
@@ -106,10 +116,7 @@ class TestRenderDetectionOverlay:
 
 class TestGuides:
     def _decode(self, b64):
-        import base64
-        raw = base64.b64decode(b64)
-        arr = np.frombuffer(raw, np.uint8)
-        return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        return _decode_b64_jpeg(b64)  # 复用：会剥掉 data: 前缀
 
     def _blue_pixel_count(self, img):
         # 蓝(BGR 255,0,0)：B 高、G/R 低

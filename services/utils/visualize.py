@@ -17,6 +17,7 @@ _GREEN_BGR = (79, 255, 32)
 _YELLOW_BGR = (0, 255, 255)
 _FILL_ALPHA = 0.3  # NG 半透明填充权重
 _OVERLAY_ALPHA = 0.6  # 标号徽标+图例整体合成不透明度（半透明，不遮挡画面）
+_DATA_URI_PREFIX = "data:image/jpeg;base64,"  # vis_image 前缀，前端可直接用于 <img src>，失败时返回空串不带前缀
 _BLUE_BGR = (255, 0, 0)  # 引导框：蓝色(BGR)，区别于检测框绿/黄
 
 
@@ -153,9 +154,9 @@ def _draw_legend(canvas, entries):
 
 
 def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, jpeg_quality=85):
-    """把 detailList 绘制到缩图上并返回 JPEG base64（不含 data: 前缀）。
+    """把 detailList 绘制到缩图上并返回 JPEG base64（带 data:image/jpeg;base64, 前缀，可直接塞 <img>）。
 
-    异常或空图一律返回 ""，绝不抛出，避免影响检测主响应。
+    异常或空图一律返回 ""（不带前缀），绝不抛出，避免影响检测主响应。
     """
     try:
         if image is None or getattr(image, "size", 0) == 0:
@@ -233,7 +234,8 @@ def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, 
         ok, buf = cv2.imencode(".jpg", canvas, [int(cv2.IMWRITE_JPEG_QUALITY), int(jpeg_quality)])
         if not ok:
             return ""
-        return base64.b64encode(buf.tobytes()).decode("ascii")
+        b64 = base64.b64encode(buf.tobytes()).decode("ascii")
+        return _DATA_URI_PREFIX + b64
     except Exception as e:
         vision_logger.warning(f"可视化绘制失败: {e}")
         return ""
