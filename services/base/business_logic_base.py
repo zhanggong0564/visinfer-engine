@@ -4,6 +4,8 @@
 
 from schemas.data_base import InputParamsBusiness
 from schemas.inference_context import InferenceContext
+from utils import vision_logger
+from utils.timing import StageTimer
 
 
 class BusinessLogicBase:
@@ -29,14 +31,26 @@ class BusinessLogicBase:
         raise NotImplementedError
 
     def detect(self, params: InputParamsBusiness):
-        ctx = self.build_context(params)
-        self.preprocess_hook(ctx)
-        ctx.raw_result = self.detector.infer(ctx.image)
-        self.business_post_process(ctx)
-        if self.should_normalize(ctx):
-            self.normalize_hook(ctx)
-        self.finalize_hook(ctx)
-        return ctx.result
+        timer = StageTimer()
+        try:
+            with timer.stage("build_context"):
+                ctx = self.build_context(params)
+            with timer.stage("preprocess_hook"):
+                self.preprocess_hook(ctx)
+            with timer.stage("detector_infer"):
+                ctx.raw_result = self.detector.infer(ctx.image)
+            with timer.stage("business_post_process"):
+                self.business_post_process(ctx)
+            if self.should_normalize(ctx):
+                with timer.stage("normalize_hook"):
+                    self.normalize_hook(ctx)
+            else:
+                timer.record("normalize_hook", 0.0)
+            with timer.stage("finalize_hook"):
+                self.finalize_hook(ctx)
+            return ctx.result
+        finally:
+            vision_logger.info("业务检测阶段耗时 {}", timer.summary())
 
     def build_context(self, params: InputParamsBusiness) -> InferenceContext:
         h, w = params.image.shape[:2]
