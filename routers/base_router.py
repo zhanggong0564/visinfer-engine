@@ -15,7 +15,7 @@ import time
 from abc import ABC
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -29,6 +29,7 @@ from services.call_stats import record_call
 from services.utils.visualize import render_detection_overlay
 from utils import vision_logger
 from utils.async_utils import run_sync
+from utils.timing import StageTimer
 
 # 数据回流根目录：按 settings.DATA_DIR（相对路径锚定运行 cwd）解析为绝对路径。
 # 不再基于 __file__ 推算——本模块会被编译成 .so 装进 venv，__file__ 会指向
@@ -105,117 +106,146 @@ class BaseRouter(ABC):
         file: UploadFile,
         json_data: str,
     ):
+        timer = StageTimer()
         received_at = datetime.now().isoformat(timespec="milliseconds")
         original_filename = file.filename or "unknown.jpg"
         # json_data 可能很长（含 line_order 等），且防止以后夹带 base64 图撑爆日志，截断预览
         json_preview = json_data if len(json_data) <= 500 else f"{json_data[:500]}...(共{len(json_data)}字符)"
-        vision_logger.info(f"接收{self.router_name}请求：图片={original_filename}, json_data={json_preview}")
-        request_params = await self._validate_and_parse_params(json_data)
-        vision_logger.info(f"校验参数：{request_params}")
-        fallback_product_type = self._extract_product_type(request_params)
+        try:
+            vision_logger.info(f"接收{self.router_name}请求：图片={original_filename}, json_data={json_preview}")
+            with timer.stage("validate_params"):
+                request_params = await self._validate_and_parse_params(json_data)
+            vision_logger.info(f"校验参数：{request_params}")
+            fallback_product_type = self._extract_product_type(request_params)
 
-        image, _ = await self._process_image(file)
-        await run_sync(
-            self._persist_image,
-            image=image,
-            original_filename=original_filename,
-            received_at=received_at,
-            fallback_product_type=fallback_product_type,
-        )
-        inputs = self.get_inputs(request_params, image)
-        if inspect.isawaitable(inputs):
-            inputs = await inputs
-        detector = self.get_detector_singleton()
-        start = time.time()
-        # detect 是同步 CPU/GPU 密集操作，丢到线程池执行，避免阻塞事件循环
-        try:
-            result_info = await run_sync(detector.detect, inputs)
-        except Exception as exc:
-            # 检测失败（如型号未注册）也要落盘：数据回流的核心价值之一就是
-            # 收集这些"没见过"的新型号样本去标注、补型号。异常会跳过下方
-            # background_tasks 注册，故此处内联落盘后再重抛，交全局异常处理器响应。
-            latency_ms = (time.time() - start) * 1000
-            await run_sync(
-                self._persist_record,
-                image=image,
-                original_filename=original_filename,
-                raw_json=json_data,
-                result_dict={"error": str(exc)},
-                latency_ms=latency_ms,
-                received_at=received_at,
-                fallback_product_type=fallback_product_type,
-            )
-            raise
-        end = time.time()
-        latency_ms = (end - start) * 1000
-        # 用 loguru 占位参数（惰性格式化）：仅当 sink 真要写该级别时才拼接字符串，
-        # 避免在热路径上对结果对象做无谓的 str() 求值
-        vision_logger.info("检测耗时：{:.4f}秒", end - start)
-        vision_logger.debug("原始检测结果：{}", result_info)
-        result_dict = result_info if isinstance(result_info, dict) else result_info.to_dict()
-        try:
-            self._sanitize_detail_list_names(result_dict)
-            response_result = result_dict
-            if settings.VIS_ENABLED:
-                # 引导框仅线标等场景经 inputs.extra 下发；其它场景无此键则不画，渲染器保持场景无关
-                vis_guides = None
-                extra = getattr(inputs, "extra", None)
-                guideline = extra.get("guideline") if isinstance(extra, dict) else None
-                if guideline:
-                    vis_guides = [tuple(guideline)]
-                # 绘制+JPEG 编码是 CPU 操作，丢线程池避免阻塞事件循环
-                vis_b64 = await run_sync(
-                    render_detection_overlay,
-                    image,
-                    result_dict.get("detailList", []),
-                    guides=vis_guides,
-                    max_side=settings.VIS_MAX_SIDE,
-                    jpeg_quality=settings.VIS_JPEG_QUALITY,
+            with timer.stage("process_image"):
+                if self._supports_stage_recorder(self._process_image):
+                    image, _ = await self._process_image(file, timer.record)
+                else:
+                    image, _ = await self._process_image(file)
+            with timer.stage("persist_pending_image"):
+                await run_sync(
+                    self._persist_image,
+                    image=image,
+                    original_filename=original_filename,
+                    received_at=received_at,
+                    fallback_product_type=fallback_product_type,
                 )
-                # 注入副本：vis_image 只进响应，不进数据回流 record.json（落盘已有原图）
-                response_result = {**result_dict, "vis_image": vis_b64}
-            result = CommonResponse(
-                code=int(ErrorCode.SUCCESS),
-                message=ERROR_CODE_MESSAGES[ErrorCode.SUCCESS],
-                result=response_result,
-            )
-        except Exception as exc:
-            # 响应封装失败会跳过 FastAPI BackgroundTasks；此处必须同步回流，
-            # 否则"检测成功但 CommonResponse 校验失败"的关键样本会丢失。
-            vision_logger.exception("响应封装失败，执行同步数据回流 filename={}: {}", original_filename, exc)
-            await run_sync(
-                self._persist_record,
-                image=image,
-                original_filename=original_filename,
-                raw_json=json_data,
-                result_dict={"error": str(exc), "result": result_dict},
-                latency_ms=latency_ms,
-                received_at=received_at,
-                fallback_product_type=fallback_product_type,
-            )
-            raise
-        vision_logger.info("返回检测结果")
+            with timer.stage("build_inputs"):
+                inputs = self.get_inputs(request_params, image)
+                if inspect.isawaitable(inputs):
+                    inputs = await inputs
+            with timer.stage("get_detector"):
+                detector = self.get_detector_singleton()
 
-        background_tasks.add_task(
-            run_sync,
-            self._persist_record,
-            image=image,
-            original_filename=original_filename,
-            raw_json=json_data,
-            result_dict=result_dict,
-            latency_ms=latency_ms,
-            received_at=received_at,
-            fallback_product_type=fallback_product_type,
-        )
-        # 调用统计：按检测结论记 ok/ng（与回流落盘共用 _classify_result 二分；
-        # 异常路径在外层 _handle_request 统一记 error，比落盘目录多一个分类）
-        background_tasks.add_task(
-            run_sync,
-            record_call,
-            self.detector_type,
-            self._classify_result(result_dict),
-        )
-        return result
+            start = time.time()
+            # detect 是同步 CPU/GPU 密集操作，丢到线程池执行，避免阻塞事件循环
+            try:
+                with timer.stage("detect"):
+                    result_info = await run_sync(detector.detect, inputs)
+            except Exception as exc:
+                # 检测失败（如型号未注册）也要落盘：数据回流的核心价值之一就是
+                # 收集这些"没见过"的新型号样本去标注、补型号。异常会跳过下方
+                # background_tasks 注册，故此处内联落盘后再重抛，交全局异常处理器响应。
+                latency_ms = (time.time() - start) * 1000
+                with timer.stage("persist_error_record"):
+                    await run_sync(
+                        self._persist_record,
+                        image=image,
+                        original_filename=original_filename,
+                        raw_json=json_data,
+                        result_dict={"error": str(exc)},
+                        latency_ms=latency_ms,
+                        received_at=received_at,
+                        fallback_product_type=fallback_product_type,
+                    )
+                raise
+            end = time.time()
+            latency_ms = (end - start) * 1000
+            # 用 loguru 占位参数（惰性格式化）：仅当 sink 真要写该级别时才拼接字符串，
+            # 避免在热路径上对结果对象做无谓的 str() 求值
+            vision_logger.info("检测耗时：{:.4f}秒", end - start)
+            vision_logger.debug("原始检测结果：{}", result_info)
+            with timer.stage("result_to_dict"):
+                result_dict = result_info if isinstance(result_info, dict) else result_info.to_dict()
+            try:
+                with timer.stage("sanitize_result"):
+                    self._sanitize_detail_list_names(result_dict)
+                response_result = result_dict
+                if settings.VIS_ENABLED:
+                    # 引导框仅线标等场景经 inputs.extra 下发；其它场景无此键则不画，渲染器保持场景无关
+                    vis_guides = None
+                    extra = getattr(inputs, "extra", None)
+                    guideline = extra.get("guideline") if isinstance(extra, dict) else None
+                    if guideline:
+                        vis_guides = [tuple(guideline)]
+                    # 绘制+JPEG 编码是 CPU 操作，丢线程池避免阻塞事件循环
+                    with timer.stage("vis_render"):
+                        vis_b64 = await run_sync(
+                            render_detection_overlay,
+                            image,
+                            result_dict.get("detailList", []),
+                            guides=vis_guides,
+                            max_side=settings.VIS_MAX_SIDE,
+                            jpeg_quality=settings.VIS_JPEG_QUALITY,
+                        )
+                    # 注入副本：vis_image 只进响应，不进数据回流 record.json（落盘已有原图）
+                    response_result = {**result_dict, "vis_image": vis_b64}
+                else:
+                    timer.record("vis_render", 0.0)
+                with timer.stage("response_build"):
+                    result = CommonResponse(
+                        code=int(ErrorCode.SUCCESS),
+                        message=ERROR_CODE_MESSAGES[ErrorCode.SUCCESS],
+                        result=response_result,
+                    )
+            except Exception as exc:
+                # 响应封装失败会跳过 FastAPI BackgroundTasks；此处必须同步回流，
+                # 否则"检测成功但 CommonResponse 校验失败"的关键样本会丢失。
+                vision_logger.exception("响应封装失败，执行同步数据回流 filename={}: {}", original_filename, exc)
+                with timer.stage("persist_response_error_record"):
+                    await run_sync(
+                        self._persist_record,
+                        image=image,
+                        original_filename=original_filename,
+                        raw_json=json_data,
+                        result_dict={"error": str(exc), "result": result_dict},
+                        latency_ms=latency_ms,
+                        received_at=received_at,
+                        fallback_product_type=fallback_product_type,
+                    )
+                raise
+            vision_logger.info("返回检测结果")
+
+            with timer.stage("schedule_background_tasks"):
+                background_tasks.add_task(
+                    run_sync,
+                    self._persist_record,
+                    image=image,
+                    original_filename=original_filename,
+                    raw_json=json_data,
+                    result_dict=result_dict,
+                    latency_ms=latency_ms,
+                    received_at=received_at,
+                    fallback_product_type=fallback_product_type,
+                )
+                # 调用统计：按检测结论记 ok/ng（与回流落盘共用 _classify_result 二分；
+                # 异常路径在外层 _handle_request 统一记 error，比落盘目录多一个分类）
+                background_tasks.add_task(
+                    run_sync,
+                    record_call,
+                    self.detector_type,
+                    self._classify_result(result_dict),
+                )
+            return result
+        finally:
+            vision_logger.info(
+                "请求阶段耗时 router={} detector_type={} file={} {}",
+                self.router_name,
+                self.detector_type,
+                original_filename,
+                timer.summary(),
+            )
 
     @staticmethod
     def _sanitize_detail_list_names(result_dict: Any) -> None:
@@ -281,16 +311,32 @@ class BaseRouter(ABC):
         """请求参数校验模式"""
         raise NotImplementedError("子类必须实现request_schema方法")
 
-    async def _process_image(self, file: UploadFile) -> Tuple[np.ndarray, bool]:
+    @staticmethod
+    def _supports_stage_recorder(func: Callable) -> bool:
+        """兼容旧的 _process_image(file) 重写/测试替身。"""
+        signature = inspect.signature(func)
+        return "stage_recorder" in signature.parameters
+
+    async def _process_image(
+        self,
+        file: UploadFile,
+        stage_recorder: Optional[Callable[[str, float], None]] = None,
+    ) -> Tuple[np.ndarray, bool]:
         """只负责读取并解码图片，落盘逻辑见 _persist_record"""
+        read_start = time.perf_counter()
         img_bytes = await file.read()
+        if stage_recorder:
+            stage_recorder("image_read", (time.perf_counter() - read_start) * 1000)
         max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
         if len(img_bytes) > max_bytes:
             vision_logger.error(f"上传图片过大: {len(img_bytes)} bytes > {max_bytes} bytes")
             raise InvalidImageError(f"图片大小超过上限 {settings.MAX_UPLOAD_MB}MB")
         img_array = np.frombuffer(img_bytes, dtype=np.uint8)
         # imdecode 为同步 CPU 操作，丢到线程池避免阻塞事件循环
+        decode_start = time.perf_counter()
         image = await run_sync(cv2.imdecode, img_array, cv2.IMREAD_COLOR)
+        if stage_recorder:
+            stage_recorder("image_decode", (time.perf_counter() - decode_start) * 1000)
         if image is None:
             vision_logger.error("图片读取失败")
             raise InvalidImageError("图片读取失败，请检查文件格式")
