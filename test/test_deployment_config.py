@@ -15,6 +15,32 @@ def test_container_healthchecks_use_readiness_endpoint():
     assert "http://127.0.0.1:3001/health/ready" in dockerfile
 
 
+def test_panel_label_compose_uses_runtime_image_without_removed_dockerfile():
+    compose = Path("docker-compose.panel-label.yml").read_text(encoding="utf-8")
+
+    assert "image: mobile_vision:runtime" in compose
+    assert "dockerfile: Dockerfile.panel-label" not in compose
+    assert "build:" not in compose
+    assert 'ENABLED_SCENES=["panel_label"]' in compose
+    assert "STRICT_STARTUP=True" in compose
+    assert "http://127.0.0.1:3001/health/ready" in compose
+
+
+def test_deploy_panel_label_compose_uses_runtime_image_without_removed_dockerfile():
+    compose_path = Path("deploy/docker-compose.panel-label.yml")
+    if not compose_path.exists():
+        pytest.skip("local deploy bundle is not present")
+
+    compose = compose_path.read_text(encoding="utf-8")
+
+    assert "image: mobile_vision:runtime" in compose
+    assert "dockerfile: Dockerfile.panel-label" not in compose
+    assert "build:" not in compose
+    assert 'ENABLED_SCENES=["panel_label"]' in compose
+    assert "STRICT_STARTUP=True" in compose
+    assert "http://127.0.0.1:3001/health/ready" in compose
+
+
 def test_swagger_ui_uses_local_static_assets():
     app = Path("app.py").read_text(encoding="utf-8")
 
@@ -85,6 +111,12 @@ def test_sync_script_pushes_offline_swagger_assets_and_applies_compose():
     assert "deploy/static/" in script
     assert "docker-compose.panel-label.yml" in script
     assert "docker compose -f '${COMPOSE_FILE}' up -d" in script
+
+
+def test_panel_label_weight_sync_deletes_excluded_stale_model_files():
+    script = Path("scripts/release/sync-plugin.sh").read_text(encoding="utf-8")
+
+    assert "--delete-excluded" in script
 
 
 def test_framework_wheel_keeps_third_party_dependencies_external():
