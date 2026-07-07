@@ -15,13 +15,13 @@
 #   bash scripts/release/sync-plugin.sh --no-weights    # 跳过权重同步，只传代码
 #   REMOTE=user@host REMOTE_DIR=/path bash scripts/release/sync-plugin.sh   # 覆盖目标
 #
-# ⚠️ ABI：本机用来编译的 Python 必须是 CPython 3.10（与镜像一致），且 glibc 不高于
-#    容器（ubuntu22.04 / glibc 2.35）。本机 WSL ubuntu22.04 或 conda py310 一般满足。
-#    若远程 import 报 .so 版本/符号错误，改在 builder 容器里编：
-#      docker build --target builder -f Dockerfile.panel-label -t vie:builder .
-#      docker run --rm -v "$PWD":/src -w /src vie:builder \
+# ⚠️ ABI：本机用来编译的 Python 必须是 CPython 3.10（与统一 runtime 镜像一致），且 glibc
+#    不高于容器（ubuntu22.04 / glibc 2.35）。本机 WSL ubuntu22.04 或 conda py310 一般满足。
+#    若远程 import 报 .so 版本/符号错误，改在 runtime builder 依赖环境里编：
+#      docker build -f Dockerfile.runtime --target builder -t vie-runtime:builder .
+#      docker run --rm -v "$PWD":/src -w /src vie-runtime:builder \
 #        python scripts/release/build_wheels.py --no-isolation --plugins panel-label
-#    再 bash scripts/release/sync-plugin.sh --no-build 同步。
+#    再 bash scripts/release/sync-plugin.sh --no-build 同步；panel-label 服务本身仍运行在统一 runtime 镜像上。
 # =========================================================
 set -euo pipefail
 
@@ -92,7 +92,7 @@ rsync -avz --delete deploy/static/ "${REMOTE}:${REMOTE_DIR}/static/"
 if [ "$DO_WEIGHTS" -eq 1 ]; then
   # 只同步插件 config.py 实际引用的权重，不整目录推送未用的大模型（旧 rec/det/orient 版本）。
   # 单一真相源 = config.py：从中解析所有 ./weights/panel_label/<...> 字面量，config 改了自动跟随，
-  # 不在脚本里写死模型名。--delete + 过滤规则让远端 weights/panel_label/ 严格等于"已用集"，
+  # 不在脚本里写死模型名。--delete-excluded + 过滤规则让远端 weights/panel_label/ 严格等于"已用集"，
   # 多余旧模型一并清掉（回滚换模型走 config.py 改路径 → 重跑本脚本即自愈，勿清空 pkg/ 回基线）。
   # 前提：远端 compose 已挂载 ./weights:/app/workspace/weights:ro 覆盖层。
   CFG="plugins/vie-plugin-panel-label/vie_plugin_panel_label/config.py"
@@ -111,7 +111,7 @@ if [ "$DO_WEIGHTS" -eq 1 ]; then
   FILTER=(--include='*/')
   for w in "${USED[@]}"; do FILTER+=(--include="/${w}" --include="/${w}/***"); done
   FILTER+=(--exclude='*')
-  rsync -avz --delete --prune-empty-dirs "${FILTER[@]}" \
+  rsync -avz --delete --delete-excluded --prune-empty-dirs "${FILTER[@]}" \
     weights/panel_label/ "${REMOTE}:${REMOTE_DIR}/weights/panel_label/"
 fi
 ssh "$REMOTE" "cd '${REMOTE_DIR}' && docker compose -f '${COMPOSE_FILE}' up -d --force-recreate"
