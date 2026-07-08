@@ -19,6 +19,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.staticfiles import StaticFiles
 from config import settings
 from utils import vision_logger
+from utils.openapi_docs import configure_openapi_docs
 from schemas.error_codes import ErrorCode, ERROR_CODE_MESSAGES
 from schemas.exceptions import VisionAPIError
 from routers import RouterRegistry
@@ -94,6 +95,7 @@ async def access_log_middleware(request: Request, call_next):
 
 # 注册路由（仅发现与注册，不加载模型）
 router_registry.register_all_routers(app, "routers")
+configure_openapi_docs(app)
 
 
 # 全局异常处理
