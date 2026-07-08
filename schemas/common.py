@@ -7,9 +7,38 @@
 @Description  :
 '''
 
-from pydantic import BaseModel, Field
-from typing import List, Literal
-from .data_base import DetectionItem
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Any, List, Literal
+
+
+class DetectionItemResponse(BaseModel):
+    """检测详情项的对外 JSON 响应模型。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    status: Literal["true", "false"] = Field(
+        default="false",
+        description="单项检测状态字符串：true=异常/命中，false=正常/未命中",
+    )
+    scene: str = Field(default="", description="检测类别或业务场景标识")
+    coordinate: List[float] = Field(default_factory=list, description="检测框/轮廓坐标")
+    accuracy: float = Field(default=0.0, description="检测置信度，范围 0-1")
+    name: str = Field(default="", description="检测目标名称")
+    color: str = Field(
+        default="#FFFF00",
+        description="前端绘制颜色；通常 true 为 #20ff4f，false 为 #FFFF00",
+    )
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _normalize_status(cls, value: Any) -> str:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "false"}:
+                return normalized
+        return value
 
 
 class GuideLineItem(BaseModel):
@@ -38,7 +67,7 @@ class ExampleImageItem(BaseModel):
 class ResultResponse(BaseModel):
     """顶层返回的result对象模型"""
 
-    detailList: List[DetectionItem] = Field(..., description="检测详情列表")
+    detailList: List[DetectionItemResponse] = Field(..., description="检测详情列表")
     status: Literal["true", "false"] = Field(..., description="整体检测状态（false=正常，true=异常）")
     error_msg: str = Field(..., description="错误信息（无错误则为空字符串）")
     message: str = Field(..., description="检测结果描述（如“检测成功”）")

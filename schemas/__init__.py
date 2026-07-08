@@ -7,7 +7,7 @@
 @Description  :
 '''
 
-from .common import CommonResponse, EmptyRequest
+from .common import CommonResponse, DetectionItemResponse, EmptyRequest
 from .data_base import *
 from .inference_context import InferenceContext, PreprocMeta
 from .error_codes import ErrorCode, ERROR_CODE_MESSAGES
@@ -21,7 +21,7 @@ from .exceptions import (
 )
 
 __all__ = [
-    "CommonResponse", "EmptyRequest", "DetectResult", "DetectionItem",
+    "CommonResponse", "DetectionItemResponse", "EmptyRequest", "DetectResult", "DetectionItem",
     "ErrorCode", "ERROR_CODE_MESSAGES",
     "VisionAPIError", "InvalidParamsError", "InvalidImageError",
     "ProductNotRegisteredError", "ModelInferenceError", "InternalError",
