@@ -142,8 +142,13 @@ def _make_router(monkeypatch, detect_side_effect, patch_record_call=True):
     """
     router = _Router()
 
-    async def _fake_process_image(file):
-        return np.zeros((10, 10, 3), dtype=np.uint8), False
+    async def _fake_process_image(*args, **kwargs):
+        from routers.base_router import DecodedUpload
+        return DecodedUpload(
+            image=np.zeros((10, 10, 3), dtype=np.uint8),
+            raw_bytes=None,
+            extension=".jpg",
+        )
 
     monkeypatch.setattr(router, "_process_image", _fake_process_image)
 

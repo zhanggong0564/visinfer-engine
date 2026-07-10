@@ -6,6 +6,8 @@ import asyncio
 import json
 import sys
 import types
+from pathlib import Path
+import cv2
 
 import numpy as np
 import pytest
@@ -15,8 +17,15 @@ python_multipart = types.ModuleType("python_multipart")
 python_multipart.__version__ = "0.0.20"
 sys.modules.setdefault("python_multipart", python_multipart)
 
-from routers.base_router import BaseRouter
+from routers.base_router import BaseRouter, DecodedUpload
+from routers.upload_persistence import write_bytes_atomically
 from schemas.exceptions import ProductNotRegisteredError
+
+
+def _image_bytes(extension):
+    ok, buffer = cv2.imencode(extension, np.arange(10 * 10 * 3, dtype=np.uint8).reshape(10, 10, 3))
+    assert ok
+    return buffer.tobytes()
 
 
 def _run(coro):
@@ -57,15 +66,21 @@ class _Router(BaseRouter):
 
 def _make_router(monkeypatch, detect_side_effect):
     router = _Router()
+    events = []
 
-    # 跳过真实图片解码
-    async def _fake_process_image(file):
-        return np.zeros((10, 10, 3), dtype=np.uint8), False
+    async def _fake_process_image(*args, **kwargs):
+        events.append("pending_published")
+        return DecodedUpload(
+            image=np.zeros((10, 10, 3), dtype=np.uint8),
+            raw_bytes=None,
+            extension=".jpg",
+        )
 
     monkeypatch.setattr(router, "_process_image", _fake_process_image)
 
     class _Detector:
         def detect(self, inputs):
+            events.append("detect")
             return detect_side_effect()
 
     monkeypatch.setattr(router, "get_detector_singleton", lambda: _Detector())
@@ -73,10 +88,8 @@ def _make_router(monkeypatch, detect_side_effect):
 
     # 回流方法记录调用而不真正落盘
     calls = []
-    image_calls = []
-    monkeypatch.setattr(router, "_persist_image", lambda **kw: image_calls.append(kw))
     monkeypatch.setattr(router, "_persist_record", lambda **kw: calls.append(kw))
-    return router, calls, image_calls
+    return router, calls, events
 
 
 def test_persist_called_when_detect_fails(monkeypatch):
@@ -87,7 +100,7 @@ def test_persist_called_when_detect_fails(monkeypatch):
             "产品型号 'FU211' 未注册", product_type="FU211", scenario="panel_label"
         )
 
-    router, calls, image_calls = _make_router(monkeypatch, _raise)
+    router, calls, events = _make_router(monkeypatch, _raise)
     bg = BackgroundTasks()
 
     with pytest.raises(ProductNotRegisteredError):
@@ -100,20 +113,17 @@ def test_persist_called_when_detect_fails(monkeypatch):
         )
 
     # 即便检测失败，回流也必须落盘
-    assert len(image_calls) == 1, "检测前图片未即时回流"
+    assert events[:2] == ["pending_published", "detect"]
     assert len(calls) == 1, "检测失败时错误记录未落盘"
     assert calls[0]["original_filename"] == "线标检验FU211-1779526099406.jpg"
 
 
 def test_image_persisted_before_detect(monkeypatch):
     """图片解码后、模型检测前，应先同步保存原图。"""
-    seen = {}
-
     def _detect():
-        seen["image_calls_before_detect"] = len(image_calls)
         return {"detailList": [], "status": "true", "error_msg": "", "message": "ok"}
 
-    router, calls, image_calls = _make_router(monkeypatch, _detect)
+    router, calls, events = _make_router(monkeypatch, _detect)
     bg = BackgroundTasks()
     _run(
         router._process_detect_request(
@@ -123,8 +133,7 @@ def test_image_persisted_before_detect(monkeypatch):
         )
     )
 
-    assert seen["image_calls_before_detect"] == 1
-    assert image_calls[0]["fallback_product_type"] == "FU211"
+    assert events[:2] == ["pending_published", "detect"]
 
 
 def test_persist_called_when_response_validation_fails(monkeypatch):
@@ -144,7 +153,7 @@ def test_persist_called_when_response_validation_fails(monkeypatch):
         "error_msg": "",
         "message": "mismatch",
     }
-    router, calls, image_calls = _make_router(monkeypatch, lambda: dict(bad_result))
+    router, calls, events = _make_router(monkeypatch, lambda: dict(bad_result))
     monkeypatch.setattr(router, "_sanitize_detail_list_names", lambda result_dict: None)
     bg = BackgroundTasks()
 
@@ -157,7 +166,7 @@ def test_persist_called_when_response_validation_fails(monkeypatch):
             )
         )
 
-    assert len(image_calls) == 1, "响应封装失败前图片未即时回流"
+    assert events[:2] == ["pending_published", "detect"]
     assert len(calls) == 1, "响应封装失败时错误记录未落盘"
     assert calls[0]["result_dict"]["error"]
     assert calls[0]["result_dict"]["result"]["detailList"][0]["name"] is None
@@ -197,7 +206,8 @@ def test_persist_record_keeps_outputs_under_data_dir(monkeypatch, tmp_path):
     router = _Router()
 
     router._persist_record(
-        image=np.zeros((4, 4, 3), dtype=np.uint8),
+        raw_image_bytes=b"raw",
+        image_extension=".jpg",
         original_filename="../../escape.php",
         raw_json="{}",
         result_dict={"status": "true"},
@@ -216,60 +226,69 @@ def test_success_record_moves_pending_image_to_verdict_dir(monkeypatch, tmp_path
     """检测得到 ok/ng 结论后，把 pending 图片移动到对应 verdict 目录。"""
     monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
     router = _Router()
-    image = np.zeros((4, 4, 3), dtype=np.uint8)
-
-    router._persist_image(
-        image=image,
-        original_filename="sample.jpg",
-        received_at="2026-06-12T10:00:00.000",
-        fallback_product_type="TK2",
-    )
+    pending = router._resolve_backflow_paths("sample.jpg", "2026-06-12T10:00:00.000", "TK2", "pending", ".jpg")
+    payload = _image_bytes(".jpg")
+    write_bytes_atomically(payload, pending["image_path"])
     pending_image = tmp_path / "panel_label" / "2026-06-12" / "TK2" / "pending" / "images" / "sample.jpg"
     ok_image = tmp_path / "panel_label" / "2026-06-12" / "TK2" / "ok" / "images" / "sample.jpg"
     assert pending_image.exists()
 
     router._persist_record(
-        image=image,
         original_filename="sample.jpg",
         raw_json='{"modelParams": {"product_type": "TK2"}}',
         result_dict={"detailList": [], "status": "true", "error_msg": "", "message": "ok"},
         latency_ms=1.0,
         received_at="2026-06-12T10:00:00.000",
-        fallback_product_type="TK2",
+        fallback_product_type="TK2", image_extension=".jpg",
     )
 
     assert not pending_image.exists()
     assert ok_image.exists()
+    assert ok_image.read_bytes() == payload
 
 
 def test_error_record_keeps_pending_image_and_writes_pending_json(monkeypatch, tmp_path):
     """程序异常失败时不移动图片，只把错误信息写到 pending/records。"""
     monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
     router = _Router()
-    image = np.zeros((4, 4, 3), dtype=np.uint8)
-
-    router._persist_image(
-        image=image,
-        original_filename="sample.jpg",
-        received_at="2026-06-12T10:00:00.000",
-        fallback_product_type="TK2",
-    )
+    pending = router._resolve_backflow_paths("sample.jpg", "2026-06-12T10:00:00.000", "TK2", "pending", ".jpg")
+    payload = _image_bytes(".jpg")
+    write_bytes_atomically(payload, pending["image_path"])
     pending_image = tmp_path / "panel_label" / "2026-06-12" / "TK2" / "pending" / "images" / "sample.jpg"
     pending_record = tmp_path / "panel_label" / "2026-06-12" / "TK2" / "pending" / "records" / "sample.json"
     ng_image = tmp_path / "panel_label" / "2026-06-12" / "TK2" / "ng" / "images" / "sample.jpg"
     assert pending_image.exists()
 
     router._persist_record(
-        image=image,
         original_filename="sample.jpg",
         raw_json='{"modelParams": {"product_type": "TK2"}}',
         result_dict={"error": "boom"},
         latency_ms=1.0,
         received_at="2026-06-12T10:00:00.000",
-        fallback_product_type="TK2",
+        fallback_product_type="TK2", image_extension=".jpg",
     )
 
     assert pending_image.exists()
+    assert pending_image.read_bytes() == payload
     assert pending_record.exists()
     assert not ng_image.exists()
     assert json.loads(pending_record.read_text(encoding="utf-8"))["result"]["error"] == "boom"
+
+
+def test_success_record_moves_exact_pending_bytes_without_imwrite(monkeypatch, tmp_path):
+    monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(cv2, "imwrite", lambda *a, **k: (_ for _ in ()).throw(AssertionError("re-encode")))
+    router = _Router(); payload = _image_bytes(".jpg")
+    pending = router._resolve_backflow_paths("sample.jpg", "2026-07-10T10:00:00.000", "TK2", "pending", ".jpg")
+    write_bytes_atomically(payload, pending["image_path"])
+    router._persist_record(original_filename="sample.jpg", raw_json="{}", result_dict={"status": "true"}, latency_ms=1.0, received_at="2026-07-10T10:00:00.000", fallback_product_type="TK2", image_extension=".jpg")
+    ok_path = Path(router._resolve_backflow_paths("sample.jpg", "2026-07-10T10:00:00.000", "TK2", "ok", ".jpg")["image_path"])
+    assert ok_path.read_bytes() == payload
+
+
+def test_record_fallback_atomically_writes_raw_bytes(monkeypatch, tmp_path):
+    monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
+    router = _Router(); payload = _image_bytes(".png")
+    router._persist_record(original_filename="wrong.jpg", raw_json="{}", result_dict={"status": "false"}, latency_ms=1.0, received_at="2026-07-10T10:00:00.000", fallback_product_type="TK2", raw_image_bytes=payload, image_extension=".png")
+    ng_path = Path(router._resolve_backflow_paths("wrong.jpg", "2026-07-10T10:00:00.000", "TK2", "ng", ".png")["image_path"])
+    assert ng_path.read_bytes() == payload

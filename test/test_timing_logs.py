@@ -121,11 +121,21 @@ def test_base_router_logs_request_stage_timings(monkeypatch):
 
     router = _Router()
 
-    async def _process_image(file, stage_recorder=None):
+    async def _process_image(
+        file, original_filename, received_at, fallback_product_type,
+        stage_recorder=None,
+    ):
         if stage_recorder:
             stage_recorder("image_read", 1.0)
+            stage_recorder("image_format_detect", 0.1)
             stage_recorder("image_decode", 2.0)
-        return np.zeros((10, 10, 3), dtype=np.uint8), False
+            stage_recorder("image_stage_write", 1.5)
+            stage_recorder("image_commit", 0.1)
+        return module.DecodedUpload(
+            image=np.zeros((10, 10, 3), dtype=np.uint8),
+            raw_bytes=None,
+            extension=".jpg",
+        )
 
     class _Detector:
         def detect(self, inputs):
@@ -137,7 +147,6 @@ def test_base_router_logs_request_stage_timings(monkeypatch):
             }
 
     monkeypatch.setattr(router, "_process_image", _process_image)
-    monkeypatch.setattr(router, "_persist_image", lambda **kwargs: None)
     monkeypatch.setattr(router, "_persist_record", lambda **kwargs: None)
     monkeypatch.setattr(router, "get_detector_singleton", lambda: _Detector())
     monkeypatch.setattr(module, "record_call", lambda scene, verdict: None)
@@ -165,7 +174,9 @@ def test_base_router_logs_request_stage_timings(monkeypatch):
         "image_read",
         "image_decode",
         "process_image",
-        "persist_pending_image",
+        "image_format_detect",
+        "image_stage_write",
+        "image_commit",
         "build_inputs",
         "get_detector",
         "detect",

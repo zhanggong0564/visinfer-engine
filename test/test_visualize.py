@@ -30,6 +30,35 @@ def test_vis_image_has_data_uri_prefix():
     assert _decode_b64_jpeg(b64) is not None
 
 
+def test_coords_use_float32_intermediate(monkeypatch):
+    seen = {}
+    original_asarray = np.asarray
+
+    def capture(value, dtype=None, *args, **kwargs):
+        if value == [0, 0, 1, 0, 1, 1, 0, 1]:
+            seen["dtype"] = dtype
+        return original_asarray(value, dtype=dtype, *args, **kwargs)
+
+    monkeypatch.setattr("services.utils.visualize.np.asarray", capture)
+    _coords_to_points([0, 0, 1, 0, 1, 1, 0, 1], new_w=100, new_h=50, scale=1.0)
+    assert seen["dtype"] == np.float32
+
+
+def test_base64_receives_numpy_encode_buffer(monkeypatch):
+    seen = {}
+    original_b64encode = base64.b64encode
+
+    def capture(buffer):
+        seen["type"] = type(buffer)
+        return original_b64encode(buffer)
+
+    monkeypatch.setattr("services.utils.visualize.base64.b64encode", capture)
+    result = render_detection_overlay(np.zeros((32, 32, 3), dtype=np.uint8), [])
+
+    assert result.startswith("data:image/jpeg;base64,")
+    assert seen["type"] is np.ndarray
+
+
 class TestHexToBgr:
     def test_green(self):
         assert _hex_to_bgr("#20ff4f") == (79, 255, 32)
