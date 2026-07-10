@@ -1,5 +1,7 @@
 import asyncio
 import os
+import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -384,3 +386,26 @@ def test_record_image_retry_failure_still_writes_json(monkeypatch, tmp_path):
     record_path = Path(router._resolve_backflow_paths("sample.jpg", "2026-07-10T10:00:00.000", "TK2", "ng", ".jpg")["record_path"])
     assert record_path.exists()
     assert warnings
+
+
+def test_hot_path_benchmark_cli_smoke():
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/benchmark/request_hot_path.py",
+            "--iterations",
+            "3",
+            "--warmup",
+            "1",
+            "--min-improvement",
+            "-100",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "legacy" in completed.stdout
+    assert "optimized" in completed.stdout
+    assert "p95_ms" in completed.stdout
+    assert "improvement_pct" in completed.stdout
