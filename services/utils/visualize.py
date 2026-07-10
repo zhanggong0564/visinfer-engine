@@ -38,7 +38,7 @@ def _coords_to_points(coord, new_w, new_h, scale):
 
     归一化（max(|coord|)≤1.5）：乘缩图宽高；像素：乘缩放比 scale。空输入返回 None。
     """
-    pts = np.asarray(coord, dtype=np.float64)
+    pts = np.asarray(coord, dtype=np.float32)
     if pts.size == 0 or pts.size % 2 != 0:
         return None
     pts = pts.reshape(-1, 2)
@@ -234,7 +234,7 @@ def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, 
         ok, buf = cv2.imencode(".jpg", canvas, [int(cv2.IMWRITE_JPEG_QUALITY), int(jpeg_quality)])
         if not ok:
             return ""
-        b64 = base64.b64encode(buf.tobytes()).decode("ascii")
+        b64 = base64.b64encode(buf).decode("ascii")
         return _DATA_URI_PREFIX + b64
     except Exception as e:
         vision_logger.warning(f"可视化绘制失败: {e}")
