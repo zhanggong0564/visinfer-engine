@@ -367,7 +367,17 @@ class BaseRouter(ABC):
                         (time.perf_counter() - start) * 1000,
                     )
 
-        image_result, stage_result = await asyncio.gather(
+        async def discard_safely(staged: StagedImageWrite) -> None:
+            try:
+                await run_sync(staged.discard)
+            except Exception as exc:
+                vision_logger.warning(
+                    "数据回流原图暂存清理失败 filename={} error={}",
+                    original_filename,
+                    exc,
+                )
+
+        preparation = asyncio.gather(
             timed("image_decode", decode_image, payload),
             timed(
                 "image_stage_write",
@@ -377,10 +387,17 @@ class BaseRouter(ABC):
             ),
             return_exceptions=True,
         )
+        try:
+            image_result, stage_result = await asyncio.shield(preparation)
+        except asyncio.CancelledError:
+            image_result, stage_result = await preparation
+            if isinstance(stage_result, StagedImageWrite):
+                await discard_safely(stage_result)
+            raise
 
         if isinstance(image_result, Exception):
             if isinstance(stage_result, StagedImageWrite):
-                await run_sync(stage_result.discard)
+                await discard_safely(stage_result)
             raise InvalidImageError("图片读取失败，请检查文件格式") from image_result
 
         if isinstance(stage_result, Exception):
@@ -395,7 +412,7 @@ class BaseRouter(ABC):
         try:
             await run_sync(stage_result.commit)
         except Exception as exc:
-            await run_sync(stage_result.discard)
+            await discard_safely(stage_result)
             vision_logger.warning(
                 "数据回流原图发布失败 filename={} stage=commit error={}",
                 original_filename,

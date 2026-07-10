@@ -1,20 +1,11 @@
 import asyncio
-import json
 import os
-import sys
 import threading
-import types
-from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
-from fastapi import BackgroundTasks
-
-python_multipart = types.ModuleType("python_multipart")
-python_multipart.__version__ = "0.0.20"
-sys.modules.setdefault("python_multipart", python_multipart)
 
 from routers.base_router import BaseRouter, DecodedUpload
 from schemas.exceptions import InvalidImageError
@@ -262,3 +253,101 @@ def test_commit_failure_keeps_raw_bytes_and_cleans_temp(monkeypatch, tmp_path):
     assert upload.raw_bytes == payload
     assert not list(tmp_path.rglob(".vie-upload-*.tmp"))
     assert not list(tmp_path.rglob("sample.jpg"))
+
+
+def test_cancellation_discards_stage_that_finishes_after_cancel(monkeypatch, tmp_path):
+    monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
+    router = _Router()
+    stage_started = asyncio.Event()
+    allow_stage_finish = asyncio.Event()
+    stage_finished = asyncio.Event()
+
+    async def controlled_run_sync(func, /, *args, **kwargs):
+        if func == StagedImageWrite.write:
+            async def finish_later():
+                stage_started.set()
+                await allow_stage_finish.wait()
+                try:
+                    return func(*args, **kwargs)
+                finally:
+                    stage_finished.set()
+
+            return await asyncio.shield(asyncio.create_task(finish_later()))
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr("routers.base_router.run_sync", controlled_run_sync)
+
+    async def exercise():
+        task = asyncio.create_task(
+            router._process_image(
+                _FakeUpload(_encoded(".jpg"), "cancelled.jpg"),
+                "cancelled.jpg",
+                "2026-07-10T10:00:00.000",
+                "TK2",
+            )
+        )
+        await stage_started.wait()
+        task.cancel()
+        allow_stage_finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await stage_finished.wait()
+
+    _run(exercise())
+
+    assert not list(tmp_path.rglob(".vie-upload-*.tmp"))
+    assert not list(tmp_path.rglob("cancelled.jpg"))
+
+
+def test_discard_failure_does_not_hide_commit_fallback(monkeypatch, tmp_path):
+    monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
+
+    async def inline_run_sync(func, /, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr("routers.base_router.run_sync", inline_run_sync)
+    monkeypatch.setattr(
+        "routers.base_router.StagedImageWrite.commit",
+        lambda self: (_ for _ in ()).throw(OSError("replace failed")),
+    )
+    monkeypatch.setattr(
+        "routers.base_router.StagedImageWrite.discard",
+        lambda self: (_ for _ in ()).throw(OSError("unlink failed")),
+    )
+    router = _Router()
+    payload = _encoded(".jpg")
+
+    upload = _run(
+        router._process_image(
+            _FakeUpload(payload, "sample.jpg"),
+            "sample.jpg",
+            "2026-07-10T10:00:00.000",
+            "TK2",
+        )
+    )
+
+    assert upload.raw_bytes == payload
+
+
+def test_discard_failure_does_not_hide_decode_error(monkeypatch, tmp_path):
+    monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
+
+    async def inline_run_sync(func, /, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr("routers.base_router.run_sync", inline_run_sync)
+    monkeypatch.setattr(
+        "routers.base_router.StagedImageWrite.discard",
+        lambda self: (_ for _ in ()).throw(OSError("unlink failed")),
+    )
+    router = _Router()
+
+    with pytest.raises(InvalidImageError, match="图片读取失败"):
+        _run(
+            router._process_image(
+                _FakeUpload(b"\xff\xd8\xffbroken", "broken.jpg"),
+                "broken.jpg",
+                "2026-07-10T10:00:00.000",
+                "TK2",
+            )
+        )
