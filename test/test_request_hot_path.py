@@ -6,6 +6,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
+import types
+from fastapi import BackgroundTasks
 
 from routers.base_router import BaseRouter, DecodedUpload
 from schemas.exceptions import InvalidImageError
@@ -351,3 +353,34 @@ def test_discard_failure_does_not_hide_decode_error(monkeypatch, tmp_path):
                 "TK2",
             )
         )
+
+
+def test_stage_failure_passes_raw_bytes_to_record_task(monkeypatch, tmp_path):
+    monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("routers.base_router.StagedImageWrite.write", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+    monkeypatch.setattr("routers.base_router.record_call", lambda scene, verdict: None)
+    router = _Router()
+    payload = _encoded(".png")
+
+    class _Detector:
+        def detect(self, inputs):
+            return {"detailList": [], "status": "true", "error_msg": "", "message": "ok"}
+
+    monkeypatch.setattr(router, "get_detector_singleton", lambda: _Detector())
+    background_tasks = BackgroundTasks()
+    _run(router._process_detect_request(background_tasks, _FakeUpload(payload, "wrong.jpg"), "{}"))
+    record_kwargs = [task.kwargs for task in background_tasks.tasks if "result_dict" in (getattr(task, "kwargs", {}) or {})][0]
+    assert record_kwargs["raw_image_bytes"] == payload
+    assert record_kwargs["image_extension"] == ".png"
+
+
+def test_record_image_retry_failure_still_writes_json(monkeypatch, tmp_path):
+    monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
+    warnings = []
+    monkeypatch.setattr("routers.base_router.write_bytes_atomically", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+    monkeypatch.setattr("routers.base_router.vision_logger", types.SimpleNamespace(warning=lambda message, *args: warnings.append((message, args))))
+    router = _Router()
+    router._persist_record(original_filename="sample.jpg", raw_json="{}", result_dict={"status": "false"}, latency_ms=1.0, received_at="2026-07-10T10:00:00.000", fallback_product_type="TK2", raw_image_bytes=_encoded(".jpg"), image_extension=".jpg")
+    record_path = Path(router._resolve_backflow_paths("sample.jpg", "2026-07-10T10:00:00.000", "TK2", "ng", ".jpg")["record_path"])
+    assert record_path.exists()
+    assert warnings
