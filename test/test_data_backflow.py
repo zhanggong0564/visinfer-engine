@@ -16,6 +16,7 @@ python_multipart.__version__ = "0.0.20"
 sys.modules.setdefault("python_multipart", python_multipart)
 
 from routers.base_router import BaseRouter, DecodedUpload
+from routers.upload_persistence import write_bytes_atomically
 from schemas.exceptions import ProductNotRegisteredError
 
 
@@ -197,7 +198,8 @@ def test_persist_record_keeps_outputs_under_data_dir(monkeypatch, tmp_path):
     router = _Router()
 
     router._persist_record(
-        image=np.zeros((4, 4, 3), dtype=np.uint8),
+        raw_image_bytes=b"raw",
+        image_extension=".jpg",
         original_filename="../../escape.php",
         raw_json="{}",
         result_dict={"status": "true"},
@@ -218,18 +220,13 @@ def test_success_record_moves_pending_image_to_verdict_dir(monkeypatch, tmp_path
     router = _Router()
     image = np.zeros((4, 4, 3), dtype=np.uint8)
 
-    router._persist_image(
-        image=image,
-        original_filename="sample.jpg",
-        received_at="2026-06-12T10:00:00.000",
-        fallback_product_type="TK2",
-    )
+    pending = router._resolve_backflow_paths("sample.jpg", "2026-06-12T10:00:00.000", "TK2", "pending", ".jpg")
+    write_bytes_atomically(b"raw", pending["image_path"])
     pending_image = tmp_path / "panel_label" / "2026-06-12" / "TK2" / "pending" / "images" / "sample.jpg"
     ok_image = tmp_path / "panel_label" / "2026-06-12" / "TK2" / "ok" / "images" / "sample.jpg"
     assert pending_image.exists()
 
     router._persist_record(
-        image=image,
         original_filename="sample.jpg",
         raw_json='{"modelParams": {"product_type": "TK2"}}',
         result_dict={"detailList": [], "status": "true", "error_msg": "", "message": "ok"},
@@ -248,19 +245,14 @@ def test_error_record_keeps_pending_image_and_writes_pending_json(monkeypatch, t
     router = _Router()
     image = np.zeros((4, 4, 3), dtype=np.uint8)
 
-    router._persist_image(
-        image=image,
-        original_filename="sample.jpg",
-        received_at="2026-06-12T10:00:00.000",
-        fallback_product_type="TK2",
-    )
+    pending = router._resolve_backflow_paths("sample.jpg", "2026-06-12T10:00:00.000", "TK2", "pending", ".jpg")
+    write_bytes_atomically(b"raw", pending["image_path"])
     pending_image = tmp_path / "panel_label" / "2026-06-12" / "TK2" / "pending" / "images" / "sample.jpg"
     pending_record = tmp_path / "panel_label" / "2026-06-12" / "TK2" / "pending" / "records" / "sample.json"
     ng_image = tmp_path / "panel_label" / "2026-06-12" / "TK2" / "ng" / "images" / "sample.jpg"
     assert pending_image.exists()
 
     router._persist_record(
-        image=image,
         original_filename="sample.jpg",
         raw_json='{"modelParams": {"product_type": "TK2"}}',
         result_dict={"error": "boom"},

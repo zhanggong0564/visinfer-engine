@@ -32,6 +32,7 @@ from routers.upload_persistence import (
     StagedImageWrite,
     decode_image,
     detect_image_extension,
+    write_bytes_atomically,
 )
 from utils import vision_logger
 from utils.async_utils import run_sync
@@ -160,7 +161,8 @@ class BaseRouter(ABC):
                 with timer.stage("persist_error_record"):
                     await run_sync(
                         self._persist_record,
-                        image=image,
+                        raw_image_bytes=upload.raw_bytes,
+                        image_extension=upload.extension,
                         original_filename=original_filename,
                         raw_json=json_data,
                         result_dict={"error": str(exc)},
@@ -215,7 +217,8 @@ class BaseRouter(ABC):
                 with timer.stage("persist_response_error_record"):
                     await run_sync(
                         self._persist_record,
-                        image=image,
+                        raw_image_bytes=upload.raw_bytes,
+                        image_extension=upload.extension,
                         original_filename=original_filename,
                         raw_json=json_data,
                         result_dict={"error": str(exc), "result": result_dict},
@@ -230,7 +233,8 @@ class BaseRouter(ABC):
                 background_tasks.add_task(
                     run_sync,
                     self._persist_record,
-                    image=image,
+                    raw_image_bytes=upload.raw_bytes,
+                    image_extension=upload.extension,
                     original_filename=original_filename,
                     raw_json=json_data,
                     result_dict=result_dict,
@@ -524,41 +528,18 @@ class BaseRouter(ABC):
             "record_path": self._safe_path(record_dir, f"{save_stem}.json"),
         }
 
-    def _persist_image(
-        self,
-        image: np.ndarray,
-        original_filename: str,
-        received_at: str,
-        fallback_product_type: Optional[str] = None,
-        verdict_dir: str = "pending",
-    ) -> None:
-        """图片解码后立即落盘。最终 ok/ng 记录由 _persist_record 补齐。"""
-        try:
-            paths = self._resolve_backflow_paths(
-                original_filename,
-                received_at,
-                fallback_product_type,
-                verdict_dir,
-            )
-            os.makedirs(paths["image_dir"], exist_ok=True)
-            if not cv2.imwrite(paths["image_path"], image):
-                vision_logger.warning(f"数据回流图片写入失败 path={paths['image_path']}")
-                return
-            vision_logger.info(f"数据回流图片已即时落盘 path={paths['image_path']}")
-        except Exception as e:
-            vision_logger.warning(f"数据回流图片即时落盘失败 filename={original_filename}: {e}")
-
     def _persist_record(
         self,
-        image: np.ndarray,
         original_filename: str,
         raw_json: str,
         result_dict: dict,
         latency_ms: float,
         received_at: str,
         fallback_product_type: Optional[str] = None,
+        raw_image_bytes: Optional[bytes] = None,
+        image_extension: Optional[str] = None,
     ) -> None:
-        """后台数据回流：image + json 分文件夹落盘。失败只 warning，不影响接口。
+        """后台数据回流：原始字节与 JSON 分文件夹落盘。失败只 warning，不影响接口。
 
         落盘路径（场景目录 / 型号目录 / 文件名）由 ``resolve_backflow_target`` 决定，
         场景专属命名规则在各插件 Router 重写该钩子；本方法只负责通用的目录与 IO。
@@ -573,25 +554,33 @@ class BaseRouter(ABC):
                 received_at,
                 fallback_product_type,
                 verdict_dir,
+                image_extension=image_extension,
             )
             os.makedirs(paths["record_dir"], exist_ok=True)
 
-            if not is_error_record:
-                os.makedirs(paths["image_dir"], exist_ok=True)
-                pending_paths = self._resolve_backflow_paths(
-                    original_filename,
-                    received_at,
-                    fallback_product_type,
-                    "pending",
-                )
-                if os.path.exists(pending_paths["image_path"]):
-                    os.replace(pending_paths["image_path"], paths["image_path"])
-                    vision_logger.info(
-                        f"数据回流图片移动完成 src={pending_paths['image_path']} dst={paths['image_path']}"
+            try:
+                if not is_error_record:
+                    pending_paths = self._resolve_backflow_paths(
+                        original_filename,
+                        received_at,
+                        fallback_product_type,
+                        "pending",
+                        image_extension=image_extension,
                     )
-                elif not cv2.imwrite(paths["image_path"], image):
-                    vision_logger.warning(f"数据回流图片写入失败 path={paths['image_path']}")
-                    return
+                    if os.path.exists(pending_paths["image_path"]):
+                        os.makedirs(paths["image_dir"], exist_ok=True)
+                        os.replace(pending_paths["image_path"], paths["image_path"])
+                        vision_logger.info(
+                            f"数据回流图片移动完成 src={pending_paths['image_path']} dst={paths['image_path']}"
+                        )
+                    elif raw_image_bytes is not None:
+                        write_bytes_atomically(raw_image_bytes, paths["image_path"])
+                    else:
+                        vision_logger.warning("数据回流缺少 pending 原图且无原始字节 filename={}", original_filename)
+                elif raw_image_bytes is not None and not os.path.exists(paths["image_path"]):
+                    write_bytes_atomically(raw_image_bytes, paths["image_path"])
+            except Exception as exc:
+                vision_logger.warning("数据回流图片落盘失败 filename={}: {}", original_filename, exc)
 
             try:
                 request_params = json.loads(raw_json)
