@@ -24,7 +24,10 @@ def detect_image_extension(payload: bytes) -> str:
 
 def decode_image(payload: bytes) -> np.ndarray:
     """把原始图片字节解码为 BGR ndarray。"""
-    image = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR)
+    image = cv2.imdecode(
+        np.frombuffer(payload, dtype=np.uint8),
+        cv2.IMREAD_COLOR,
+    )
     if image is None:
         raise ValueError("图片解码失败")
     return image
@@ -37,7 +40,7 @@ class StagedImageWrite:
 
     @classmethod
     def write(cls, payload: bytes, final_path: str) -> "StagedImageWrite":
-        image_dir = os.path.dirname(final_path)
+        image_dir = os.path.dirname(final_path) or "."
         os.makedirs(image_dir, exist_ok=True)
         fd, temporary_path = tempfile.mkstemp(
             prefix=".vie-upload-",

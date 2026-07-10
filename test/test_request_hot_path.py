@@ -27,7 +27,9 @@ def _encoded(ext: str) -> bytes:
 def test_detect_image_extension_uses_file_signature(
     encoded_extension, expected_extension
 ):
-    assert detect_image_extension(_encoded(encoded_extension)) == expected_extension
+    assert (
+        detect_image_extension(_encoded(encoded_extension)) == expected_extension
+    )
 
 
 def test_detect_image_extension_rejects_unknown_payload():
@@ -38,6 +40,25 @@ def test_detect_image_extension_rejects_unknown_payload():
 def test_decode_image_rejects_invalid_payload():
     with pytest.raises(ValueError, match="解码失败"):
         decode_image(b"not-an-image")
+
+
+@pytest.mark.parametrize("extension", [".jpg", ".png", ".bmp"])
+def test_decode_image_returns_nonempty_three_channel_bgr(extension):
+    image = decode_image(_encoded(extension))
+
+    assert image.size > 0
+    assert image.ndim == 3
+    assert image.shape[2] == 3
+
+
+def test_staged_write_supports_bare_filename(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    payload = _encoded(".jpg")
+
+    staged = StagedImageWrite.write(payload, "sample.jpg")
+    staged.commit()
+
+    assert Path("sample.jpg").read_bytes() == payload
 
 
 def test_staged_write_is_invisible_until_commit(tmp_path):
