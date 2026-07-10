@@ -1,9 +1,23 @@
+import asyncio
+import json
 import os
+import sys
+import threading
+import types
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
+from fastapi import BackgroundTasks
+
+python_multipart = types.ModuleType("python_multipart")
+python_multipart.__version__ = "0.0.20"
+sys.modules.setdefault("python_multipart", python_multipart)
+
+from routers.base_router import BaseRouter, DecodedUpload
+from schemas.exceptions import InvalidImageError
 
 from routers.upload_persistence import (
     StagedImageWrite,
@@ -122,3 +136,129 @@ def test_atomic_writer_cleans_up_when_replace_fails(monkeypatch, tmp_path):
 
     assert temporary_paths
     assert all(not Path(path).exists() for path in temporary_paths)
+
+
+def _run(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+class _FakeUpload:
+    def __init__(self, payload: bytes, filename: str):
+        self.payload = payload
+        self.filename = filename
+
+    async def read(self):
+        return self.payload
+
+
+class _Router(BaseRouter):
+    def __init__(self):
+        super().__init__("test", "/test", "test", "test", "panel_label")
+
+    def request_schema(self, json_dict):
+        return json_dict
+
+    def get_inputs(self, request_params, image):
+        return {"image": image}
+
+
+def test_process_image_publishes_original_bytes_before_return(monkeypatch, tmp_path):
+    monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
+    router = _Router()
+    payload = _encoded(".png")
+
+    upload = _run(
+        router._process_image(
+            _FakeUpload(payload, "mismatched.jpg"),
+            "mismatched.jpg",
+            "2026-07-10T10:00:00.000",
+            "TK2",
+        )
+    )
+
+    pending = (
+        tmp_path / "panel_label" / "2026-07-10" / "TK2"
+        / "pending" / "images" / "mismatched.png"
+    )
+    assert isinstance(upload, DecodedUpload)
+    assert upload.extension == ".png"
+    assert upload.raw_bytes is None
+    assert pending.read_bytes() == payload
+
+
+def test_process_image_runs_decode_and_stage_concurrently(monkeypatch, tmp_path):
+    monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
+    router = _Router()
+    both_started = threading.Barrier(2, timeout=2)
+
+    def decode(payload):
+        both_started.wait()
+        return np.zeros((8, 9, 3), dtype=np.uint8)
+
+    original_write = StagedImageWrite.write
+
+    def stage(payload, final_path):
+        both_started.wait()
+        return original_write(payload, final_path)
+
+    monkeypatch.setattr("routers.base_router.decode_image", decode)
+    monkeypatch.setattr(
+        "routers.base_router.StagedImageWrite.write",
+        staticmethod(stage),
+    )
+
+    upload = _run(
+        router._process_image(
+            _FakeUpload(_encoded(".jpg"), "sample.jpg"),
+            "sample.jpg",
+            "2026-07-10T10:00:00.000",
+            "TK2",
+        )
+    )
+    assert upload.raw_bytes is None
+
+
+def test_decode_failure_discards_staged_file(monkeypatch, tmp_path):
+    monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
+    router = _Router()
+    truncated_jpeg = b"\xff\xd8\xffbroken"
+
+    with pytest.raises(InvalidImageError, match="图片读取失败"):
+        _run(
+            router._process_image(
+                _FakeUpload(truncated_jpeg, "broken.jpg"),
+                "broken.jpg",
+                "2026-07-10T10:00:00.000",
+                "TK2",
+            )
+        )
+
+    assert not list(tmp_path.rglob(".vie-upload-*.tmp"))
+    assert not list(tmp_path.rglob("broken.jpg"))
+
+
+def test_commit_failure_keeps_raw_bytes_and_cleans_temp(monkeypatch, tmp_path):
+    monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        "routers.base_router.StagedImageWrite.commit",
+        lambda self: (_ for _ in ()).throw(OSError("replace failed")),
+    )
+    router = _Router()
+    payload = _encoded(".jpg")
+
+    upload = _run(
+        router._process_image(
+            _FakeUpload(payload, "sample.jpg"),
+            "sample.jpg",
+            "2026-07-10T10:00:00.000",
+            "TK2",
+        )
+    )
+
+    assert upload.raw_bytes == payload
+    assert not list(tmp_path.rglob(".vie-upload-*.tmp"))
+    assert not list(tmp_path.rglob("sample.jpg"))

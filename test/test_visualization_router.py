@@ -12,7 +12,7 @@ python_multipart.__version__ = "0.0.20"
 sys.modules.setdefault("python_multipart", python_multipart)
 
 from config import settings
-from routers.base_router import BaseRouter
+from routers.base_router import BaseRouter, DecodedUpload
 
 
 def _run(coro):
@@ -58,8 +58,12 @@ _DETECT_RESULT = {
 def _make_router(monkeypatch):
     router = _Router()
 
-    async def _fake_process_image(file):
-        return np.zeros((100, 100, 3), dtype=np.uint8), False
+    async def _fake_process_image(*args, **kwargs):
+        return DecodedUpload(
+            image=np.zeros((100, 100, 3), dtype=np.uint8),
+            raw_bytes=None,
+            extension=".jpg",
+        )
 
     monkeypatch.setattr(router, "_process_image", _fake_process_image)
 
@@ -71,7 +75,6 @@ def _make_router(monkeypatch):
     monkeypatch.setattr("routers.base_router.record_call", lambda scene, verdict: None)
 
     persisted = []
-    monkeypatch.setattr(router, "_persist_image", lambda **kw: None)
     monkeypatch.setattr(router, "_persist_record", lambda **kw: persisted.append(kw))
     return router, persisted
 
@@ -138,8 +141,12 @@ def test_guideline_passed_to_render(monkeypatch):
 
     router = _GuideRouter()
 
-    async def _fake_process_image(file):
-        return np.zeros((20, 20, 3), dtype=np.uint8), False
+    async def _fake_process_image(*args, **kwargs):
+        return DecodedUpload(
+            image=np.zeros((20, 20, 3), dtype=np.uint8),
+            raw_bytes=None,
+            extension=".jpg",
+        )
 
     monkeypatch.setattr(router, "_process_image", _fake_process_image)
 
@@ -149,7 +156,6 @@ def test_guideline_passed_to_render(monkeypatch):
 
     monkeypatch.setattr(router, "get_detector_singleton", lambda: _Detector())
     monkeypatch.setattr("routers.base_router.record_call", lambda scene, verdict: None)
-    monkeypatch.setattr(router, "_persist_image", lambda **kw: None)
     monkeypatch.setattr(router, "_persist_record", lambda **kw: None)
 
     _run(router._process_detect_request(

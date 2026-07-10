@@ -7,15 +7,16 @@
 @Description  :路由基类，封装所有路由共有的功能
 '''
 
-import json
+import asyncio
 import inspect
+import json
 import os
 import re
 import time
 from abc import ABC
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional
 
 import cv2
 import numpy as np
@@ -27,6 +28,11 @@ from schemas.exceptions import InvalidParamsError, InvalidImageError, InternalEr
 from services import detection_factory
 from services.call_stats import record_call
 from services.utils.visualize import render_detection_overlay
+from routers.upload_persistence import (
+    StagedImageWrite,
+    decode_image,
+    detect_image_extension,
+)
 from utils import vision_logger
 from utils.async_utils import run_sync
 from utils.timing import StageTimer
@@ -52,6 +58,13 @@ class BackflowTarget:
     scene_dir: str   # 顶层场景目录
     model_dir: str   # 型号目录
     save_stem: str   # 落盘文件名（不含扩展名）
+
+
+@dataclass
+class DecodedUpload:
+    image: np.ndarray
+    raw_bytes: Optional[bytes]
+    extension: str
 
 
 class BaseRouter(ABC):
@@ -119,18 +132,14 @@ class BaseRouter(ABC):
             fallback_product_type = self._extract_product_type(request_params)
 
             with timer.stage("process_image"):
-                if self._supports_stage_recorder(self._process_image):
-                    image, _ = await self._process_image(file, timer.record)
-                else:
-                    image, _ = await self._process_image(file)
-            with timer.stage("persist_pending_image"):
-                await run_sync(
-                    self._persist_image,
-                    image=image,
-                    original_filename=original_filename,
-                    received_at=received_at,
-                    fallback_product_type=fallback_product_type,
+                upload = await self._process_image(
+                    file,
+                    original_filename,
+                    received_at,
+                    fallback_product_type,
+                    timer.record,
                 )
+            image = upload.image
             with timer.stage("build_inputs"):
                 inputs = self.get_inputs(request_params, image)
                 if inspect.isawaitable(inputs):
@@ -311,41 +320,95 @@ class BaseRouter(ABC):
         """请求参数校验模式"""
         raise NotImplementedError("子类必须实现request_schema方法")
 
-    @staticmethod
-    def _supports_stage_recorder(func: Callable) -> bool:
-        """兼容旧的 _process_image(file) 重写/测试替身。"""
-        signature = inspect.signature(func)
-        return "stage_recorder" in signature.parameters
-
     async def _process_image(
         self,
         file: UploadFile,
+        original_filename: str,
+        received_at: str,
+        fallback_product_type: Optional[str],
         stage_recorder: Optional[Callable[[str, float], None]] = None,
-    ) -> Tuple[np.ndarray, bool]:
-        """只负责读取并解码图片，落盘逻辑见 _persist_record"""
+    ) -> DecodedUpload:
         read_start = time.perf_counter()
-        img_bytes = await file.read()
+        payload = await file.read()
         if stage_recorder:
             stage_recorder("image_read", (time.perf_counter() - read_start) * 1000)
+
         max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
-        if len(img_bytes) > max_bytes:
-            vision_logger.error(f"上传图片过大: {len(img_bytes)} bytes > {max_bytes} bytes")
+        if len(payload) > max_bytes:
             raise InvalidImageError(f"图片大小超过上限 {settings.MAX_UPLOAD_MB}MB")
-        img_array = np.frombuffer(img_bytes, dtype=np.uint8)
-        # imdecode 为同步 CPU 操作，丢到线程池避免阻塞事件循环
-        decode_start = time.perf_counter()
-        image = await run_sync(cv2.imdecode, img_array, cv2.IMREAD_COLOR)
+
+        format_start = time.perf_counter()
+        try:
+            extension = detect_image_extension(payload)
+        except ValueError as exc:
+            raise InvalidImageError(str(exc)) from exc
         if stage_recorder:
-            stage_recorder("image_decode", (time.perf_counter() - decode_start) * 1000)
-        if image is None:
-            vision_logger.error("图片读取失败")
-            raise InvalidImageError("图片读取失败，请检查文件格式")
-        # h, w, _ = image.shape
-        # is_rotate = w < h
-        # if is_rotate:
-        #     # 向左旋转90度
-        #     image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        return image, False
+            stage_recorder(
+                "image_format_detect",
+                (time.perf_counter() - format_start) * 1000,
+            )
+
+        pending_paths = self._resolve_backflow_paths(
+            original_filename,
+            received_at,
+            fallback_product_type,
+            "pending",
+            image_extension=extension,
+        )
+
+        async def timed(stage_name, func, *args):
+            start = time.perf_counter()
+            try:
+                return await run_sync(func, *args)
+            finally:
+                if stage_recorder:
+                    stage_recorder(
+                        stage_name,
+                        (time.perf_counter() - start) * 1000,
+                    )
+
+        image_result, stage_result = await asyncio.gather(
+            timed("image_decode", decode_image, payload),
+            timed(
+                "image_stage_write",
+                StagedImageWrite.write,
+                payload,
+                pending_paths["image_path"],
+            ),
+            return_exceptions=True,
+        )
+
+        if isinstance(image_result, Exception):
+            if isinstance(stage_result, StagedImageWrite):
+                await run_sync(stage_result.discard)
+            raise InvalidImageError("图片读取失败，请检查文件格式") from image_result
+
+        if isinstance(stage_result, Exception):
+            vision_logger.warning(
+                "数据回流原图暂存失败 filename={} stage=write error={}",
+                original_filename,
+                stage_result,
+            )
+            return DecodedUpload(image_result, payload, extension)
+
+        commit_start = time.perf_counter()
+        try:
+            await run_sync(stage_result.commit)
+        except Exception as exc:
+            await run_sync(stage_result.discard)
+            vision_logger.warning(
+                "数据回流原图发布失败 filename={} stage=commit error={}",
+                original_filename,
+                exc,
+            )
+            return DecodedUpload(image_result, payload, extension)
+        finally:
+            if stage_recorder:
+                stage_recorder(
+                    "image_commit",
+                    (time.perf_counter() - commit_start) * 1000,
+                )
+        return DecodedUpload(image_result, None, extension)
 
     def resolve_backflow_target(
         self,
@@ -412,12 +475,18 @@ class BaseRouter(ABC):
         received_at: str,
         fallback_product_type: Optional[str],
         verdict_dir: str,
+        image_extension: Optional[str] = None,
     ) -> dict:
         target = self.resolve_backflow_target(original_filename, fallback_product_type)
-        safe_filename = self._safe_client_filename(original_filename)
-        ext = os.path.splitext(safe_filename)[1].lower()
-        if ext not in SAFE_IMAGE_EXTENSIONS:
-            ext = ".jpg"
+        if image_extension is not None:
+            if image_extension not in SAFE_IMAGE_EXTENSIONS:
+                raise ValueError(f"不支持的回流图片扩展名: {image_extension}")
+            ext = image_extension
+        else:
+            safe_filename = self._safe_client_filename(original_filename)
+            ext = os.path.splitext(safe_filename)[1].lower()
+            if ext not in SAFE_IMAGE_EXTENSIONS:
+                ext = ".jpg"
         date_dir = received_at[:10]  # YYYY-MM-DD
         scene_dir = self._sanitize_dir_name(target.scene_dir)
         target_model_dir = self._sanitize_dir_name(target.model_dir)
@@ -427,8 +496,6 @@ class BaseRouter(ABC):
         )
         image_dir = self._safe_path(model_dir, "images")
         record_dir = self._safe_path(model_dir, "records")
-        image_path = self._safe_path(image_dir, f"{save_stem}{ext}")
-        record_path = self._safe_path(record_dir, f"{save_stem}.json")
         return {
             "scene_dir": scene_dir,
             "model_dir": target_model_dir,
@@ -436,8 +503,8 @@ class BaseRouter(ABC):
             "verdict_dir": verdict_dir,
             "image_dir": image_dir,
             "record_dir": record_dir,
-            "image_path": image_path,
-            "record_path": record_path,
+            "image_path": self._safe_path(image_dir, f"{save_stem}{ext}"),
+            "record_path": self._safe_path(record_dir, f"{save_stem}.json"),
         }
 
     def _persist_image(
