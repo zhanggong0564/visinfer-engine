@@ -10,12 +10,23 @@
 import importlib
 import pkgutil
 import inspect
+from dataclasses import dataclass
 from importlib.metadata import entry_points
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional
 from fastapi import APIRouter, FastAPI
 from config import settings
 from utils.logger import vision_logger
 from .base_router import BaseRouter
+
+
+@dataclass(frozen=True)
+class RouteCandidate:
+    module_name: str
+    router: APIRouter
+    config: Dict
+    source: str
+    detector_type: Optional[str] = None
+    base_router: Optional[BaseRouter] = None
 
 
 class RouterRegistry:
@@ -29,12 +40,12 @@ class RouterRegistry:
         self.base_routers: List[BaseRouter] = []
         self.preload_status: Dict[str, Dict[str, object]] = {}
 
-    def find_routers(self, package_name: str) -> List[Tuple[str, APIRouter, Dict]]:
+    def find_routers(self, package_name: str) -> List[RouteCandidate]:
         """
         查找指定包下的所有路由模块并返回其路由实例
 
         :param package_name: 包名，如 'routers'
-        :return: 包含 (模块名, 路由实例, 配置) 元组的列表
+        :return: 路由候选列表
         """
         routers = []
         try:
@@ -49,12 +60,16 @@ class RouterRegistry:
                 continue
             try:
                 module = importlib.import_module(f"{package_name}.{module_name}")
-                routers.extend(self._collect_routers_from_module(module, module_name))
+                routers.extend(
+                    self._collect_routers_from_module(
+                        module, module_name, source="builtin"
+                    )
+                )
             except ImportError as e:
                 vision_logger.warning(f"导入模块 {module_name} 失败: {e}")
         return routers
 
-    def find_plugin_routers(self, group: str = "vie.plugins") -> List[Tuple[str, APIRouter, Dict]]:
+    def find_plugin_routers(self, group: str = "vie.plugins") -> List[RouteCandidate]:
         """通过 entry_points 发现已安装的场景插件并收集其路由。
 
         每个插件在 pyproject 的 [project.entry-points."vie.plugins"] 暴露一个入口，
@@ -77,17 +92,23 @@ class RouterRegistry:
             except Exception as e:
                 vision_logger.warning(f"加载插件入口 {ep.name} 失败: {e}")
                 continue
-            routers.extend(self._collect_routers_from_module(module, ep.name))
+            routers.extend(
+                self._collect_routers_from_module(module, ep.name, source="plugin")
+            )
         return routers
 
-    def _collect_routers_from_module(self, module, module_name: str) -> List[Tuple[str, APIRouter, Dict]]:
+    def _collect_routers_from_module(
+        self, module, module_name: str, source: str
+    ) -> List[RouteCandidate]:
         """从模块中收集 BaseRouter / APIRouter 实例，目录扫描与插件发现共用。"""
         routers = []
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
             if isinstance(attr, APIRouter):
                 config = self._make_router_config(module_name)
-                routers.append((module_name, attr, config))
+                routers.append(
+                    RouteCandidate(module_name, attr, config, source)
+                )
                 self.router_configs[module_name] = config
                 vision_logger.info(f"发现路由模块 {module_name}，标签为 {config['tags']}")
             elif isinstance(attr, BaseRouter):
@@ -103,7 +124,16 @@ class RouterRegistry:
                 if isinstance(router, APIRouter):
                     self.base_routers.append(attr)
                     config = self._make_router_config(module_name, getattr(attr, "tag", None))
-                    routers.append((module_name, router, config))
+                    routers.append(
+                        RouteCandidate(
+                            module_name=module_name,
+                            router=router,
+                            config=config,
+                            source=source,
+                            detector_type=attr.detector_type,
+                            base_router=attr,
+                        )
+                    )
                     self.router_configs[module_name] = config
                     vision_logger.info(f"发现路由模块 {module_name}，标签为 {config['tags']}")
         return routers
@@ -202,7 +232,13 @@ class RouterRegistry:
         """
         routers = self.find_routers(package_name)
         routers.extend(self.find_plugin_routers())
-        for module_name, router, config in routers:
-            app.include_router(router, prefix=config["prefix"], tags=config["tags"])
-            vision_logger.info(f"注册路由模块 {module_name} 到 FastAPI 应用")
+        for candidate in routers:
+            app.include_router(
+                candidate.router,
+                prefix=candidate.config["prefix"],
+                tags=candidate.config["tags"],
+            )
+            vision_logger.info(
+                f"注册路由模块 {candidate.module_name} 到 FastAPI 应用"
+            )
         return len(routers)

@@ -1,6 +1,7 @@
 """RouterRegistry 路由注册器单元测试"""
 import pytest
-from routers.router_registry import RouterRegistry
+from fastapi import APIRouter
+from routers.router_registry import RouteCandidate, RouterRegistry
 
 
 class TestRouterRegistry:
@@ -25,8 +26,8 @@ class TestRouterRegistry:
         reg = RouterRegistry()
         routers = reg.find_routers("routers")
         # base_router 和 router_registry 应被忽略
-        for name, _, _ in routers:
-            assert name not in ("base_router", "router_registry")
+        for candidate in routers:
+            assert candidate.module_name not in ("base_router", "router_registry")
 
 
 import types
@@ -51,6 +52,56 @@ class _FakePluginRouter(BaseRouter):
         return None
 
 
+def test_collect_base_router_candidate_records_source_and_detector_type():
+    registry = RouterRegistry()
+    base = _FakePluginRouter()
+    base.detector_type = "scene_a"
+    base.tag = "Scene A"
+    module = types.ModuleType("scene_plugin")
+    module.scene_router = base
+
+    candidates = registry._collect_routers_from_module(
+        module, "scene_plugin", source="plugin"
+    )
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.module_name == "scene_plugin"
+    assert candidate.router is base.get_router()
+    assert candidate.config == {
+        "name": "scene_plugin",
+        "tags": ["Scene A"],
+        "prefix": "/api/v1",
+    }
+    assert candidate.source == "plugin"
+    assert candidate.detector_type == "scene_a"
+    assert candidate.base_router is base
+
+
+def test_collect_api_router_candidate_has_no_base_router_metadata():
+    registry = RouterRegistry()
+    router = APIRouter()
+    module = types.ModuleType("builtin_routers")
+    module.router = router
+
+    candidates = registry._collect_routers_from_module(
+        module, "builtin_routers", source="builtin"
+    )
+
+    assert candidates == [
+        RouteCandidate(
+            module_name="builtin_routers",
+            router=router,
+            config={
+                "name": "builtin_routers",
+                "tags": ["Builtin Routers"],
+                "prefix": "/api/v1",
+            },
+            source="builtin",
+        )
+    ]
+
+
 def test_find_plugin_routers_discovers_entry_point(monkeypatch):
     """entry_points 中暴露 BaseRouter 的插件应被发现并收集进 base_routers。"""
     fake_module = types.ModuleType("fake_vie_plugin")
@@ -71,7 +122,7 @@ def test_find_plugin_routers_discovers_entry_point(monkeypatch):
     reg = RouterRegistry()
     found = reg.find_plugin_routers()
 
-    assert any(name == "fake_scene" for name, _, _ in found)
+    assert any(candidate.module_name == "fake_scene" for candidate in found)
     assert any(br.detector_type == "fake_scene" for br in reg.base_routers)
 
 
