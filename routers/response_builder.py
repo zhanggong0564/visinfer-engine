@@ -30,9 +30,9 @@ class ResponseBuilder:
         if not isinstance(detail_list, list):
             return
         for item in detail_list:
-            if not isinstance(item, dict) or "name" not in item:
+            if not isinstance(item, dict):
                 continue
-            name = item["name"]
+            name = item.get("name")
             item["name"] = "" if name is None else str(name)
 
     async def build(

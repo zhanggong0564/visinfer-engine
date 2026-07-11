@@ -17,13 +17,17 @@ def _result(detail_list=None):
 
 
 def test_sanitize_detail_list_names_handles_nested_and_flat_results():
-    flat = {"detailList": [{"name": None}, {"name": 12}]}
+    flat = {"detailList": [{"name": None}, {"name": 12}, {}]}
     nested = {"result": {"detailList": [{"name": None}]}}
 
     ResponseBuilder.sanitize_detail_list_names(flat)
     ResponseBuilder.sanitize_detail_list_names(nested)
 
-    assert flat["detailList"] == [{"name": ""}, {"name": "12"}]
+    assert flat["detailList"] == [
+        {"name": ""},
+        {"name": "12"},
+        {"name": ""},
+    ]
     assert nested["result"]["detailList"] == [{"name": ""}]
 
 
