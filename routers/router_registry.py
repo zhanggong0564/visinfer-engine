@@ -15,6 +15,7 @@ from importlib.metadata import entry_points
 from typing import Dict, List, Optional
 from fastapi import APIRouter, FastAPI
 from config import settings
+from services import detection_factory
 from utils.logger import vision_logger
 from .base_router import BaseRouter
 
@@ -86,15 +87,53 @@ class RouterRegistry:
         except Exception as e:
             vision_logger.warning(f"获取插件入口列表失败: {e}")
             return routers
+        seen_detector_types = {}
         for ep in eps:
+            factory_snapshot = dict(detection_factory._registry)
             try:
                 module = ep.load()
             except Exception as e:
+                detection_factory._registry.clear()
+                detection_factory._registry.update(factory_snapshot)
                 vision_logger.warning(f"加载插件入口 {ep.name} 失败: {e}")
                 continue
-            routers.extend(
-                self._collect_routers_from_module(module, ep.name, source="plugin")
+            candidates = self._collect_routers_from_module(
+                module, ep.name, source="plugin"
             )
+            accepted = []
+            accepted_detector_types = set()
+            for candidate in candidates:
+                detector_type = candidate.detector_type
+                if detector_type is None:
+                    accepted.append(candidate)
+                    continue
+                if detector_type in seen_detector_types:
+                    vision_logger.warning(
+                        "重复场景路由 source={} detector_type={} first={} skipped={}",
+                        candidate.source,
+                        detector_type,
+                        seen_detector_types[detector_type],
+                        candidate.module_name,
+                    )
+                    continue
+                seen_detector_types[detector_type] = candidate.module_name
+                accepted_detector_types.add(detector_type)
+                accepted.append(candidate)
+
+            # entry point 导入可能通过装饰器改写全局检测器工厂。仅提交最终接纳
+            # 场景的变化，避免重复、禁用或无路由插件污染有效工厂状态。
+            changed_types = {
+                *factory_snapshot,
+                *detection_factory._registry,
+            }
+            for detector_type in changed_types - accepted_detector_types:
+                if detector_type in factory_snapshot:
+                    detection_factory._registry[detector_type] = factory_snapshot[
+                        detector_type
+                    ]
+                else:
+                    detection_factory._registry.pop(detector_type, None)
+            routers.extend(accepted)
         return routers
 
     def _collect_routers_from_module(
@@ -282,6 +321,7 @@ class RouterRegistry:
         self.routers = {}
         self.router_configs = {}
         self.base_routers = []
+        self.preload_status = {}
         builtins = self.find_routers(package_name)
         plugins = self.find_plugin_routers()
         selected = self._select_candidates(builtins, plugins)

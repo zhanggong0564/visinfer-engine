@@ -2,6 +2,7 @@
 import pytest
 from fastapi import APIRouter, FastAPI
 from routers.router_registry import RouteCandidate, RouterRegistry
+from services import detection_factory
 
 
 class TestRouterRegistry:
@@ -189,6 +190,7 @@ def test_register_all_routers_selects_before_preload_and_rebuilds_state(monkeypa
     registry.base_routers = [old_base]
     registry.routers = {"old": APIRouter()}
     registry.router_configs = {"old": {"name": "old"}}
+    registry.preload_status = {"old": {"ready": True, "error": ""}}
     builtin_base = SimpleNamespace(
         detector_type="scene_a", get_detector_singleton=lambda: pytest.fail()
     )
@@ -209,9 +211,39 @@ def test_register_all_routers_selects_before_preload_and_rebuilds_state(monkeypa
     assert registry.base_routers == [plugin_base]
     assert registry.routers == {"plugin": plugin.router}
     assert registry.router_configs == {"plugin": plugin.config}
+    assert registry.preload_status == {}
     assert [route.path for route in app.routes].count("/api/v1/detect") == 1
 
     registry.preload_all()
+
+
+@pytest.mark.parametrize("plugin_failure", [False, True])
+def test_register_all_routers_falls_back_to_builtin_without_plugin(
+    monkeypatch, plugin_failure
+):
+    registry = RouterRegistry()
+    builtin_base = SimpleNamespace(detector_type="scene_a")
+    builtin = _candidate("legacy", "builtin", "scene_a", builtin_base)
+    monkeypatch.setattr(registry, "find_routers", lambda package_name: [builtin])
+    if plugin_failure:
+
+        class _BrokenEP:
+            name = "broken"
+
+            def load(self):
+                raise ImportError("boom")
+
+        monkeypatch.setattr(
+            "routers.router_registry.entry_points",
+            lambda group=None: [_BrokenEP()],
+        )
+    else:
+        monkeypatch.setattr(
+            "routers.router_registry.entry_points", lambda group=None: []
+        )
+
+    assert registry.register_all_routers(FastAPI(), "routers") == 1
+    assert registry.base_routers == [builtin_base]
 
 
 def test_find_plugin_routers_skips_broken_entry_point(monkeypatch):
@@ -232,6 +264,46 @@ def test_find_plugin_routers_skips_broken_entry_point(monkeypatch):
     found = reg.find_plugin_routers()
 
     assert found == []
+
+
+def test_duplicate_plugin_load_restores_first_detector_factory(monkeypatch):
+    """后加载的重复插件不能让工厂实现与最终路由候选不一致。"""
+
+    class FirstDetector:
+        pass
+
+    class DuplicateDetector:
+        pass
+
+    def _module(name, detector_class):
+        detection_factory.register("scene_a")(detector_class)
+        module = types.ModuleType(name)
+        router = _FakePluginRouter()
+        router.detector_type = "scene_a"
+        module.router = router
+        return module
+
+    class _EP:
+        def __init__(self, name, detector_class):
+            self.name = name
+            self.detector_class = detector_class
+
+        def load(self):
+            return _module(self.name, self.detector_class)
+
+    monkeypatch.setattr(detection_factory, "_registry", {})
+    monkeypatch.setattr(
+        "routers.router_registry.entry_points",
+        lambda group=None: [
+            _EP("first", FirstDetector),
+            _EP("duplicate", DuplicateDetector),
+        ],
+    )
+
+    found = RouterRegistry().find_plugin_routers()
+
+    assert [candidate.module_name for candidate in found] == ["first"]
+    assert detection_factory._registry["scene_a"] is FirstDetector
 
 
 def test_find_plugin_routers_empty(monkeypatch):
