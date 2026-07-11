@@ -1,7 +1,10 @@
 import json
+import runpy
 from pathlib import Path
 
 import pytest
+import setuptools
+from Cython import Build
 
 
 LEGACY_DC_FUSE_FILES = (
@@ -17,17 +20,20 @@ def test_legacy_dc_fuse_example_files_remain_available():
     assert all(path.is_file() for path in LEGACY_DC_FUSE_FILES)
 
 
-def test_framework_build_excludes_legacy_scene_examples():
-    setup_source = Path("setup.py").read_text(encoding="utf-8")
+def test_framework_build_excludes_legacy_scene_examples(monkeypatch):
+    setup_kwargs = {}
+    monkeypatch.setattr(setuptools, "setup", lambda **kwargs: setup_kwargs.update(kwargs))
+    monkeypatch.setattr(Build, "cythonize", lambda sources, **kwargs: sources)
 
-    assert "LEGACY_SCENE_EXAMPLE_FILES" in setup_source
-    assert "LEGACY_SCENE_EXAMPLE_DIRS" in setup_source
-    assert "_is_legacy_scene_example" in setup_source
-    for path in LEGACY_DC_FUSE_FILES:
-        if path.parts[0] == "services":
-            assert 'Path("services/dc_fuse")' in setup_source
-        else:
-            assert f'Path("{path.as_posix()}")' in setup_source
+    setup_globals = runpy.run_path("setup.py", run_name="__build_contract__")
+    py_sources = {Path(source) for source in setup_globals["py_sources"]}
+
+    assert not py_sources.intersection(LEGACY_DC_FUSE_FILES)
+    assert not any(Path("services/dc_fuse") in source.parents for source in py_sources)
+    assert "services.dc_fuse" not in setup_kwargs["packages"]
+    assert not any(
+        package.startswith("services.dc_fuse.") for package in setup_kwargs["packages"]
+    )
 
 
 def test_compose_persists_data_directory():
