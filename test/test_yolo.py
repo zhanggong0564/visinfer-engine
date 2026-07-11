@@ -13,6 +13,79 @@ import numpy as np
 from unittest.mock import patch, MagicMock
 
 
+def test_preprocess_delegates_to_shared_pipeline(monkeypatch):
+    from services.yolo import YoloOnnxInfer
+
+    model = YoloOnnxInfer.__new__(YoloOnnxInfer)
+    model._input_model_shape = [1, 3, 8, 10]
+    image = np.zeros((3, 5, 3), dtype=np.uint8)
+    sentinel = (object(), object())
+    captured = {}
+
+    def fake_prepare(value, shape):
+        captured["args"] = (value, shape)
+        return sentinel
+
+    monkeypatch.setattr("services.yolo.prepare_yolo_input", fake_prepare)
+    assert model.preprocess(image) is sentinel
+    assert captured["args"][0] is image
+    assert captured["args"][1] == [8, 10]
+
+
+def test_post_process_delegates_to_shared_pipeline(monkeypatch):
+    from schemas.inference_context import PreprocMeta
+    from services.yolo import YoloOnnxInfer
+
+    model = YoloOnnxInfer.__new__(YoloOnnxInfer)
+    model.task = "det"
+    model.confThreshold = 0.4
+    model.nmsThreshold = 0.6
+    model.filter_classes = [1]
+    model.agnostic = True
+    model.nc = 2
+    model._input_model_shape = [1, 3, 8, 10]
+    model.id2name = {1: "target"}
+    raw_detection = np.array([[1, 2, 3, 4, 0.9, 1]], dtype=np.float32)
+    restored = np.array([[10, 20, 30, 40, 0.9, 1]], dtype=np.float32)
+    captured = {}
+
+    def fake_nms(prediction, **kwargs):
+        captured["nms"] = (prediction, kwargs)
+        return [raw_detection]
+
+    def fake_restore(detections, input_shape, src_shape):
+        captured["restore"] = (detections, input_shape, src_shape)
+        return restored
+
+    monkeypatch.setattr("services.yolo.run_yolo_nms", fake_nms)
+    monkeypatch.setattr("services.yolo.restore_yolo_boxes", fake_restore)
+    prediction = np.zeros((1, 6, 1), dtype=np.float32)
+    original = np.zeros((6, 7, 3), dtype=np.uint8)
+    meta = PreprocMeta(r=1.0, dw=0, dh=0, src_shape=original.shape, ori_img=original)
+
+    result = model.post_process([prediction], meta)
+
+    assert captured["nms"] == (
+        prediction,
+        {
+            "task": "det",
+            "conf_threshold": 0.4,
+            "iou_threshold": 0.6,
+            "classes": [1],
+            "agnostic": True,
+            "nc": 2,
+        },
+    )
+    assert captured["restore"][0] is raw_detection
+    assert captured["restore"][1] == [8, 10]
+    assert captured["restore"][2] == original.shape
+    assert result.boxes == [[10.0, 20.0, 30.0, 40.0]]
+    assert result.scores == [pytest.approx(0.9)]
+    assert result.class_ids == [1.0]
+    assert result.class_names == ["target"]
+    assert result.ori_img is original
+
+
 class TestYoloOnnxInfer:
     """YoloOnnxInfer 测试"""
 
@@ -46,7 +119,7 @@ class TestYoloOnnxInfer:
         """测试预处理返回 (tensor, PreprocMeta) 元组"""
         from schemas.inference_context import PreprocMeta
         input_image = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-        with patch("services.yolo.letterbox") as mock_letterbox:
+        with patch("services.base.yolo_pipeline.letterbox") as mock_letterbox:
             mock_letterbox.return_value = (
                 np.zeros((640, 640, 3), dtype=np.uint8), 1.0, 0, 0,
             )
@@ -63,7 +136,7 @@ class TestYoloOnnxInfer:
         # 全白图像
         white_image = np.ones((480, 640, 3), dtype=np.uint8) * 255
 
-        with patch("services.yolo.letterbox") as mock_letterbox:
+        with patch("services.base.yolo_pipeline.letterbox") as mock_letterbox:
             mock_letterbox.return_value = (np.ones((640, 640, 3), dtype=np.uint8) * 255, 1.0, 0, 0)
 
             tensor, _ = mock_model.preprocess(white_image)
@@ -71,8 +144,8 @@ class TestYoloOnnxInfer:
         # 归一化后应接近 1.0
         assert np.allclose(tensor, 1.0)
 
-    @patch("services.yolo.non_max_suppression_v8")
-    @patch("services.yolo.scale_boxes")
+    @patch("services.yolo.run_yolo_nms")
+    @patch("services.yolo.restore_yolo_boxes")
     def test_post_process_det(self, mock_scale_boxes, mock_nms, mock_model):
         """测试检测任务后处理"""
         # 模拟 NMS 输出: [x1, y1, x2, y2, conf, cls]
@@ -83,7 +156,7 @@ class TestYoloOnnxInfer:
             ]
         )
         mock_nms.return_value = [mock_pred]
-        mock_scale_boxes.return_value = mock_pred[:, :4]
+        mock_scale_boxes.return_value = mock_pred
 
         # 模拟模型输出
         preds = [np.random.rand(1, 84, 8400)]
@@ -106,8 +179,8 @@ class TestYoloOnnxInfer:
         assert result.class_names[0] == "class_0"
         assert result.class_names[1] == "class_1"
 
-    @patch("services.yolo.non_max_suppression_v8")
-    @patch("services.yolo.scale_boxes")
+    @patch("services.yolo.run_yolo_nms")
+    @patch("services.yolo.restore_yolo_boxes")
     @patch("services.yolo.xywhr2xyxyxyxy")
     def test_post_process_obb(self, mock_xywhr, mock_scale_boxes, mock_nms, mock_model):
         """测试旋转框任务后处理"""
@@ -119,7 +192,7 @@ class TestYoloOnnxInfer:
             ]
         )
         mock_nms.return_value = [mock_pred]
-        mock_scale_boxes.return_value = mock_pred[:, :4]
+        mock_scale_boxes.return_value = mock_pred
         mock_xywhr.return_value = np.array([[[0, 0], [1, 0], [1, 1], [0, 1]]])
 
         preds = [np.random.rand(1, 84, 8400)]
@@ -133,14 +206,14 @@ class TestYoloOnnxInfer:
         # 验证调用了旋转框转换
         mock_xywhr.assert_called_once()
 
-    @patch("services.yolo.non_max_suppression_v8")
-    @patch("services.yolo.scale_boxes")
+    @patch("services.yolo.run_yolo_nms")
+    @patch("services.yolo.restore_yolo_boxes")
     def test_post_process_empty_detection(self, mock_scale_boxes, mock_nms, mock_model):
         """测试无检测结果"""
         # 空预测
         mock_pred = np.empty((0, 6))
         mock_nms.return_value = [mock_pred]
-        mock_scale_boxes.return_value = mock_pred[:, :4]
+        mock_scale_boxes.return_value = mock_pred
 
         preds = [np.random.rand(1, 84, 8400)]
 
@@ -158,8 +231,8 @@ class TestYoloOnnxInfer:
     @patch("services.yolo.masks2segments_with_boxes")
     @patch("services.yolo.scale_masks")
     @patch("services.yolo.process_mask")
-    @patch("services.yolo.non_max_suppression_v8")
-    @patch("services.yolo.scale_boxes")
+    @patch("services.yolo.run_yolo_nms")
+    @patch("services.yolo.restore_yolo_boxes")
     def test_post_process_seg_drops_degenerate_mask_keeps_others(
         self, mock_scale_boxes, mock_nms, mock_process_mask, mock_scale_masks, mock_m2s, mock_model
     ):
@@ -173,7 +246,7 @@ class TestYoloOnnxInfer:
             ]
         )
         mock_nms.return_value = [mock_pred]
-        mock_scale_boxes.return_value = mock_pred[:, :4]
+        mock_scale_boxes.return_value = mock_pred
         mock_process_mask.return_value = np.zeros((2, 160, 160), dtype=np.uint8)
         # scale_masks 返回 (H, W, N)，post_process 会 .transpose(2, 0, 1)
         mock_scale_masks.return_value = np.zeros((480, 640, 2), dtype=np.uint8)
@@ -188,6 +261,10 @@ class TestYoloOnnxInfer:
                            ori_img=np.zeros((480, 640, 3), dtype=np.uint8))
 
         result = mock_model.post_process(preds, meta)
+
+        np.testing.assert_array_equal(
+            mock_process_mask.call_args.args[2], mock_pred[:, :4]
+        )
 
         # 退化的检测被丢弃，有效检测保留，且各字段长度严格对齐
         assert len(result.mask_polygons) == 1

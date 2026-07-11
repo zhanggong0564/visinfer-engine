@@ -8,6 +8,11 @@
 '''
 
 from .base import BaseOnnxInfer
+from .base.yolo_pipeline import (
+    prepare_yolo_input,
+    restore_yolo_boxes,
+    run_yolo_nms,
+)
 from .utils import *
 from collections import defaultdict
 from schemas.data_base import DetectResult
@@ -32,30 +37,22 @@ class YoloOnnxInfer(BaseOnnxInfer):
         Returns:
             tuple: (模型输入张量, PreprocMeta)
         """
-        img, r, dw, dh = letterbox(im=im, auto=False, new_shape=self._input_model_shape[2:])
-        tensor = np.stack([img])
-        tensor = tensor[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW
-        tensor = np.ascontiguousarray(tensor).astype(np.float32)
-        tensor /= 255.0  # 归一化到 0-1
-        meta = PreprocMeta(r=r, dw=dw, dh=dh, src_shape=im.shape)
-        return tensor, meta
+        return prepare_yolo_input(im, self._input_model_shape[2:])
 
     def post_process(self, preds, meta):
         """后处理输出（无状态：缩放/原图信息来自 meta）"""
-        p = non_max_suppression_v8(
+        p = run_yolo_nms(
             preds[0],
             task=self.task,
-            conf_thres=self.confThreshold,
-            iou_thres=self.nmsThreshold,
+            conf_threshold=self.confThreshold,
+            iou_threshold=self.nmsThreshold,
             classes=self.filter_classes,
             agnostic=self.agnostic,
-            multi_label=False,
             nc=self.nc,
         )
         image_shape = meta.src_shape[:2]
         input_shape = self.input_model_shape[2:]
-        pred = p[0].copy()
-        pred[:, :4] = scale_boxes(input_shape, pred[:, :4], image_shape, xywh=False)
+        pred = restore_yolo_boxes(p[0], input_shape, meta.src_shape)
         masks = []
         mask_polygons = []
         if self.task == "seg":
