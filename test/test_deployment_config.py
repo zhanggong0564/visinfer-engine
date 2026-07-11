@@ -4,6 +4,32 @@ from pathlib import Path
 import pytest
 
 
+LEGACY_DC_FUSE_FILES = (
+    Path("services/dc_fuse/business_logic.py"),
+    Path("services/dc_fuse/dc_fuse_detect.py"),
+    Path("routers/dc_fuse_routers.py"),
+    Path("schemas/dc_fuse_schemas.py"),
+    Path("config/dc_fuse_config.py"),
+)
+
+
+def test_legacy_dc_fuse_example_files_remain_available():
+    assert all(path.is_file() for path in LEGACY_DC_FUSE_FILES)
+
+
+def test_framework_build_excludes_legacy_scene_examples():
+    setup_source = Path("setup.py").read_text(encoding="utf-8")
+
+    assert "LEGACY_SCENE_EXAMPLE_FILES" in setup_source
+    assert "LEGACY_SCENE_EXAMPLE_DIRS" in setup_source
+    assert "_is_legacy_scene_example" in setup_source
+    for path in LEGACY_DC_FUSE_FILES:
+        if path.parts[0] == "services":
+            assert 'Path("services/dc_fuse")' in setup_source
+        else:
+            assert f'Path("{path.as_posix()}")' in setup_source
+
+
 def test_compose_persists_data_directory():
     compose = Path("docker-compose.scenes.yml").read_text(encoding="utf-8")
     assert "./data:/app/workspace/data" in compose

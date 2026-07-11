@@ -12,20 +12,23 @@ from Cython.Build import cythonize
 
 PACKAGES = ["services", "schemas", "routers", "utils", "config"]
 
-# dc_fuse「服务形态」示例：保留在仓库作老框架（非插件）用法参考，但【不打入】
-# framework wheel —— 框架 contract 为「不含具体场景」（见 pyproject 描述），dc_fuse 由
-# vie-plugin-dc-fuse 经 entry_points 提供。若打入会与插件双重注册同名 dc_fuse 路由/检测器。
-EXAMPLE_EXCLUDE_FILES = {
+# 旧版「服务内场景」示例保留在源码仓库，但不打入 framework wheel。
+# 新部署应通过独立场景插件提供业务实现。
+LEGACY_SCENE_EXAMPLE_FILES = {
     Path("routers/dc_fuse_routers.py"),
     Path("schemas/dc_fuse_schemas.py"),
     Path("config/dc_fuse_config.py"),
 }
-EXAMPLE_EXCLUDE_DIRS = (Path("services/dc_fuse"),)
+LEGACY_SCENE_EXAMPLE_DIRS = (Path("services/dc_fuse"),)
 
 
-def _is_example(p: Path) -> bool:
-    """判定某源文件是否为「不入 wheel」的示例（dc_fuse 服务形态）。"""
-    return p in EXAMPLE_EXCLUDE_FILES or any(d in p.parents for d in EXAMPLE_EXCLUDE_DIRS)
+def _is_legacy_scene_example(path: str) -> bool:
+    """判定源文件是否为不进入框架 wheel 的旧场景示例。"""
+    source = Path(path)
+    return source in LEGACY_SCENE_EXAMPLE_FILES or any(
+        directory == source or directory in source.parents
+        for directory in LEGACY_SCENE_EXAMPLE_DIRS
+    )
 
 
 # 保留各包 __init__.py 为纯 py，其余业务模块编译成 .so（排除 build/ 中间产物与示例）
@@ -33,7 +36,9 @@ py_sources = [
     str(p)
     for pkg in PACKAGES
     for p in Path(pkg).rglob("*.py")
-    if p.name != "__init__.py" and "build" not in p.parts and not _is_example(p)
+    if p.name != "__init__.py"
+    and "build" not in p.parts
+    and not _is_legacy_scene_example(str(p))
 ]
 
 
