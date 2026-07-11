@@ -109,7 +109,6 @@ class RouterRegistry:
                 routers.append(
                     RouteCandidate(module_name, attr, config, source)
                 )
-                self.router_configs[module_name] = config
                 vision_logger.info(f"发现路由模块 {module_name}，标签为 {config['tags']}")
             elif isinstance(attr, BaseRouter):
                 # 场景白名单过滤：未启用的场景不注册路由、也不进 base_routers（即不预加载），
@@ -122,7 +121,6 @@ class RouterRegistry:
                 # 只做路由发现/注册，重型模型加载延后到 preload_all（lifespan）
                 router = attr.get_router()
                 if isinstance(router, APIRouter):
-                    self.base_routers.append(attr)
                     config = self._make_router_config(module_name, getattr(attr, "tag", None))
                     routers.append(
                         RouteCandidate(
@@ -134,9 +132,59 @@ class RouterRegistry:
                             base_router=attr,
                         )
                     )
-                    self.router_configs[module_name] = config
                     vision_logger.info(f"发现路由模块 {module_name}，标签为 {config['tags']}")
         return routers
+
+    def _dedupe_source(
+        self, candidates: List[RouteCandidate]
+    ) -> List[RouteCandidate]:
+        """同一来源按场景稳定去重；普通 APIRouter 不参与场景去重。"""
+        selected = []
+        seen = {}
+        for candidate in candidates:
+            detector_type = candidate.detector_type
+            if detector_type is None:
+                selected.append(candidate)
+                continue
+            if detector_type in seen:
+                vision_logger.warning(
+                    "重复场景路由 source={} detector_type={} first={} skipped={}",
+                    candidate.source,
+                    detector_type,
+                    seen[detector_type],
+                    candidate.module_name,
+                )
+                continue
+            seen[detector_type] = candidate.module_name
+            selected.append(candidate)
+        return selected
+
+    def _select_candidates(
+        self,
+        builtin_candidates: List[RouteCandidate],
+        plugin_candidates: List[RouteCandidate],
+    ) -> List[RouteCandidate]:
+        """选择最终路由：相同 detector_type 下插件优先于内置兼容实现。"""
+        plugins = self._dedupe_source(plugin_candidates)
+        builtins = self._dedupe_source(builtin_candidates)
+        plugin_by_scene = {
+            candidate.detector_type: candidate
+            for candidate in plugins
+            if candidate.detector_type is not None
+        }
+        retained_builtins = []
+        for candidate in builtins:
+            plugin = plugin_by_scene.get(candidate.detector_type)
+            if candidate.detector_type is not None and plugin is not None:
+                vision_logger.info(
+                    "插件路由覆盖内置兼容示例 detector_type={} builtin={} plugin={}",
+                    candidate.detector_type,
+                    candidate.module_name,
+                    plugin.module_name,
+                )
+                continue
+            retained_builtins.append(candidate)
+        return [*plugins, *retained_builtins]
 
     def _scene_enabled(self, detector_type: str) -> bool:
         """按 settings.ENABLED_SCENES 判定某检测场景是否启用。
@@ -230,15 +278,27 @@ class RouterRegistry:
         :param package_name: 包名，如 'routers'
         :return: 注册的路由数量
         """
-        routers = self.find_routers(package_name)
-        routers.extend(self.find_plugin_routers())
-        for candidate in routers:
+        # 每次注册均从发现结果重建状态，避免重复调用残留旧候选。
+        self.routers = {}
+        self.router_configs = {}
+        self.base_routers = []
+        builtins = self.find_routers(package_name)
+        plugins = self.find_plugin_routers()
+        selected = self._select_candidates(builtins, plugins)
+        self.base_routers = [
+            candidate.base_router
+            for candidate in selected
+            if candidate.base_router is not None
+        ]
+        for candidate in selected:
             app.include_router(
                 candidate.router,
                 prefix=candidate.config["prefix"],
                 tags=candidate.config["tags"],
             )
+            self.routers[candidate.module_name] = candidate.router
+            self.router_configs[candidate.module_name] = candidate.config
             vision_logger.info(
                 f"注册路由模块 {candidate.module_name} 到 FastAPI 应用"
             )
-        return len(routers)
+        return len(selected)

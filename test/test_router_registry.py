@@ -1,6 +1,6 @@
 """RouterRegistry 路由注册器单元测试"""
 import pytest
-from fastapi import APIRouter
+from fastapi import APIRouter, FastAPI
 from routers.router_registry import RouteCandidate, RouterRegistry
 
 
@@ -50,6 +50,20 @@ class _FakePluginRouter(BaseRouter):
 
     def get_inputs(self, request_params, image):
         return None
+
+
+def _candidate(name, source, detector_type=None, base_router=None, path=None):
+    router = APIRouter()
+    if path is not None:
+        router.add_api_route(path, lambda: None)
+    return RouteCandidate(
+        module_name=name,
+        router=router,
+        config={"name": name, "tags": [name], "prefix": "/api/v1"},
+        source=source,
+        detector_type=detector_type,
+        base_router=base_router,
+    )
 
 
 def test_collect_base_router_candidate_records_source_and_detector_type():
@@ -103,7 +117,7 @@ def test_collect_api_router_candidate_has_no_base_router_metadata():
 
 
 def test_find_plugin_routers_discovers_entry_point(monkeypatch):
-    """entry_points 中暴露 BaseRouter 的插件应被发现并收集进 base_routers。"""
+    """entry_points 中暴露 BaseRouter 的插件应被发现但不提前进入预加载列表。"""
     fake_module = types.ModuleType("fake_vie_plugin")
     fake_module.router = _FakePluginRouter()
 
@@ -123,7 +137,81 @@ def test_find_plugin_routers_discovers_entry_point(monkeypatch):
     found = reg.find_plugin_routers()
 
     assert any(candidate.module_name == "fake_scene" for candidate in found)
-    assert any(br.detector_type == "fake_scene" for br in reg.base_routers)
+    assert reg.base_routers == []
+
+
+def test_plugin_candidate_replaces_builtin_for_same_detector_type():
+    registry = RouterRegistry()
+    builtin = _candidate("legacy", "builtin", "scene_a", object())
+    plugin = _candidate("plugin", "plugin", "scene_a", object())
+
+    assert registry._select_candidates([builtin], [plugin]) == [plugin]
+
+
+def test_builtin_remains_when_plugin_scene_is_absent():
+    registry = RouterRegistry()
+    builtin = _candidate("legacy", "builtin", "scene_a", object())
+
+    assert registry._select_candidates([builtin], []) == [builtin]
+
+
+def test_different_scenes_and_plain_routers_are_all_retained():
+    registry = RouterRegistry()
+    plain = _candidate("stats", "builtin")
+    builtin = _candidate("legacy", "builtin", "scene_a", object())
+    plugin = _candidate("plugin", "plugin", "scene_b", object())
+
+    assert registry._select_candidates([plain, builtin], [plugin]) == [
+        plugin,
+        plain,
+        builtin,
+    ]
+
+
+def test_duplicate_detector_type_in_same_source_keeps_first_and_warns(monkeypatch):
+    registry = RouterRegistry()
+    first = _candidate("first", "plugin", "scene_a", object())
+    duplicate = _candidate("duplicate", "plugin", "scene_a", object())
+    warnings = []
+    monkeypatch.setattr(
+        "routers.router_registry.vision_logger.warning",
+        lambda message, *args: warnings.append((message, args)),
+    )
+
+    assert registry._select_candidates([], [first, duplicate]) == [first]
+    assert warnings
+    assert warnings[0][1] == ("plugin", "scene_a", "first", "duplicate")
+
+
+def test_register_all_routers_selects_before_preload_and_rebuilds_state(monkeypatch):
+    registry = RouterRegistry()
+    old_base = SimpleNamespace(detector_type="old")
+    registry.base_routers = [old_base]
+    registry.routers = {"old": APIRouter()}
+    registry.router_configs = {"old": {"name": "old"}}
+    builtin_base = SimpleNamespace(
+        detector_type="scene_a", get_detector_singleton=lambda: pytest.fail()
+    )
+    plugin_base = SimpleNamespace(
+        detector_type="scene_a", get_detector_singleton=lambda: object()
+    )
+    builtin = _candidate(
+        "legacy", "builtin", "scene_a", builtin_base, "/detect"
+    )
+    plugin = _candidate(
+        "plugin", "plugin", "scene_a", plugin_base, "/detect"
+    )
+    monkeypatch.setattr(registry, "find_routers", lambda package_name: [builtin])
+    monkeypatch.setattr(registry, "find_plugin_routers", lambda: [plugin])
+    app = FastAPI()
+
+    assert registry.register_all_routers(app, "routers") == 1
+    assert registry.base_routers == [plugin_base]
+    assert registry.routers == {"plugin": plugin.router}
+    assert registry.router_configs == {"plugin": plugin.config}
+    assert [route.path for route in app.routes].count("/api/v1/detect") == 1
+
+    registry.preload_all()
 
 
 def test_find_plugin_routers_skips_broken_entry_point(monkeypatch):
