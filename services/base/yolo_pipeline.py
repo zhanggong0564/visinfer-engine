@@ -29,7 +29,7 @@ def run_yolo_nms(
     classes,
     agnostic: bool,
     nc: int,
-):
+) -> list[np.ndarray]:
     return non_max_suppression_v8(
         prediction,
         task=task,
