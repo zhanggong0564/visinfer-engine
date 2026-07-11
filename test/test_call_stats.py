@@ -143,21 +143,21 @@ def _make_router(monkeypatch, detect_side_effect, patch_record_call=True):
     router = _Router()
 
     async def _fake_process_image(*args, **kwargs):
-        from routers.base_router import DecodedUpload
+        from routers.upload_processor import DecodedUpload
         return DecodedUpload(
             image=np.zeros((10, 10, 3), dtype=np.uint8),
             raw_bytes=None,
             extension=".jpg",
         )
 
-    monkeypatch.setattr(router, "_process_image", _fake_process_image)
+    monkeypatch.setattr(router.upload_processor, "process", _fake_process_image)
 
     class _Detector:
         def detect(self, inputs):
             return detect_side_effect()
 
     monkeypatch.setattr(router, "get_detector_singleton", lambda: _Detector())
-    monkeypatch.setattr(router, "_persist_record", lambda **kw: None)
+    monkeypatch.setattr(router.backflow_service, "persist_record", lambda **kw: None)
 
     calls = []
     if patch_record_call:

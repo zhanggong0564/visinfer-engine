@@ -11,7 +11,8 @@ import pytest
 import types
 from fastapi import BackgroundTasks
 
-from routers.base_router import BaseRouter, DecodedUpload
+from routers.base_router import BaseRouter
+from routers.upload_processor import DecodedUpload
 from schemas.exceptions import InvalidImageError
 
 from routers.upload_persistence import (
@@ -161,13 +162,26 @@ class _Router(BaseRouter):
         return {"image": image}
 
 
+
+async def _process_upload(router, file, original_filename, received_at, fallback_product_type, stage_recorder=None):
+    return await router.upload_processor.process(
+        file,
+        original_filename,
+        pending_path_resolver=lambda extension: router.backflow_service.resolve_paths(
+            original_filename, received_at, fallback_product_type, "pending", extension
+        )["image_path"],
+        stage_recorder=stage_recorder,
+    )
+
+
 def test_process_image_publishes_original_bytes_before_return(monkeypatch, tmp_path):
     monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
     router = _Router()
     payload = _encoded(".png")
 
     upload = _run(
-        router._process_image(
+        _process_upload(
+            router,
             _FakeUpload(payload, "mismatched.jpg"),
             "mismatched.jpg",
             "2026-07-10T10:00:00.000",
@@ -200,14 +214,15 @@ def test_process_image_runs_decode_and_stage_concurrently(monkeypatch, tmp_path)
         both_started.wait()
         return original_write(payload, final_path)
 
-    monkeypatch.setattr("routers.base_router.decode_image", decode)
+    monkeypatch.setattr("routers.upload_processor.decode_image", decode)
     monkeypatch.setattr(
-        "routers.base_router.StagedImageWrite.write",
+        "routers.upload_processor.StagedImageWrite.write",
         staticmethod(stage),
     )
 
     upload = _run(
-        router._process_image(
+        _process_upload(
+            router,
             _FakeUpload(_encoded(".jpg"), "sample.jpg"),
             "sample.jpg",
             "2026-07-10T10:00:00.000",
@@ -224,7 +239,8 @@ def test_decode_failure_discards_staged_file(monkeypatch, tmp_path):
 
     with pytest.raises(InvalidImageError, match="图片读取失败"):
         _run(
-            router._process_image(
+            _process_upload(
+                router,
                 _FakeUpload(truncated_jpeg, "broken.jpg"),
                 "broken.jpg",
                 "2026-07-10T10:00:00.000",
@@ -239,14 +255,15 @@ def test_decode_failure_discards_staged_file(monkeypatch, tmp_path):
 def test_commit_failure_keeps_raw_bytes_and_cleans_temp(monkeypatch, tmp_path):
     monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
     monkeypatch.setattr(
-        "routers.base_router.StagedImageWrite.commit",
+        "routers.upload_processor.StagedImageWrite.commit",
         lambda self: (_ for _ in ()).throw(OSError("replace failed")),
     )
     router = _Router()
     payload = _encoded(".jpg")
 
     upload = _run(
-        router._process_image(
+        _process_upload(
+            router,
             _FakeUpload(payload, "sample.jpg"),
             "sample.jpg",
             "2026-07-10T10:00:00.000",
@@ -279,11 +296,12 @@ def test_cancellation_discards_stage_that_finishes_after_cancel(monkeypatch, tmp
             return await asyncio.shield(asyncio.create_task(finish_later()))
         return func(*args, **kwargs)
 
-    monkeypatch.setattr("routers.base_router.run_sync", controlled_run_sync)
+    monkeypatch.setattr("routers.upload_processor.run_sync", controlled_run_sync)
 
     async def exercise():
         task = asyncio.create_task(
-            router._process_image(
+            _process_upload(
+                router,
                 _FakeUpload(_encoded(".jpg"), "cancelled.jpg"),
                 "cancelled.jpg",
                 "2026-07-10T10:00:00.000",
@@ -309,20 +327,21 @@ def test_discard_failure_does_not_hide_commit_fallback(monkeypatch, tmp_path):
     async def inline_run_sync(func, /, *args, **kwargs):
         return func(*args, **kwargs)
 
-    monkeypatch.setattr("routers.base_router.run_sync", inline_run_sync)
+    monkeypatch.setattr("routers.upload_processor.run_sync", inline_run_sync)
     monkeypatch.setattr(
-        "routers.base_router.StagedImageWrite.commit",
+        "routers.upload_processor.StagedImageWrite.commit",
         lambda self: (_ for _ in ()).throw(OSError("replace failed")),
     )
     monkeypatch.setattr(
-        "routers.base_router.StagedImageWrite.discard",
+        "routers.upload_processor.StagedImageWrite.discard",
         lambda self: (_ for _ in ()).throw(OSError("unlink failed")),
     )
     router = _Router()
     payload = _encoded(".jpg")
 
     upload = _run(
-        router._process_image(
+        _process_upload(
+            router,
             _FakeUpload(payload, "sample.jpg"),
             "sample.jpg",
             "2026-07-10T10:00:00.000",
@@ -339,16 +358,17 @@ def test_discard_failure_does_not_hide_decode_error(monkeypatch, tmp_path):
     async def inline_run_sync(func, /, *args, **kwargs):
         return func(*args, **kwargs)
 
-    monkeypatch.setattr("routers.base_router.run_sync", inline_run_sync)
+    monkeypatch.setattr("routers.upload_processor.run_sync", inline_run_sync)
     monkeypatch.setattr(
-        "routers.base_router.StagedImageWrite.discard",
+        "routers.upload_processor.StagedImageWrite.discard",
         lambda self: (_ for _ in ()).throw(OSError("unlink failed")),
     )
     router = _Router()
 
     with pytest.raises(InvalidImageError, match="图片读取失败"):
         _run(
-            router._process_image(
+            _process_upload(
+                router,
                 _FakeUpload(b"\xff\xd8\xffbroken", "broken.jpg"),
                 "broken.jpg",
                 "2026-07-10T10:00:00.000",
@@ -359,7 +379,7 @@ def test_discard_failure_does_not_hide_decode_error(monkeypatch, tmp_path):
 
 def test_stage_failure_passes_raw_bytes_to_record_task(monkeypatch, tmp_path):
     monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
-    monkeypatch.setattr("routers.base_router.StagedImageWrite.write", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+    monkeypatch.setattr("routers.upload_processor.StagedImageWrite.write", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
     monkeypatch.setattr("routers.base_router.record_call", lambda scene, verdict: None)
     router = _Router()
     payload = _encoded(".png")
@@ -382,8 +402,8 @@ def test_record_image_retry_failure_still_writes_json(monkeypatch, tmp_path):
     monkeypatch.setattr("routers.base_router.write_bytes_atomically", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
     monkeypatch.setattr("routers.base_router.vision_logger", types.SimpleNamespace(warning=lambda message, *args: warnings.append((message, args))))
     router = _Router()
-    router._persist_record(original_filename="sample.jpg", raw_json="{}", result_dict={"status": "false"}, latency_ms=1.0, received_at="2026-07-10T10:00:00.000", fallback_product_type="TK2", raw_image_bytes=_encoded(".jpg"), image_extension=".jpg")
-    record_path = Path(router._resolve_backflow_paths("sample.jpg", "2026-07-10T10:00:00.000", "TK2", "ng", ".jpg")["record_path"])
+    router.backflow_service.persist_record(original_filename="sample.jpg", raw_json="{}", result_dict={"status": "false"}, latency_ms=1.0, received_at="2026-07-10T10:00:00.000", fallback_product_type="TK2", raw_image_bytes=_encoded(".jpg"), image_extension=".jpg")
+    record_path = Path(router.backflow_service.resolve_paths("sample.jpg", "2026-07-10T10:00:00.000", "TK2", "ng", ".jpg")["record_path"])
     assert record_path.exists()
     assert warnings
 

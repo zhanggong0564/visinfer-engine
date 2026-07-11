@@ -6,6 +6,7 @@ import numpy as np
 from fastapi import BackgroundTasks
 
 from routers.base_router import BaseRouter
+from routers import upload_processor
 from schemas.data_base import DetectResult, DetectionItem, InputParamsBusiness, MoMResult
 from schemas.inference_context import InferenceContext
 from services.base.business_logic_base import BusinessLogicBase
@@ -93,10 +94,7 @@ class _FakeUpload:
 
 class _Router(BaseRouter):
     def __init__(self):
-        self.router_name = "timing_router"
-        self.instance = None
-        self.detector_type = "timing_scene"
-        self.tag = None
+        super().__init__("timing_router", "/timing", "timing", "timing", "timing_scene")
 
     def request_schema(self, json_dict):
         return json_dict
@@ -115,6 +113,7 @@ async def _handle_with_background(router, background_tasks, file, json_data):
 
 def test_base_router_logs_request_stage_timings(monkeypatch):
     import routers.base_router as module
+    import routers.upload_processor as upload_processor
 
     logs = _LogCapture()
     monkeypatch.setattr(module, "vision_logger", logs)
@@ -122,8 +121,7 @@ def test_base_router_logs_request_stage_timings(monkeypatch):
     router = _Router()
 
     async def _process_image(
-        file, original_filename, received_at, fallback_product_type,
-        stage_recorder=None,
+        file, original_filename, pending_path_resolver, stage_recorder=None,
     ):
         if stage_recorder:
             stage_recorder("image_read", 1.0)
@@ -131,7 +129,7 @@ def test_base_router_logs_request_stage_timings(monkeypatch):
             stage_recorder("image_decode", 2.0)
             stage_recorder("image_stage_write", 1.5)
             stage_recorder("image_commit", 0.1)
-        return module.DecodedUpload(
+        return upload_processor.DecodedUpload(
             image=np.zeros((10, 10, 3), dtype=np.uint8),
             raw_bytes=None,
             extension=".jpg",
@@ -146,8 +144,8 @@ def test_base_router_logs_request_stage_timings(monkeypatch):
                 "message": "ok",
             }
 
-    monkeypatch.setattr(router, "_process_image", _process_image)
-    monkeypatch.setattr(router, "_persist_record", lambda **kwargs: None)
+    monkeypatch.setattr(router.upload_processor, "process", _process_image)
+    monkeypatch.setattr(router.backflow_service, "persist_record", lambda **kwargs: None)
     monkeypatch.setattr(router, "get_detector_singleton", lambda: _Detector())
     monkeypatch.setattr(module, "record_call", lambda scene, verdict: None)
 
@@ -181,8 +179,36 @@ def test_base_router_logs_request_stage_timings(monkeypatch):
         "get_detector",
         "detect",
         "result_to_dict",
-        "sanitize_result",
+        "vis_render",
         "response_build",
         "total",
     ):
         assert f"{stage}=" in log
+
+
+def test_router_orchestrates_components_in_order(monkeypatch):
+    router = _Router()
+    order = []
+
+    async def process(*args, **kwargs):
+        order.append("upload")
+        return upload_processor.DecodedUpload(np.zeros((2, 2, 3), dtype=np.uint8), None, ".jpg")
+
+    class Detector:
+        def detect(self, inputs):
+            order.append("detect")
+            return {"detailList": [], "status": "true"}
+
+    async def build(*args, **kwargs):
+        order.append("response")
+        return {"code": 1}
+
+    monkeypatch.setattr(router.upload_processor, "process", process)
+    monkeypatch.setattr(router, "get_detector_singleton", lambda: Detector())
+    monkeypatch.setattr(router.response_builder, "build", build)
+    monkeypatch.setattr(router.backflow_service, "persist_record", lambda **kwargs: None)
+    monkeypatch.setattr("routers.base_router.record_call", lambda *args: None)
+
+    response = _run(_handle_with_background(router, BackgroundTasks(), _FakeUpload(), '{"modelParams": {"product_type": "T1"}}'))
+    assert response == {"code": 1}
+    assert order == ["upload", "detect", "response"]

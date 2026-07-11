@@ -12,7 +12,8 @@ python_multipart.__version__ = "0.0.20"
 sys.modules.setdefault("python_multipart", python_multipart)
 
 from config import settings
-from routers.base_router import BaseRouter, DecodedUpload
+from routers.base_router import BaseRouter
+from routers.upload_processor import DecodedUpload
 
 
 def _run(coro):
@@ -65,7 +66,7 @@ def _make_router(monkeypatch):
             extension=".jpg",
         )
 
-    monkeypatch.setattr(router, "_process_image", _fake_process_image)
+    monkeypatch.setattr(router.upload_processor, "process", _fake_process_image)
 
     class _Detector:
         def detect(self, inputs):
@@ -75,7 +76,7 @@ def _make_router(monkeypatch):
     monkeypatch.setattr("routers.base_router.record_call", lambda scene, verdict: None)
 
     persisted = []
-    monkeypatch.setattr(router, "_persist_record", lambda **kw: persisted.append(kw))
+    monkeypatch.setattr(router.backflow_service, "persist_record", lambda **kw: persisted.append(kw))
     return router, persisted
 
 
@@ -93,15 +94,14 @@ def test_persisted_record_has_no_vis_image(monkeypatch):
     bg = BackgroundTasks()
     _run(router._process_detect_request(
         background_tasks=bg, file=_FakeUpload(), json_data="{}"))
-    # background_tasks 已登记但未执行；落盘走 run_sync(self._persist_record, **kw)，
-    # kw 里的 result_dict 不应含 vis_image
+    # background_tasks 已登记但未执行；落盘参数里的 result_dict 不应含 vis_image
     found = False
     for t in bg.tasks:
         kw = getattr(t, "kwargs", {}) or {}
         if "result_dict" in kw:
             found = True
             assert "vis_image" not in kw["result_dict"]
-    assert found, "未找到 _persist_record 的 result_dict 参数"
+    assert found, "未找到落盘任务的 result_dict 参数"
 
 
 def test_disabled_returns_empty_vis_image(monkeypatch):
@@ -148,7 +148,7 @@ def test_guideline_passed_to_render(monkeypatch):
             extension=".jpg",
         )
 
-    monkeypatch.setattr(router, "_process_image", _fake_process_image)
+    monkeypatch.setattr(router.upload_processor, "process", _fake_process_image)
 
     class _Detector:
         def detect(self, inputs):
@@ -156,7 +156,7 @@ def test_guideline_passed_to_render(monkeypatch):
 
     monkeypatch.setattr(router, "get_detector_singleton", lambda: _Detector())
     monkeypatch.setattr("routers.base_router.record_call", lambda scene, verdict: None)
-    monkeypatch.setattr(router, "_persist_record", lambda **kw: None)
+    monkeypatch.setattr(router.backflow_service, "persist_record", lambda **kw: None)
 
     _run(router._process_detect_request(
         background_tasks=BackgroundTasks(), file=_FakeUpload(), json_data="{}"))
