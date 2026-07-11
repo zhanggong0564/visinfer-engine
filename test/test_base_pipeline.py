@@ -1,4 +1,5 @@
 """推理编排层（Detector 协议 + 模板方法）单元测试"""
+from routers.response_builder import ResponseBuilder
 import numpy as np
 from services.base.detector import Detector
 
@@ -124,7 +125,7 @@ class TestResponseDetailNameSanitize:
             "message": "mismatch",
         }
 
-        BaseRouter._sanitize_detail_list_names(response_data)
+        ResponseBuilder.sanitize_detail_list_names(response_data)
         response = CommonResponse(
             code=int(ErrorCode.SUCCESS),
             message=ERROR_CODE_MESSAGES[ErrorCode.SUCCESS],

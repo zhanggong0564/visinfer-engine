@@ -115,6 +115,7 @@ async def _handle_with_background(router, background_tasks, file, json_data):
 
 def test_base_router_logs_request_stage_timings(monkeypatch):
     import routers.base_router as module
+    import routers.upload_processor as upload_processor
 
     logs = _LogCapture()
     monkeypatch.setattr(module, "vision_logger", logs)
@@ -131,7 +132,7 @@ def test_base_router_logs_request_stage_timings(monkeypatch):
             stage_recorder("image_decode", 2.0)
             stage_recorder("image_stage_write", 1.5)
             stage_recorder("image_commit", 0.1)
-        return module.DecodedUpload(
+        return upload_processor.DecodedUpload(
             image=np.zeros((10, 10, 3), dtype=np.uint8),
             raw_bytes=None,
             extension=".jpg",
@@ -146,8 +147,8 @@ def test_base_router_logs_request_stage_timings(monkeypatch):
                 "message": "ok",
             }
 
-    monkeypatch.setattr(router, "_process_image", _process_image)
-    monkeypatch.setattr(router, "_persist_record", lambda **kwargs: None)
+    monkeypatch.setattr(router.upload_processor, "process", _process_image)
+    monkeypatch.setattr(router.backflow_service, "persist_record", lambda **kwargs: None)
     monkeypatch.setattr(router, "get_detector_singleton", lambda: _Detector())
     monkeypatch.setattr(module, "record_call", lambda scene, verdict: None)
 
