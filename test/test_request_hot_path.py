@@ -214,9 +214,9 @@ def test_process_image_runs_decode_and_stage_concurrently(monkeypatch, tmp_path)
         both_started.wait()
         return original_write(payload, final_path)
 
-    monkeypatch.setattr("routers.base_router.decode_image", decode)
+    monkeypatch.setattr("routers.upload_processor.decode_image", decode)
     monkeypatch.setattr(
-        "routers.base_router.StagedImageWrite.write",
+        "routers.upload_processor.StagedImageWrite.write",
         staticmethod(stage),
     )
 
@@ -255,7 +255,7 @@ def test_decode_failure_discards_staged_file(monkeypatch, tmp_path):
 def test_commit_failure_keeps_raw_bytes_and_cleans_temp(monkeypatch, tmp_path):
     monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
     monkeypatch.setattr(
-        "routers.base_router.StagedImageWrite.commit",
+        "routers.upload_processor.StagedImageWrite.commit",
         lambda self: (_ for _ in ()).throw(OSError("replace failed")),
     )
     router = _Router()
@@ -296,7 +296,7 @@ def test_cancellation_discards_stage_that_finishes_after_cancel(monkeypatch, tmp
             return await asyncio.shield(asyncio.create_task(finish_later()))
         return func(*args, **kwargs)
 
-    monkeypatch.setattr("routers.base_router.run_sync", controlled_run_sync)
+    monkeypatch.setattr("routers.upload_processor.run_sync", controlled_run_sync)
 
     async def exercise():
         task = asyncio.create_task(
@@ -327,13 +327,13 @@ def test_discard_failure_does_not_hide_commit_fallback(monkeypatch, tmp_path):
     async def inline_run_sync(func, /, *args, **kwargs):
         return func(*args, **kwargs)
 
-    monkeypatch.setattr("routers.base_router.run_sync", inline_run_sync)
+    monkeypatch.setattr("routers.upload_processor.run_sync", inline_run_sync)
     monkeypatch.setattr(
-        "routers.base_router.StagedImageWrite.commit",
+        "routers.upload_processor.StagedImageWrite.commit",
         lambda self: (_ for _ in ()).throw(OSError("replace failed")),
     )
     monkeypatch.setattr(
-        "routers.base_router.StagedImageWrite.discard",
+        "routers.upload_processor.StagedImageWrite.discard",
         lambda self: (_ for _ in ()).throw(OSError("unlink failed")),
     )
     router = _Router()
@@ -358,9 +358,9 @@ def test_discard_failure_does_not_hide_decode_error(monkeypatch, tmp_path):
     async def inline_run_sync(func, /, *args, **kwargs):
         return func(*args, **kwargs)
 
-    monkeypatch.setattr("routers.base_router.run_sync", inline_run_sync)
+    monkeypatch.setattr("routers.upload_processor.run_sync", inline_run_sync)
     monkeypatch.setattr(
-        "routers.base_router.StagedImageWrite.discard",
+        "routers.upload_processor.StagedImageWrite.discard",
         lambda self: (_ for _ in ()).throw(OSError("unlink failed")),
     )
     router = _Router()
@@ -379,7 +379,7 @@ def test_discard_failure_does_not_hide_decode_error(monkeypatch, tmp_path):
 
 def test_stage_failure_passes_raw_bytes_to_record_task(monkeypatch, tmp_path):
     monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
-    monkeypatch.setattr("routers.base_router.StagedImageWrite.write", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+    monkeypatch.setattr("routers.upload_processor.StagedImageWrite.write", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
     monkeypatch.setattr("routers.base_router.record_call", lambda scene, verdict: None)
     router = _Router()
     payload = _encoded(".png")
