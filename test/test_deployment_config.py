@@ -208,6 +208,12 @@ def test_framework_wheel_keeps_third_party_dependencies_external():
     assert "dependencies = []" in framework
 
 
+def test_framework_package_version_includes_yolo_pipeline():
+    framework = Path("pyproject.toml").read_text(encoding="utf-8")
+
+    assert 'version = "2.0.1"' in framework
+
+
 def test_requirements_is_the_ppocr_runtime_dependency_entrypoint():
     requirements = Path("requirements.txt").read_text(encoding="utf-8").lower()
     for package in ("fastapi", "python-multipart", "paddleocr", "paddlex"):
