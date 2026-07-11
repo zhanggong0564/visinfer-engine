@@ -10,6 +10,7 @@
 import importlib
 import pkgutil
 import inspect
+from collections import Counter
 from dataclasses import dataclass
 from importlib.metadata import entry_points
 from typing import Dict, List, Optional
@@ -100,8 +101,29 @@ class RouterRegistry:
             candidates = self._collect_routers_from_module(
                 module, ep.name, source="plugin"
             )
+            detector_counts = Counter(
+                candidate.detector_type
+                for candidate in candidates
+                if candidate.detector_type is not None
+            )
+            conflicting_types = {
+                detector_type
+                for detector_type, count in detector_counts.items()
+                if count > 1
+            }
+            if conflicting_types:
+                detection_factory._registry.clear()
+                detection_factory._registry.update(factory_snapshot)
+                vision_logger.warning(
+                    "插件入口包含重复场景，拒绝整个入口 entry_point={} "
+                    "detector_types={}",
+                    ep.name,
+                    sorted(conflicting_types),
+                )
+                continue
+
             accepted = []
-            accepted_detector_types = set()
+            skipped_detector_types = set()
             for candidate in candidates:
                 detector_type = candidate.detector_type
                 if detector_type is None:
@@ -115,18 +137,14 @@ class RouterRegistry:
                         seen_detector_types[detector_type],
                         candidate.module_name,
                     )
+                    skipped_detector_types.add(detector_type)
                     continue
                 seen_detector_types[detector_type] = candidate.module_name
-                accepted_detector_types.add(detector_type)
                 accepted.append(candidate)
 
-            # entry point 导入可能通过装饰器改写全局检测器工厂。仅提交最终接纳
-            # 场景的变化，避免重复、禁用或无路由插件污染有效工厂状态。
-            changed_types = {
-                *factory_snapshot,
-                *detection_factory._registry,
-            }
-            for detector_type in changed_types - accepted_detector_types:
+            # 普通 APIRouter 无法声明其工厂注册关系，必须保留入口的合法变化。
+            # 这里只恢复因跨入口场景重复而明确跳过的 detector_type。
+            for detector_type in skipped_detector_types:
                 if detector_type in factory_snapshot:
                     detection_factory._registry[detector_type] = factory_snapshot[
                         detector_type

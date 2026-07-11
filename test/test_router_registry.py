@@ -306,6 +306,68 @@ def test_duplicate_plugin_load_restores_first_detector_factory(monkeypatch):
     assert detection_factory._registry["scene_a"] is FirstDetector
 
 
+def test_plain_api_router_plugin_keeps_detector_factory_registration(monkeypatch):
+    """普通 APIRouter 无场景元数据，也不能误删其入口注册的检测器。"""
+    class PlainDetector:
+        pass
+
+    class _EP:
+        name = "plain_plugin"
+
+        def load(self):
+            detection_factory.register("plain_scene")(PlainDetector)
+            module = types.ModuleType("plain_plugin")
+            module.router = APIRouter()
+            return module
+
+    monkeypatch.setattr(detection_factory, "_registry", {})
+    monkeypatch.setattr(
+        "routers.router_registry.entry_points", lambda group=None: [_EP()]
+    )
+
+    found = RouterRegistry().find_plugin_routers()
+
+    assert [candidate.module_name for candidate in found] == ["plain_plugin"]
+    assert detection_factory._registry["plain_scene"] is PlainDetector
+
+
+def test_same_entry_point_duplicate_scene_is_rejected_and_factory_rolled_back(
+    monkeypatch,
+):
+    """单入口无法判断同场景哪个路由对应工厂实现，必须整入口拒绝。"""
+    class ExistingDetector:
+        pass
+
+    class ConflictingDetector:
+        pass
+
+    class _EP:
+        name = "conflicting_plugin"
+
+        def load(self):
+            detection_factory.register("scene_a")(ConflictingDetector)
+            module = types.ModuleType("conflicting_plugin")
+            first = _FakePluginRouter()
+            first.detector_type = "scene_a"
+            second = _FakePluginRouter()
+            second.detector_type = "scene_a"
+            module.first_router = first
+            module.second_router = second
+            return module
+
+    monkeypatch.setattr(
+        detection_factory, "_registry", {"scene_a": ExistingDetector}
+    )
+    monkeypatch.setattr(
+        "routers.router_registry.entry_points", lambda group=None: [_EP()]
+    )
+
+    found = RouterRegistry().find_plugin_routers()
+
+    assert found == []
+    assert detection_factory._registry == {"scene_a": ExistingDetector}
+
+
 def test_find_plugin_routers_empty(monkeypatch):
     """无任何插件安装时返回空列表。"""
     monkeypatch.setattr(
