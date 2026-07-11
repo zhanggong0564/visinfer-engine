@@ -39,4 +39,4 @@ conda run -n ppocr python scripts/release/build_wheels.py --no-isolation
 
 ## 智能体协作约定
 
-所有沟通使用中文。修改前先阅读相关模块及 `CLAUDE.md`；保留用户已有改动，不擅自清理工作区。执行 Python 脚本、测试和构建时始终使用 `ppocr` 环境。
+所有沟通使用中文；保留用户已有改动，不擅自清理工作区。执行 Python 脚本、测试和构建时始终使用 `ppocr` 环境。修改完后根据实际改动需要更新记录CHANGELOG.md
