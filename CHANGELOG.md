@@ -7,6 +7,9 @@
 
 ## [Unreleased]
 
+- **统一 ONNX 推理后端**：新增后端无关的 runner 协议与 ONNX Runtime 实现，YOLO、通用分类和动态宽度 CTC 识别统一通过 runner 执行，并仅为后续 TensorRT 后端预留扩展接口
+- **Panel Label ONNX OCR**：方向分类和文字识别迁移至 PP-LCNet/PP-OCRv5 ONNX 模型，保持现有 API、返回字段、阈值、排序及低置信方向双向仲裁语义不变
+- **推理依赖收敛**：生产环境移除 PaddleOCR/PaddleX，切换为 ONNX Runtime GPU 依赖；运行时默认优先使用 CUDA 并保留 CPU 回退，严格对齐测试则强制使用 GPU；运行时镜像继续保留 OpenCV 所需的 `libgl1`
 - 框架 YOLO 与 line-squeeze 插件复用无状态预处理、NMS 和坐标还原管线，公开推理接口与结果结构保持不变
 - 路由发现采用插件优先策略：同一 `detector_type` 同时存在内置兼容示例和独立插件时只注册并预加载插件；插件缺失或加载失败时保留旧实现
 - 重构 `BaseRouter` 内部职责：上传处理、数据回流和响应构造拆为独立组件；API、可视化、回流目录及异常时序保持不变
