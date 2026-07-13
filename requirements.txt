@@ -5,6 +5,5 @@ loguru
 python-multipart
 pydantic_settings
 numpy>=1.24.0,<2.0
-paddleocr
-paddlex
+onnxruntime-gpu==1.20.1
 chromadb

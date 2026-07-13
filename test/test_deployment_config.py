@@ -1,10 +1,12 @@
 import json
+import re
 import runpy
 from pathlib import Path
 
 import pytest
 import setuptools
 from Cython import Build
+from packaging.requirements import Requirement
 
 
 LEGACY_DC_FUSE_FILES = (
@@ -214,7 +216,46 @@ def test_framework_package_version_includes_yolo_pipeline():
     assert 'version = "2.0.1"' in framework
 
 
-def test_requirements_is_the_ppocr_runtime_dependency_entrypoint():
-    requirements = Path("requirements.txt").read_text(encoding="utf-8").lower()
-    for package in ("fastapi", "python-multipart", "paddleocr", "paddlex"):
-        assert package in requirements
+def test_runtime_requirements_use_onnx_without_paddle():
+    requirements = [
+        Requirement(line)
+        for raw_line in Path("requirements.txt").read_text(encoding="utf-8").splitlines()
+        if (line := raw_line.strip()) and not line.startswith("#")
+    ]
+    by_name = {}
+    for requirement in requirements:
+        by_name.setdefault(requirement.name.lower(), []).append(requirement)
+
+    assert len(by_name["onnxruntime-gpu"]) == 1
+    assert str(by_name["onnxruntime-gpu"][0].specifier) == "==1.20.1"
+    assert "paddleocr" not in by_name
+    assert "paddlex" not in by_name
+
+
+def test_base_image_installs_local_onnx_wheel_before_requirements():
+    dockerfile = Path("Dockerfile.base").read_text(encoding="utf-8")
+    wheel = (
+        "onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64."
+        "manylinux_2_28_x86_64.whl"
+    )
+    local_install = f"pip install /tmp/{wheel} --no-deps"
+    requirements_install = "pip install -r /tmp/requirements.txt"
+
+    assert f"COPY whl/{wheel} /tmp/" in dockerfile
+    assert local_install in dockerfile
+    assert dockerfile.index(local_install) < dockerfile.index(requirements_install)
+    assert "--force-reinstall" not in dockerfile
+    assert "paddlepaddle_gpu" not in dockerfile.lower()
+
+
+def test_runtime_image_installs_opencv_system_libraries():
+    dockerfile = Path("Dockerfile.runtime").read_text(encoding="utf-8").lower()
+    apt_install = re.search(
+        r"apt-get install -y --no-install-recommends(?P<packages>.*?)&&",
+        dockerfile,
+        flags=re.DOTALL,
+    )
+
+    assert apt_install is not None
+    packages = set(re.findall(r"^\s*([a-z0-9.+-]+)\s*\\?$", apt_install["packages"], re.MULTILINE))
+    assert {"libgl1", "libgomp1"}.issubset(packages)

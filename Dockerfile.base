@@ -3,20 +3,18 @@
 #
 # 这一层是三个场景镜像（Dockerfile / Dockerfile.panel-label / Dockerfile.scenes）
 # 的公共依赖环境：cuda 系统库 + 构建工具链 + 装好【全部 pip 依赖】的 venv + Cython。
-# 它最慢最重（paddlepaddle-gpu ~1.2G + paddleocr/paddlex + onnxruntime），但在所有
+# 它最慢最重（CUDA 运行库 + onnxruntime-gpu + Python 依赖），但在所有
 # 场景间字节级一致，故抽出来只构建一次，各场景镜像 `FROM mobile_vision:base` 复用，
 # 把「改代码/换场景」的镜像构建从几十分钟降到几分钟（只剩 Cython 编译插件 .so）。
 #
-# 何时需要重建本镜像：仅当 requirements.txt / paddle / onnxruntime 等【依赖】变化时。
+# 何时需要重建本镜像：仅当 requirements.txt / onnxruntime 等【依赖】变化时。
 #   业务代码（框架 + 插件）不进 base，留在各场景镜像 builder 阶段快速编译。
 #
 # 构建：  docker build -f Dockerfile.base -t mobile_vision:base .
 #   （或 bash scripts/release/build_base.sh）
 #
 # 依赖说明：
-#   - paddlepaddle-gpu 3.0.0 (cu118)  : whl/paddlepaddle_gpu-3.0.0-*.whl
 #   - onnxruntime-gpu   1.20.1 (cu118) : whl/onnxruntime_gpu-1.20.1-*.whl
-#   - paddleocr / paddlex               : pip（阿里云镜像）
 # =========================================================
 
 ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
@@ -45,24 +43,17 @@ RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g; s@//security.ubuntu
 RUN python3.10 -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
 
-# 先装 pip 依赖（利用 layer 缓存，依赖不变不重装）
+# 复制依赖清单与部署提供的 CUDA 11.8 ONNX Runtime wheel
 COPY requirements.txt /tmp/requirements.txt
 COPY whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl /tmp/
-COPY whl/paddlepaddle_gpu-3.0.0-cp310-cp310-manylinux1_x86_64.whl /tmp/
 
 # 安装顺序说明：
-#  1. 装 requirements（含 paddleocr/paddlex，会自动拉 CPU 版 paddlepaddle，以及 numpy、opencv 等）
-#  2. 用本地 whl 以 --no-deps 安装 GPU 版 paddlepaddle：
-#     - 跳过所有 nvidia-*-cu11 pip 包（cudnn/cublas/cufft 等，合计 ~2GB）
-#     - 这些 CUDA 库已由 base image（cuda:11.8.0-cudnn8-runtime）作为系统库提供
-#     - 再单独安装 paddlepaddle 所需的 4 个纯 Python 依赖
-#  3. 最后强制替换为 GPU 版 onnxruntime（已自带 CUDA 链接，无需 nvidia pip 包）
+#  1. 先用 --no-deps 安装部署提供的 onnxruntime-gpu 1.20.1 本地 wheel，避免从索引重复下载
+#  2. 再装 requirements；已安装 wheel 满足精确版本要求，其依赖统一按清单解析并保持 numpy<2
 # 不强升 pip：基础镜像自带 pip 已足够，强升会解析到最新版而镜像源对未同步新文件返回 403。
 RUN pip install --upgrade setuptools wheel \
-    && pip install -r /tmp/requirements.txt \
-    && pip install /tmp/paddlepaddle_gpu-3.0.0-cp310-cp310-manylinux1_x86_64.whl --force-reinstall --no-deps \
-    && pip install decorator astor "opt_einsum==3.3.0" networkx protobuf \
-    && pip install /tmp/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl --force-reinstall
+    && pip install /tmp/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl --no-deps \
+    && pip install -r /tmp/requirements.txt
 
 # 业务模块经 Cython 编译为 .so（各场景镜像 builder 阶段执行 build_wheels.py），编译器随 venv 备好
 RUN pip install "Cython>=3"
