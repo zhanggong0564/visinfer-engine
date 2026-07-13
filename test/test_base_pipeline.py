@@ -1,7 +1,75 @@
 """推理编排层（Detector 协议 + 模板方法）单元测试"""
 from routers.response_builder import ResponseBuilder
 import numpy as np
+import pytest
 from services.base.detector import Detector
+from services.base.inference_runner import TensorInfo
+from services.base.onnx_base import BaseOnnxInfer
+from schemas.exceptions import ModelInferenceError
+
+
+EXPECTED_RESULT = object()
+
+
+class _FakeRunner:
+    input_infos = (TensorInfo("images", (1, 3, 32, 32), "tensor(float)"),)
+    output_infos = (TensorInfo("output0", (1, 6, 1), "tensor(float)"),)
+    providers = ("FakeExecutionProvider",)
+
+    def __init__(self):
+        self.inputs = []
+
+    def __bool__(self):
+        return False
+
+    def run(self, inputs):
+        self.inputs.append(inputs)
+        return [np.zeros((1, 6, 1), dtype=np.float32)]
+
+
+class _StubOnnxInfer(BaseOnnxInfer):
+    def preprocess(self, image):
+        meta = type("Meta", (), {})()
+        return np.zeros((1, 3, 32, 32), dtype=np.float32), meta
+
+    def post_process(self, outputs, meta):
+        return EXPECTED_RESULT
+
+
+def test_base_onnx_infer_uses_injected_runner():
+    runner = _FakeRunner()
+    model = _StubOnnxInfer("unused.onnx", runner=runner)
+
+    result = model.infer(np.zeros((32, 32, 3), dtype=np.uint8))
+
+    assert set(runner.inputs[0]) == {"images"}
+    assert model.input_names == ["images"]
+    assert model.output_names == ["output0"]
+    assert model.providers == list(runner.providers)
+    assert result is EXPECTED_RESULT
+
+
+def test_base_onnx_infer_preserves_model_inference_error():
+    expected = ModelInferenceError("runner failed")
+    runner = _FakeRunner()
+    runner.run = lambda inputs: (_ for _ in ()).throw(expected)
+    model = _StubOnnxInfer("unused.onnx", runner=runner)
+
+    with pytest.raises(ModelInferenceError) as caught:
+        model.infer(np.zeros((32, 32, 3), dtype=np.uint8))
+
+    assert caught.value is expected
+
+
+def test_base_onnx_infer_wraps_unexpected_error():
+    runner = _FakeRunner()
+    runner.run = lambda inputs: (_ for _ in ()).throw(RuntimeError("backend failed"))
+    model = _StubOnnxInfer("unused.onnx", runner=runner)
+
+    with pytest.raises(ModelInferenceError) as caught:
+        model.infer(np.zeros((32, 32, 3), dtype=np.uint8))
+
+    assert caught.value.context["original_error"] == "backend failed"
 
 
 class TestDetectorProtocol:
