@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vie-framework"
-version = "2.0.1"
+version = "2.1.0"
 description = "VisInfer Engine 框架本体（services/schemas/routers/utils/config，仅基类与插件发现机制，不含具体场景）"
 requires-python = ">=3.10"
 # 运行期第三方依赖（fastapi/onnxruntime/loguru 等）由 requirements.txt 统一安装，

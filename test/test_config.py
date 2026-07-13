@@ -20,7 +20,7 @@ import os
 def test_settings_defaults():
     with patch.dict("os.environ", {}, clear=True):
         assert settings.API_TITLE == "Mobile Vision alg API"
-        assert settings.API_VERSION == "2.0.1"
+        assert settings.API_VERSION == "2.1.0"
         assert settings.HOST == "0.0.0.0"
         assert settings.PORT == 3001
         assert settings.LOG_DIR == "logs"

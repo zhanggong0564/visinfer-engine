@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
 
     API_TITLE: str = "Mobile Vision alg API"
-    API_VERSION: str = "2.0.1"
+    API_VERSION: str = "2.1.0"
 
     HOST: str = "0.0.0.0"
     PORT: int = 3001
