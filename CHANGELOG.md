@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+- **RF-DETR ONNX 分割推理**：新增通用 RF-DETR ONNX 推理器，使用 OpenCV 完成
+  RGB 缩放、ImageNet 标准化、DETR 输出解码与分割轮廓生成，并保持 `DetectResult`
+  契约不变。
+
 ## [2.1.1] - 2026-07-14
 
 - **ONNX GPU 环境对齐**：统一基础镜像到 CUDA 12.4 + cuDNN 9，与 ONNX Runtime GPU 1.20.1 的官方运行依赖保持一致，修复 CUDA provider 初始化失败。
