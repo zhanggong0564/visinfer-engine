@@ -64,3 +64,5 @@ scripts
 # Superpowers 隔离开发工作区
 .worktrees/
 S1S2
+demo/test_report.md
+demo/parallel_eval_report.md
