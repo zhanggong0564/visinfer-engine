@@ -14,7 +14,7 @@
 # 构建：  docker build -f Dockerfile.runtime -t mobile_vision:runtime .
 # =========================================================
 
-ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu22.04
 # 公共依赖环境（venv + Cython），见 Dockerfile.base
 ARG BUILDER_IMAGE=mobile_vision:base
 

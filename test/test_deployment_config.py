@@ -43,6 +43,19 @@ def test_compose_persists_data_directory():
     assert "./data:/app/workspace/data" in compose
 
 
+def test_onnx_runtime_gpu_image_matches_ort_120_cuda_requirements():
+    expected_base = (
+        "swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/"
+        "cuda:12.4.1-cudnn9-runtime-ubuntu22.04"
+    )
+    for dockerfile_name in ("Dockerfile.base", "Dockerfile.runtime"):
+        dockerfile = Path(dockerfile_name).read_text(encoding="utf-8")
+        assert f"ARG BASE_IMAGE={expected_base}" in dockerfile
+
+    requirements = Path("requirements.txt").read_text(encoding="utf-8")
+    assert "onnxruntime-gpu==1.20.1" in requirements
+
+
 def test_container_healthchecks_use_readiness_endpoint():
     compose = Path("docker-compose.scenes.yml").read_text(encoding="utf-8")
     dockerfile = Path("Dockerfile.runtime").read_text(encoding="utf-8")

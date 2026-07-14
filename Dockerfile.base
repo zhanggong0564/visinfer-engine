@@ -14,10 +14,10 @@
 #   （或 bash scripts/release/build_base.sh）
 #
 # 依赖说明：
-#   - onnxruntime-gpu   1.20.1 (cu118) : whl/onnxruntime_gpu-1.20.1-*.whl
+#   - onnxruntime-gpu   1.20.1 (CUDA 12.x/cuDNN 9.x) : whl/onnxruntime_gpu-1.20.1-*.whl
 # =========================================================
 
-ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu22.04
 
 FROM ${BASE_IMAGE} AS base
 
@@ -43,7 +43,7 @@ RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g; s@//security.ubuntu
 RUN python3.10 -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
 
-# 复制依赖清单与部署提供的 CUDA 11.8 ONNX Runtime wheel
+# 复制依赖清单与部署提供的 CUDA 12.x ONNX Runtime wheel
 COPY requirements.txt /tmp/requirements.txt
 COPY whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl /tmp/
 
