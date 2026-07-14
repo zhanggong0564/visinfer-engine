@@ -2,7 +2,7 @@
 
 ## 项目结构与模块组织
 
-本项目是基于 FastAPI 的工业视觉推理服务。`app.py` 是本地入口；框架代码位于 `services/`、`routers/`、`schemas/`、`config/` 和 `utils/`。场景实现放在 `plugins/vie-plugin-*`，通过 `vie.plugins` entry point 自动发现。通用推理能力应下沉到 `services/base/`，场景专属的业务逻辑、配置和模型接口应留在对应插件中。
+本项目是基于 FastAPI 的工业视觉推理服务。`app.py` 是本地入口；框架代码位于 `services/`、`routers/`、`schemas/`、`config/` 和 `utils/`。场景实现放在 `plugins/vie-plugin-*`，通过 `vie.plugins` entry point 自动发现。每个插件目录都是独立 Git 仓库，插件代码、测试、版本号和 `CHANGELOG.md` 只在对应插件仓库维护；主仓库不跟踪插件文件。通用推理能力应下沉到 `services/base/`，场景专属的业务逻辑、配置和模型接口应留在对应插件中。
 
 框架测试位于 `test/`，插件测试位于各插件的 `tests/`。模型存放在 `weights/<scene>/`，发布脚本位于 `scripts/release/`，OCR 数据工具位于 `scripts/data/`。不要提交 `build/`、`dist/`、`pkg/`、日志或本地输出产物。
 
@@ -39,4 +39,4 @@ conda run -n ppocr python scripts/release/build_wheels.py --no-isolation
 
 ## 智能体协作约定
 
-所有沟通使用中文；保留用户已有改动，不擅自清理工作区。执行 Python 脚本、测试和构建时始终使用 `ppocr` 环境。修改完后根据实际改动需要更新记录CHANGELOG.md
+所有沟通使用中文；保留用户已有改动，不擅自清理工作区。执行 Python 脚本、测试和构建时始终使用 `ppocr` 环境。修改完后根据实际改动需要更新变更记录：框架、构建、发布脚本或部署配置改动更新根目录 `CHANGELOG.md`；插件改动进入对应 `plugins/vie-plugin-*/CHANGELOG.md`，不得用根仓库记录替代插件记录。修改插件时须在插件目录单独检查 `git status`、`git diff` 和提交范围；修改框架与插件时分别在对应 Git 仓库提交，禁止跨仓库暂存或提交。
