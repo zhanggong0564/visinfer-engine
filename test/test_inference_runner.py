@@ -55,6 +55,38 @@ def test_onnx_runner_prefers_cuda_and_keeps_cpu(monkeypatch):
     )
 
 
+def test_onnx_runner_uses_requested_sequential_execution_mode():
+    session = fake_session()
+
+    with patch(
+        "services.base.inference_runner.ort.InferenceSession", return_value=session
+    ) as factory:
+        OnnxRuntimeRunner(
+            "model.onnx", warmup=False, execution_mode="sequential"
+        )
+
+    assert (
+        factory.call_args.kwargs["sess_options"].execution_mode
+        == ort.ExecutionMode.ORT_SEQUENTIAL
+    )
+
+
+def test_onnx_runner_can_write_runtime_profile():
+    session = fake_session()
+    session.end_profiling.return_value = "profile.json"
+
+    with patch(
+        "services.base.inference_runner.ort.InferenceSession", return_value=session
+    ) as factory:
+        runner = OnnxRuntimeRunner(
+            "model.onnx", warmup=False, enable_profiling=True
+        )
+
+    assert factory.call_args.kwargs["sess_options"].enable_profiling is True
+    assert runner.end_profiling() == "profile.json"
+    session.end_profiling.assert_called_once_with()
+
+
 def test_onnx_runner_exposes_tensor_metadata_and_protocol():
     runner = make_runner(fake_session(input_shape=["batch", 3, 8, 8]))
 

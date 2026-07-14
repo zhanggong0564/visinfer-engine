@@ -43,13 +43,25 @@ class OnnxRuntimeRunner:
         model_path: str,
         providers: Sequence[str] | None = None,
         warmup: bool = True,
+        execution_mode: str = "parallel",
+        enable_profiling: bool = False,
     ) -> None:
         selected_providers = (
             list(providers) if providers is not None else self._defaults()
         )
         session_options = ort.SessionOptions()
         session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        session_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
+        execution_modes = {
+            "parallel": ort.ExecutionMode.ORT_PARALLEL,
+            "sequential": ort.ExecutionMode.ORT_SEQUENTIAL,
+        }
+        try:
+            session_options.execution_mode = execution_modes[execution_mode]
+        except KeyError as exc:
+            raise ValueError(
+                "execution_mode must be 'parallel' or 'sequential'"
+            ) from exc
+        session_options.enable_profiling = enable_profiling
 
         try:
             self._session = ort.InferenceSession(
@@ -122,3 +134,7 @@ class OnnxRuntimeRunner:
             raise ModelInferenceError(
                 "模型推理失败", original_error=str(exc)
             ) from exc
+
+    def end_profiling(self) -> str:
+        """Stop ONNX Runtime profiling and return the generated trace path."""
+        return self._session.end_profiling()
