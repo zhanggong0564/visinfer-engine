@@ -399,8 +399,8 @@ def test_stage_failure_passes_raw_bytes_to_record_task(monkeypatch, tmp_path):
 def test_record_image_retry_failure_still_writes_json(monkeypatch, tmp_path):
     monkeypatch.setattr("routers.base_router.DATA_DIR", str(tmp_path))
     warnings = []
-    monkeypatch.setattr("routers.base_router.write_bytes_atomically", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
-    monkeypatch.setattr("routers.base_router.vision_logger", types.SimpleNamespace(warning=lambda message, *args: warnings.append((message, args))))
+    monkeypatch.setattr("routers.backflow_service.write_bytes_atomically", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+    monkeypatch.setattr("routers.backflow_service.vision_logger", types.SimpleNamespace(warning=lambda message, *args: warnings.append((message, args))))
     router = _Router()
     router.backflow_service.persist_record(original_filename="sample.jpg", raw_json="{}", result_dict={"status": "false"}, latency_ms=1.0, received_at="2026-07-10T10:00:00.000", fallback_product_type="TK2", raw_image_bytes=_encoded(".jpg"), image_extension=".jpg")
     record_path = Path(router.backflow_service.resolve_paths("sample.jpg", "2026-07-10T10:00:00.000", "TK2", "ng", ".jpg")["record_path"])

@@ -123,7 +123,7 @@ def test_guideline_passed_to_render(monkeypatch):
         captured["guides"] = kwargs.get("guides")
         return "FAKE"
 
-    monkeypatch.setattr("routers.base_router.render_detection_overlay", _fake_render)
+    monkeypatch.setattr("routers.response_builder.render_detection_overlay", _fake_render)
 
     class _GuideRouter(BaseRouter):
         def __init__(self):
