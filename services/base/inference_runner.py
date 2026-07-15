@@ -1,12 +1,18 @@
 """Backend-independent inference runner contracts and ONNX Runtime adapter."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol, Sequence, runtime_checkable
 
 import numpy as np
 import onnxruntime as ort
 
+from config import settings
 from schemas.exceptions import ModelInferenceError
+from services.base.runtime_status import (
+    RuntimeStatusRegistry,
+    runtime_status_registry,
+)
 from utils import vision_logger
 
 
@@ -45,7 +51,17 @@ class OnnxRuntimeRunner:
         warmup: bool = True,
         execution_mode: str = "parallel",
         enable_profiling: bool = False,
+        require_cuda: bool | None = None,
+        status_registry: RuntimeStatusRegistry | None = None,
     ) -> None:
+        cuda_required = (
+            settings.ONNX_REQUIRE_CUDA if require_cuda is None else require_cuda
+        )
+        registry = (
+            runtime_status_registry
+            if status_registry is None
+            else status_registry
+        )
         selected_providers = (
             list(providers) if providers is not None else self._defaults()
         )
@@ -72,13 +88,29 @@ class OnnxRuntimeRunner:
             self._input_infos = self._tensor_infos(self._session.get_inputs())
             self._output_infos = self._tensor_infos(self._session.get_outputs())
             self._providers = tuple(self._session.get_providers())
+            if (
+                cuda_required
+                and "CUDAExecutionProvider" not in self._providers
+            ):
+                raise ModelInferenceError(
+                    "CUDA 执行提供程序不可用",
+                    model=Path(model_path).name,
+                    requested_providers=selected_providers,
+                    actual_providers=list(self._providers),
+                )
+            registry.register(model_path, self._providers)
             self._output_names = [info.name for info in self._output_infos]
+        except ModelInferenceError:
+            raise
         except Exception as exc:
             raise ModelInferenceError(
                 "模型加载失败", original_error=str(exc)
             ) from exc
 
-        vision_logger.info(f"使用的执行提供程序: {list(self._providers)}")
+        vision_logger.info(
+            f"模型 {Path(model_path).name} 使用的执行提供程序: "
+            f"{list(self._providers)}"
+        )
         if warmup:
             self._warmup()
 

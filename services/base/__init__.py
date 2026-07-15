@@ -16,6 +16,11 @@ from .classification_pipeline import (
 from .ctc_recognition_pipeline import BaseCtcRecognitionPipeline
 from .detector import Detector
 from .inference_runner import InferenceRunner, OnnxRuntimeRunner, TensorInfo
+from .runtime_status import (
+    ModelRuntimeStatus,
+    RuntimeStatusRegistry,
+    runtime_status_registry,
+)
 
 
 __all__ = [
@@ -26,6 +31,9 @@ __all__ = [
     "ClassificationResult",
     "Detector",
     "InferenceRunner",
+    "ModelRuntimeStatus",
     "OnnxRuntimeRunner",
+    "RuntimeStatusRegistry",
     "TensorInfo",
+    "runtime_status_registry",
 ]

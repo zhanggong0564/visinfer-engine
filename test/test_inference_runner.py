@@ -150,3 +150,50 @@ def test_onnx_runner_wraps_model_loading_error():
             OnnxRuntimeRunner("broken.onnx", warmup=False)
 
     assert exc_info.value.context["original_error"] == "invalid model"
+
+
+def test_onnx_runner_rejects_cpu_fallback_when_cuda_is_required():
+    session = fake_session()
+
+    with patch(
+        "services.base.inference_runner.ort.InferenceSession",
+        return_value=session,
+    ):
+        with pytest.raises(ModelInferenceError, match="CUDA"):
+            OnnxRuntimeRunner(
+                "/private/weights/model.onnx",
+                warmup=False,
+                require_cuda=True,
+            )
+
+
+def test_onnx_runner_accepts_cuda_and_registers_runtime_status():
+    session = fake_session()
+    session.get_providers.return_value = [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider",
+    ]
+    registry = MagicMock()
+
+    with patch(
+        "services.base.inference_runner.ort.InferenceSession",
+        return_value=session,
+    ):
+        runner = OnnxRuntimeRunner(
+            "weights/model.onnx",
+            warmup=False,
+            require_cuda=True,
+            status_registry=registry,
+        )
+
+    assert "CUDAExecutionProvider" in runner.providers
+    registry.register.assert_called_once_with(
+        "weights/model.onnx",
+        ("CUDAExecutionProvider", "CPUExecutionProvider"),
+    )
+
+
+def test_onnx_runner_default_policy_allows_cpu_session():
+    runner = make_runner(fake_session())
+
+    assert runner.providers == ("CPUExecutionProvider",)
