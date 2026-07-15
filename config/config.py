@@ -47,5 +47,14 @@ class Settings(BaseSettings):
     VIS_MAX_SIDE: int = 1280       # 缩图长边上限（像素），提升传输效率
     VIS_JPEG_QUALITY: int = 85     # 可视化图 JPEG 编码质量
 
+    # ONNX Runtime CUDA 显存与算法策略(解决大显卡多进程推理 OOM)
+    ORT_CUDA_DEVICE_ID: int = 0
+    # 卷积算法搜索:HEURISTIC(默认,避免按空闲显存穷举巨型 workspace)/EXHAUSTIVE/DEFAULT
+    ORT_CUDNN_CONV_ALGO_SEARCH: str = "HEURISTIC"
+    # 显存池扩张:kSameAsRequested(按需)/kNextPowerOfTwo(默认更激进)
+    ORT_ARENA_EXTEND_STRATEGY: str = "kSameAsRequested"
+    # 每进程 GPU 显存上限(GB),0=不限。多进程共卡评测时建议按 卡容量/进程数 设置
+    ORT_CUDA_MEM_LIMIT_GB: float = 0.0
+
 
 settings = Settings()

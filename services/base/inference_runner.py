@@ -65,6 +65,8 @@ class OnnxRuntimeRunner:
         selected_providers = (
             list(providers) if providers is not None else self._defaults()
         )
+        # 统一给 CUDA provider 注入显存/算法策略；对纯字符串和元组都安全
+        selected_providers = self._with_cuda_options(selected_providers)
         session_options = ort.SessionOptions()
         session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         execution_modes = {
@@ -113,6 +115,41 @@ class OnnxRuntimeRunner:
         )
         if warmup:
             self._warmup()
+
+    @staticmethod
+    def _cuda_provider_options() -> dict:
+        """CUDA provider 显存与算法策略。
+
+        关键点(解决大显卡多进程 OOM):
+        - cudnn_conv_algo_search=HEURISTIC: 不再按空闲显存穷举卷积算法、
+          申请巨型临时 workspace，改为启发式直选。这是 80G 卡多进程 OOM 的主因。
+        - arena_extend_strategy=kSameAsRequested: 显存池按需扩张，不再按 2 的幂
+          一次抓超大块，降低多进程叠加峰值。
+        - gpu_mem_limit: 每进程显存硬上限(0=不限)，多进程共卡时的双保险。
+        """
+        options: dict = {
+            "device_id": settings.ORT_CUDA_DEVICE_ID,
+            "cudnn_conv_algo_search": settings.ORT_CUDNN_CONV_ALGO_SEARCH,
+            "arena_extend_strategy": settings.ORT_ARENA_EXTEND_STRATEGY,
+        }
+        limit_gb = settings.ORT_CUDA_MEM_LIMIT_GB
+        if limit_gb and limit_gb > 0:
+            options["gpu_mem_limit"] = int(limit_gb * 1024 * 1024 * 1024)
+        return options
+
+    @classmethod
+    def _with_cuda_options(cls, providers: list) -> list:
+        """把 provider 列表里裸的 'CUDAExecutionProvider' 字符串替换为
+        (name, options) 元组；已是元组或非 CUDA 的原样保留。
+        这样即使调用方显式传入字符串 provider，也能享受显存策略。"""
+        cuda_opts = cls._cuda_provider_options()
+        normalized = []
+        for item in providers:
+            if item == "CUDAExecutionProvider":
+                normalized.append(("CUDAExecutionProvider", cuda_opts))
+            else:
+                normalized.append(item)
+        return normalized
 
     @staticmethod
     def _defaults() -> list[str]:
