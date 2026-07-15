@@ -212,3 +212,50 @@ def test_router_orchestrates_components_in_order(monkeypatch):
     response = _run(_handle_with_background(router, BackgroundTasks(), _FakeUpload(), '{"modelParams": {"product_type": "T1"}}'))
     assert response == {"code": 1}
     assert order == ["upload", "detect", "response"]
+
+
+def test_base_router_delegates_detection_to_admission(monkeypatch):
+    import routers.base_router as module
+
+    router = _Router()
+    calls = []
+
+    class _Admission:
+        async def run(self, detector_type, func, /, *args, **kwargs):
+            calls.append((detector_type, func.__name__, args))
+            return func(*args, **kwargs)
+
+    class _Detector:
+        def detect(self, inputs):
+            return {
+                "detailList": [],
+                "status": "true",
+                "error_msg": "",
+                "message": "ok",
+            }
+
+    async def _process_image(*args, **kwargs):
+        return upload_processor.DecodedUpload(
+            image=np.zeros((10, 10, 3), dtype=np.uint8),
+            raw_bytes=None,
+            extension=".jpg",
+        )
+
+    router.inference_admission = _Admission()
+    monkeypatch.setattr(router.upload_processor, "process", _process_image)
+    monkeypatch.setattr(router, "get_detector_singleton", lambda: _Detector())
+    monkeypatch.setattr(router.backflow_service, "persist_record", lambda **kwargs: None)
+    monkeypatch.setattr(module, "record_call", lambda *args: None)
+
+    response = _run(
+        _handle_with_background(
+            router,
+            BackgroundTasks(),
+            _FakeUpload(),
+            '{"modelParams": {"product_type": "T1"}}',
+        )
+    )
+
+    assert response.code == 1
+    assert calls[0][0] == "timing_scene"
+    assert calls[0][1] == "detect"

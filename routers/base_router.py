@@ -23,6 +23,7 @@ from schemas import CommonResponse, ErrorCode, ERROR_CODE_MESSAGES
 from schemas.exceptions import InvalidParamsError, InternalError
 from services import detection_factory
 from services.call_stats import record_call
+from services.inference_admission import inference_admission_controller
 from utils import vision_logger
 from utils.async_utils import run_sync
 from utils.timing import StageTimer
@@ -45,6 +46,7 @@ class BaseRouter(ABC):
         self.router_name = router_name
         self.instance = None
         self.detector_type = detector_type
+        self.inference_admission = inference_admission_controller
         self.backflow_service = BackflowService(self.detector_type, self.resolve_backflow_target, DATA_DIR)
         self.upload_processor = UploadProcessor(settings.MAX_UPLOAD_MB)
         self.response_builder = ResponseBuilder(settings.VIS_ENABLED, settings.VIS_MAX_SIDE, settings.VIS_JPEG_QUALITY)
@@ -123,7 +125,11 @@ class BaseRouter(ABC):
             # detect 是同步 CPU/GPU 密集操作，丢到线程池执行，避免阻塞事件循环
             try:
                 with timer.stage("detect"):
-                    result_info = await run_sync(detector.detect, inputs)
+                    result_info = await self.inference_admission.run(
+                        self.detector_type,
+                        detector.detect,
+                        inputs,
+                    )
             except Exception as exc:
                 # 检测失败（如型号未注册）也要落盘：数据回流的核心价值之一就是
                 # 收集这些"没见过"的新型号样本去标注、补型号。异常会跳过下方
