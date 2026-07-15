@@ -4,6 +4,7 @@
 采用多进程按型号分开测试，避免单进程长时间运行导致的性能退化。
 支持配置并发 worker 数量、可视化模式、超时设置等。
 """
+
 import os
 import sys
 import json
@@ -14,6 +15,8 @@ import multiprocessing
 from pathlib import Path
 from datetime import datetime
 from tqdm import tqdm
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def run_product_task(args):
@@ -38,21 +41,28 @@ def run_product_task(args):
 
     # 构造命令
     cmd = [
-        "/data/zhanggong/miniconda3/envs/padocr/bin/python",
+        sys.executable,
         "plugins/vie-plugin-panel-label/examples/run.py",
-        "--batch", f"{config['test_dir']}/{product_type}",
-        "--vis-dir", f"{config['vis_dir']}/{product_type}",
-        "--vis-mode", config["vis_mode"],
-        "--output-json", str(json_path),
-        "--rule", config["rule"],
+        "--batch",
+        f"{config['test_dir']}/{product_type}",
+        "--vis-dir",
+        f"{config['vis_dir']}/{product_type}",
+        "--vis-mode",
+        config["vis_mode"],
+        "--output-json",
+        str(json_path),
+        "--rule",
+        config["rule"],
     ]
 
     # 环境变量
     env = os.environ.copy()
-    env.update({
-        "PANEL_LABEL_GUIDELINE_FILTER": "false",
-        "QT_QPA_PLATFORM": "offscreen",
-    })
+    env.update(
+        {
+            "PANEL_LABEL_GUIDELINE_FILTER": "false",
+            "QT_QPA_PLATFORM": "offscreen",
+        }
+    )
 
     start_time = time.time()
 
@@ -65,7 +75,7 @@ def run_product_task(args):
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 timeout=config["timeout"],
-                cwd="/data/zhanggong/workspace/project/move_vsion/mobile_vision"
+                cwd=PROJECT_ROOT,
             )
 
         duration = time.time() - start_time
@@ -76,7 +86,7 @@ def run_product_task(args):
                 "product": product_type,
                 "status": "error",
                 "error": f"进程退出码 {result.returncode}",
-                "duration": duration
+                "duration": duration,
             }
 
         # 读取 JSON 结果
@@ -85,32 +95,18 @@ def run_product_task(args):
                 "product": product_type,
                 "status": "error",
                 "error": f"JSON 结果文件不存在: {json_path}",
-                "duration": duration
+                "duration": duration,
             }
 
         with open(json_path, encoding="utf-8") as f:
             json_result = json.load(f)
 
-        return {
-            "product": product_type,
-            "status": "success",
-            "result": json_result,
-            "duration": duration
-        }
+        return {"product": product_type, "status": "success", "result": json_result, "duration": duration}
 
     except subprocess.TimeoutExpired:
-        return {
-            "product": product_type,
-            "status": "timeout",
-            "duration": config["timeout"]
-        }
+        return {"product": product_type, "status": "timeout", "duration": config["timeout"]}
     except Exception as e:
-        return {
-            "product": product_type,
-            "status": "error",
-            "error": str(e),
-            "duration": time.time() - start_time
-        }
+        return {"product": product_type, "status": "error", "error": str(e), "duration": time.time() - start_time}
 
 
 def format_duration(seconds):
@@ -193,21 +189,19 @@ def generate_report(results, args, total_duration):
                 f"| {product} | {status_icon} | {pass_count}/{total_count} | {rate:.2%} | {duration_str} | {log_link} |"
             )
         elif r["status"] == "timeout":
-            report_lines.append(
-                f"| {product} | ⏱ TIMEOUT | - | - | {duration_str} | {log_link} |"
-            )
+            report_lines.append(f"| {product} | ⏱ TIMEOUT | - | - | {duration_str} | {log_link} |")
         else:  # error
-            report_lines.append(
-                f"| {product} | ✗ ERROR | - | - | {duration_str} | {log_link} |"
-            )
+            report_lines.append(f"| {product} | ✗ ERROR | - | - | {duration_str} | {log_link} |")
 
-    report_lines.extend([
-        "",
-        "---",
-        "",
-        "## 异常型号",
-        "",
-    ])
+    report_lines.extend(
+        [
+            "",
+            "---",
+            "",
+            "## 异常型号",
+            "",
+        ]
+    )
 
     # 超时型号
     timeout_products = [r for r in sorted_results if r["status"] == "timeout"]
@@ -232,18 +226,20 @@ def generate_report(results, args, total_duration):
         report_lines.append("无异常型号")
         report_lines.append("")
 
-    report_lines.extend([
-        "---",
-        "",
-        "## 文件索引",
-        "",
-        "| 路径 | 说明 |",
-        "|------|------|",
-        f"| `{args.log_dir}/` | 各型号详细日志与 JSON 统计 |",
-        f"| `{args.vis_dir}/` | 可视化结果（vis-mode={args.vis_mode}） |",
-        f"| `{args.summary}` | JSON 格式汇总统计 |",
-        "",
-    ])
+    report_lines.extend(
+        [
+            "---",
+            "",
+            "## 文件索引",
+            "",
+            "| 路径 | 说明 |",
+            "|------|------|",
+            f"| `{args.log_dir}/` | 各型号详细日志与 JSON 统计 |",
+            f"| `{args.vis_dir}/` | 可视化结果（vis-mode={args.vis_mode}） |",
+            f"| `{args.summary}` | JSON 格式汇总统计 |",
+            "",
+        ]
+    )
 
     # 写入报告文件
     with open(args.report, "w", encoding="utf-8") as f:
@@ -276,7 +272,7 @@ def generate_summary_json(results, args, total_duration):
             "vis_mode": args.vis_mode,
             "rule": args.rule,
             "timeout": args.timeout,
-            "total_duration_seconds": total_duration
+            "total_duration_seconds": total_duration,
         },
         "summary": {
             "total_products": len(results),
@@ -286,9 +282,9 @@ def generate_summary_json(results, args, total_duration):
             "total_images": total_images,
             "pass_images": pass_images,
             "fail_images": total_images - pass_images,
-            "pass_rate": pass_images / max(total_images, 1)
+            "pass_rate": pass_images / max(total_images, 1),
         },
-        "products": []
+        "products": [],
     }
 
     # 添加各型号详情
@@ -297,17 +293,19 @@ def generate_summary_json(results, args, total_duration):
             "product": r["product"],
             "status": r["status"],
             "duration": r["duration"],
-            "log": f"{args.log_dir}/{r['product']}.log"
+            "log": f"{args.log_dir}/{r['product']}.log",
         }
 
         if r["status"] == "success" and r.get("result"):
             result_data = r["result"]
-            product_info.update({
-                "pass": result_data.get("pass", 0),
-                "total": result_data.get("total", 0),
-                "rate": result_data.get("rate", 0.0),
-                "json": f"{args.log_dir}/{r['product']}.json"
-            })
+            product_info.update(
+                {
+                    "pass": result_data.get("pass", 0),
+                    "total": result_data.get("total", 0),
+                    "rate": result_data.get("rate", 0.0),
+                    "json": f"{args.log_dir}/{r['product']}.json",
+                }
+            )
         elif r["status"] == "error":
             product_info["error"] = r.get("error", "未知错误")
 
@@ -344,13 +342,12 @@ def print_summary(results, total_duration):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Panel Label 并发评测脚本",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        description="Panel Label 并发评测脚本", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--test-dir", default="demo/test_set", help="测试集根目录")
+    parser.add_argument("--test-dir", default="demo/data/panel_label/charging_pile", help="测试集根目录")
     parser.add_argument("--vis-dir", default="demo/test_set_vis_parallel", help="可视化输出根目录")
     parser.add_argument("--log-dir", default="demo/logs", help="日志输出目录")
-    parser.add_argument("--workers", type=int, default=2, help="并发进程数")
+    parser.add_argument("--workers", type=int, default=4, help="并发进程数")
     parser.add_argument("--timeout", type=int, default=1800, help="单型号超时秒数")
     parser.add_argument("--vis-mode", choices=["all", "failed", "none"], default="failed", help="可视化模式")
     parser.add_argument("--rule", default="all", choices=["front", "back", "all"], help="字符比较规则")
@@ -370,10 +367,7 @@ def main():
         print(f"错误: 测试集目录不存在: {test_dir}", file=sys.stderr)
         sys.exit(1)
 
-    product_types = sorted([
-        d.name for d in test_dir.iterdir()
-        if d.is_dir() and list(d.glob("*.jpg"))
-    ])
+    product_types = sorted([d.name for d in test_dir.iterdir() if d.is_dir() and list(d.glob("*.jpg"))])
 
     if not product_types:
         print(f"错误: 未在 {test_dir} 下发现包含 *.jpg 的型号子目录", file=sys.stderr)
@@ -398,12 +392,9 @@ def main():
     # 并发执行
     start_time = time.time()
     with multiprocessing.Pool(args.workers) as pool:
-        results = list(tqdm(
-            pool.imap_unordered(run_product_task, tasks),
-            total=len(tasks),
-            desc="评测进度",
-            unit="型号"
-        ))
+        results = list(
+            tqdm(pool.imap_unordered(run_product_task, tasks), total=len(tasks), desc="评测进度", unit="型号")
+        )
     total_duration = time.time() - start_time
 
     # 生成报告
