@@ -3,17 +3,22 @@
 import asyncio
 import contextvars
 from functools import partial
+from typing import Callable, TypeVar
 
 
-async def run_sync(func, /, *args, **kwargs):
-    """在线程池中执行同步函数，返回 awaitable，零轮询等待。
+T = TypeVar("T")
 
-    走事件循环默认的 ThreadPoolExecutor（有界：默认 min(32, cpu+4)），而非每次
-    裸起一个 threading.Thread——单请求会多次 run_sync（解码/推理/落盘/埋点），
-    无界建线程在高并发下会把线程数顶爆。contextvars 通过 ctx.run 显式传播，
-    保证工作线程看到调用方的上下文。
-    """
+
+def submit_sync(
+    func: Callable[..., T], /, *args, **kwargs
+) -> asyncio.Future[T]:
+    """Submit synchronous work with the caller's context and return its future."""
     loop = asyncio.get_running_loop()
     context = contextvars.copy_context()
     call = partial(context.run, func, *args, **kwargs)
-    return await loop.run_in_executor(None, call)
+    return loop.run_in_executor(None, call)
+
+
+async def run_sync(func: Callable[..., T], /, *args, **kwargs) -> T:
+    """Execute synchronous work in the default bounded executor."""
+    return await submit_sync(func, *args, **kwargs)

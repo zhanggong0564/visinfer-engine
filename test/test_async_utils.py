@@ -1,9 +1,10 @@
 import asyncio
+import contextvars
 import time
 
 import pytest
 
-from utils.async_utils import run_sync
+from utils.async_utils import run_sync, submit_sync
 
 
 def _new_loop_run(coro):
@@ -58,3 +59,22 @@ def test_run_sync_does_not_block_event_loop():
 def test_run_sync_passes_args_and_kwargs():
     result = _new_loop_run(run_sync(lambda a, b=0: a + b, 3, b=4))
     assert result == 7
+
+
+def test_submit_sync_returns_future_and_value():
+    async def _submit():
+        future = submit_sync(lambda: 42)
+        assert isinstance(future, asyncio.Future)
+        return await future
+
+    assert _new_loop_run(_submit()) == 42
+
+
+def test_submit_sync_propagates_contextvars():
+    marker = contextvars.ContextVar("marker", default="missing")
+
+    async def _submit():
+        marker.set("request-value")
+        return await submit_sync(marker.get)
+
+    assert _new_loop_run(_submit()) == "request-value"
