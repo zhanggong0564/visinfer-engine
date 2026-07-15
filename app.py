@@ -25,6 +25,8 @@ from schemas.exceptions import VisionAPIError
 from routers import RouterRegistry
 import uvicorn
 from services import detection_factory
+from services.base.runtime_status import runtime_status_registry
+from services.inference_admission import inference_admission_controller
 
 # 路由注册器：导入期只发现/注册路由，模型预加载延后到 lifespan
 router_registry = RouterRegistry()
@@ -175,14 +177,31 @@ async def health_check():
 @app.get("/health/ready", tags=["健康检查"])
 async def readiness_check():
     """就绪检查：启用场景的模型全部预加载成功后才对外接流量。"""
-    ready = router_registry.is_ready()
     failed_scenes = router_registry.failed_scenes()
+    admission = inference_admission_controller.snapshot()
+    models = runtime_status_registry.public_snapshot()
+    cuda_runtime_ready = bool(models) and all(
+        "CUDAExecutionProvider" in model["providers"] for model in models
+    )
+    ready = router_registry.is_ready() and (
+        not settings.ONNX_REQUIRE_CUDA or cuda_runtime_ready
+    )
+    runtime = {
+        "require_cuda": settings.ONNX_REQUIRE_CUDA,
+        "models": models,
+        "inference": {
+            "max_concurrency": admission.max_concurrency,
+            "active": admission.active,
+            "waiting": admission.waiting,
+        },
+    }
     content = {
         "code": 1 if ready else int(ErrorCode.INTERNAL_ERROR),
         "message": "服务已就绪" if ready else "服务未就绪",
         "result": {
             "status": "ready" if ready else "not_ready",
             "failed_scenes": failed_scenes,
+            "runtime": runtime,
             "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         },
     }
