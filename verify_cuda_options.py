@@ -1,58 +1,78 @@
 #!/usr/bin/env python
-"""验证 ONNX Runtime CUDA provider 选项是否生效"""
+"""验证 ONNX Runtime CUDA provider 选项是否真实生效。"""
 
-import sys
 from pathlib import Path
-
-# 添加项目根到 sys.path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+from typing import Callable
 
 from services.base.inference_runner import OnnxRuntimeRunner
-from config.config import settings
 
-print("=" * 60)
-print("ONNX Runtime CUDA Provider 配置验证")
-print("=" * 60)
 
-print("\n1. 配置文件读取:")
-print(f"   ORT_CUDA_DEVICE_ID: {settings.ORT_CUDA_DEVICE_ID}")
-print(f"   ORT_CUDNN_CONV_ALGO_SEARCH: {settings.ORT_CUDNN_CONV_ALGO_SEARCH}")
-print(f"   ORT_ARENA_EXTEND_STRATEGY: {settings.ORT_ARENA_EXTEND_STRATEGY}")
-print(f"   ORT_CUDA_MEM_LIMIT_GB: {settings.ORT_CUDA_MEM_LIMIT_GB}")
+DEFAULT_MODEL_PATH = Path(
+    "weights/panel_label/text_rec/"
+    "PP-OCRv5_server_rec_merged_v6_diff_lr.onnx"
+)
 
-print("\n2. 构造 CUDA provider 选项:")
-cuda_opts = OnnxRuntimeRunner._cuda_provider_options()
-print(f"   {cuda_opts}")
 
-print("\n3. Provider 列表注入测试:")
-providers_before = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-print(f"   注入前: {providers_before}")
-providers_after = OnnxRuntimeRunner._with_cuda_options(providers_before)
-print(f"   注入后: {providers_after}")
+def _options_match(actual: dict, expected: dict) -> bool:
+    """Return whether all configured CUDA options match runtime values."""
+    return all(
+        str(actual.get(key)) == str(value)
+        for key, value in expected.items()
+    )
 
-print("\n4. 实际模型加载验证(如果模型存在):")
-test_model = "weights/panel_label/text_rec/PP-OCRv5_server_rec_merged_v6_diff_lr.onnx"
-if Path(test_model).exists():
+
+def main(
+    model_path: str | Path = DEFAULT_MODEL_PATH,
+    *,
+    runner_factory: Callable[..., OnnxRuntimeRunner] = OnnxRuntimeRunner,
+) -> int:
+    """验证真实 CUDA Session 及其 provider options，返回进程退出码。"""
+    path = Path(model_path)
+    print("=" * 60)
+    print("ONNX Runtime CUDA Provider 配置验证")
+    print("=" * 60)
+
+    if not path.exists():
+        print(f"✗ 测试模型不存在: {path}")
+        return 1
+
     try:
-        runner = OnnxRuntimeRunner(test_model, warmup=False)
-        print(f"   ✓ 模型加载成功: {test_model}")
-        print(f"   ✓ 使用的 providers: {runner.providers}")
-        # 尝试获取实际的 provider options(需要 ONNX Runtime 支持)
-        try:
-            session = runner._session
-            if hasattr(session, 'get_provider_options'):
-                opts = session.get_provider_options()
-                if 'CUDAExecutionProvider' in opts:
-                    cuda_actual = opts['CUDAExecutionProvider']
-                    print(f"   ✓ CUDA 实际选项: {cuda_actual}")
-        except Exception as e:
-            print(f"   ⚠ 无法读取 session provider options: {e}")
-    except Exception as e:
-        print(f"   ✗ 模型加载失败: {e}")
-else:
-    print(f"   ⚠ 测试模型不存在,跳过: {test_model}")
+        runner = runner_factory(
+            str(path),
+            warmup=False,
+            require_cuda=True,
+        )
+    except Exception as exc:
+        print(f"✗ 模型加载失败: {exc}")
+        return 1
 
-print("\n" + "=" * 60)
-print("验证完成")
-print("=" * 60)
+    if "CUDAExecutionProvider" not in runner.providers:
+        print(f"✗ 实际 providers 未包含 CUDA: {runner.providers}")
+        return 1
+
+    try:
+        provider_options = runner._session.get_provider_options()
+    except Exception as exc:
+        print(f"✗ 无法读取 Session provider options: {exc}")
+        return 1
+
+    actual_options = provider_options.get("CUDAExecutionProvider")
+    if not isinstance(actual_options, dict):
+        print("✗ Session 未返回 CUDA provider options")
+        return 1
+
+    expected_options = OnnxRuntimeRunner._cuda_provider_options()
+    if not _options_match(actual_options, expected_options):
+        print(f"✗ CUDA provider options 不匹配: {actual_options}")
+        print(f"  预期配置: {expected_options}")
+        return 1
+
+    print(f"✓ 模型: {path}")
+    print(f"✓ 实际 providers: {runner.providers}")
+    print(f"✓ CUDA provider options: {actual_options}")
+    print("验证完成")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
