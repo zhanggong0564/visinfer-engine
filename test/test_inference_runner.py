@@ -45,10 +45,13 @@ def test_onnx_runner_prefers_cuda_and_keeps_cpu(monkeypatch):
     ) as factory:
         runner = OnnxRuntimeRunner("model.onnx", warmup=False)
 
-    assert factory.call_args.kwargs["providers"] == [
-        "CUDAExecutionProvider",
-        "CPUExecutionProvider",
-    ]
+    # 现在 CUDAExecutionProvider 会被转为 (name, options) 元组
+    providers_arg = factory.call_args.kwargs["providers"]
+    assert len(providers_arg) == 2
+    assert providers_arg[0][0] == "CUDAExecutionProvider"  # 元组的第一项是名字
+    assert isinstance(providers_arg[0][1], dict)  # 第二项是选项字典
+    assert "cudnn_conv_algo_search" in providers_arg[0][1]
+    assert providers_arg[1] == "CPUExecutionProvider"  # CPU 保持字符串
     assert runner.providers == (
         "CUDAExecutionProvider",
         "CPUExecutionProvider",
