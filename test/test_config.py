@@ -74,3 +74,36 @@ def test_visualization_defaults():
     assert s.VIS_ENABLED is True
     assert s.VIS_MAX_SIDE == 1280
     assert s.VIS_JPEG_QUALITY == 85
+
+
+@patch.dict(os.environ, {}, clear=True)
+def test_inference_runtime_defaults():
+    settings = Settings(_env_file=None)
+
+    assert settings.ONNX_REQUIRE_CUDA is False
+    assert settings.INFERENCE_MAX_CONCURRENCY == 0
+
+
+@patch.dict(
+    os.environ,
+    {
+        "ONNX_REQUIRE_CUDA": "true",
+        "INFERENCE_MAX_CONCURRENCY": "2",
+    },
+    clear=True,
+)
+def test_inference_runtime_env_override():
+    settings = Settings(_env_file=None)
+
+    assert settings.ONNX_REQUIRE_CUDA is True
+    assert settings.INFERENCE_MAX_CONCURRENCY == 2
+
+
+@patch.dict(
+    os.environ,
+    {"INFERENCE_MAX_CONCURRENCY": "-1"},
+    clear=True,
+)
+def test_inference_runtime_rejects_negative_concurrency():
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)
