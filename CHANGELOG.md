@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+- **ONNX 运行时稳定性治理**：GPU 部署强制校验实际 CUDA Provider，禁止 Session
+  静默降级为纯 CPU；统一限制完整检测流水线的进程级执行并发，等待请求继续由
+  FastAPI 异步挂起，不新增服务繁忙错误或内部排队超时；readiness 展示脱敏后的
+  模型 Provider 和当前推理容量，GPU Compose 默认将进程级推理并发设为 1。
 - **RF-DETR ONNX 分割推理**：新增通用 RF-DETR ONNX 推理器，使用 OpenCV 完成
   RGB 缩放、ImageNet 标准化、DETR 输出解码与分割轮廓生成，并保持 `DetectResult`
   契约不变。
