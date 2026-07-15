@@ -70,7 +70,7 @@ def test_panel_label_compose_uses_runtime_image_without_removed_dockerfile():
     assert "dockerfile: Dockerfile.panel-label" not in compose
     assert "build:" not in compose
     assert 'ENABLED_SCENES=["panel_label"]' in compose
-    assert "STRICT_STARTUP=True" in compose
+    assert "STRICT_STARTUP=true" in compose
     assert "http://127.0.0.1:3001/health/ready" in compose
 
 
@@ -85,8 +85,28 @@ def test_deploy_panel_label_compose_uses_runtime_image_without_removed_dockerfil
     assert "dockerfile: Dockerfile.panel-label" not in compose
     assert "build:" not in compose
     assert 'ENABLED_SCENES=["panel_label"]' in compose
-    assert "STRICT_STARTUP=True" in compose
+    assert "STRICT_STARTUP=true" in compose
     assert "http://127.0.0.1:3001/health/ready" in compose
+
+
+@pytest.mark.parametrize(
+    "compose_path",
+    (
+        Path("docker-compose.scenes.yml"),
+        Path("docker-compose.panel-label.yml"),
+        Path("deploy/docker-compose.panel-label.yml"),
+    ),
+)
+def test_gpu_composes_enforce_onnx_runtime_safety(compose_path):
+    if not compose_path.exists():
+        pytest.skip(f"optional deploy bundle missing: {compose_path}")
+    compose = compose_path.read_text(encoding="utf-8")
+
+    assert "ONNX_REQUIRE_CUDA=true" in compose
+    assert "STRICT_STARTUP=true" in compose
+    assert "INFERENCE_MAX_CONCURRENCY=1" in compose
+    assert "INFERENCE_MAX_QUEUE" not in compose
+    assert "INFERENCE_QUEUE_TIMEOUT" not in compose
 
 
 def test_swagger_ui_uses_local_static_assets():

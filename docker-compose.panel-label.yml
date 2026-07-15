@@ -29,8 +29,10 @@ services:
       - TZ=Asia/Shanghai
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - ONNX_REQUIRE_CUDA=true
+      - STRICT_STARTUP=true
+      - INFERENCE_MAX_CONCURRENCY=1
       - ENABLED_SCENES=["panel_label"]
-      - STRICT_STARTUP=True
       # 业务代码热更新覆盖层：PYTHONPATH 排在 site-packages 之前，pkg/ 里的新 .so
       # 包会盖掉镜像内置旧版；pkg/ 为空则自动回退镜像内置版（全新部署无需 pkg/）。
       - PYTHONPATH=/app/workspace/pkg
