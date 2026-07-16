@@ -246,7 +246,7 @@ def test_framework_wheel_keeps_third_party_dependencies_external():
 def test_framework_package_version_includes_yolo_pipeline():
     framework = Path("pyproject.toml").read_text(encoding="utf-8")
 
-    assert 'version = "2.1.1"' in framework
+    assert 'version = "2.1.2"' in framework
 
 
 def test_runtime_requirements_use_onnx_without_paddle():

@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-07-16
+
 - **ONNX 运行时稳定性治理**：GPU 部署强制校验实际 CUDA Provider，禁止 Session
   静默降级为纯 CPU；统一限制完整检测流水线的进程级执行并发，等待请求继续由
   FastAPI 异步挂起，不新增服务繁忙错误或内部排队超时；readiness 展示脱敏后的
