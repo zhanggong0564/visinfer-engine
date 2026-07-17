@@ -96,8 +96,11 @@ mobile_vision/
 │   └── build_wheels.py          # 一键构建框架 + 全部插件二进制 wheel
 ├── scripts/data/                # OCR 数据集与标注工具（auto_annotate / export_ocr / ...）
 ├── weights/                     # 模型权重（weights/{场景}/{任务}_{架构}_v{N}，规范见 weights/README.md）
-├── Dockerfile                   # 多阶段构建（编译加密 + 运行时）
-├── docker-compose.yml           # 编排（GPU + 健康检查 + 日志卷）
+├── Dockerfile.base              # 公共 CUDA/Python/依赖构建底座
+├── Dockerfile.panel-label       # framework + panel_label 基线插件镜像
+├── Dockerfile.scenes            # framework + 其余五场景基线插件镜像
+├── docker-compose.panel-label.yml # panel 服务编排（端口 3001）
+├── docker-compose.scenes.yml    # scenes 服务编排（端口 3005）
 ├── requirements.txt             # 依赖包列表
 └── readme.md                    # 项目说明文档
 ```
@@ -291,16 +294,19 @@ class NewSceneConfig:
 
 ### 使用 Docker 部署
 
-1. 构建 Docker 镜像：
+首次部署构建两个按服务拆分的离线镜像与权重包：
 
 ```bash
-docker build -t mobile-vision .
+RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh
 ```
 
-2. 运行 Docker 容器：
+服务器分别部署 panel-label（3001）和 scenes（3005）：
 
 ```bash
-docker run -d -p 3001:3001 --name mobile-vision mobile-vision
+bash deploy_offline.sh --bundle /path/docker-release-2.1.3 \
+  --service panel-label --deploy-dir /srv/vie/panel-label
+bash deploy_offline.sh --bundle /path/docker-release-2.1.3 \
+  --service scenes --deploy-dir /srv/vie/scenes
 ```
 
 ### 直接部署
@@ -319,10 +325,11 @@ uvicorn app:app --host 0.0.0.0 --port 3001 --workers 4
 
 ```bash
 bash scripts/release/sync-plugin.sh   # 编译 .so + 增量同步权重到服务器 + 重启容器
+bash scripts/release/sync-plugin-scenes.sh
 ```
 
-代码经 `pkg/` 覆盖层（`PYTHONPATH`）生效，权重经 `./weights` 卷挂载覆盖层生效，
-详细原理与首次启用步骤见 [docs/deploy.md](docs/deploy.md) §3。
+更新先上传到版本化暂存目录，校验后原子切换；readiness 失败会自动回滚。
+详细步骤见 [Docker 部署指南](docs/deploy.md)。
 
 ---
 
