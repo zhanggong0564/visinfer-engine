@@ -8,12 +8,23 @@ import verify_cuda_options
 
 
 def _cuda_options() -> dict[str, str]:
+    options = verify_cuda_options.OnnxRuntimeOptions.from_settings(
+        verify_cuda_options.settings,
+        warmup=False,
+        require_cuda=True,
+    )
     return {
         key: str(value)
-        for key, value in verify_cuda_options.OnnxRuntimeRunner
-        ._cuda_provider_options()
-        .items()
+        for key, value in options.cuda_provider_options().items()
     }
+
+
+def _expected_options():
+    return verify_cuda_options.OnnxRuntimeOptions.from_settings(
+        verify_cuda_options.settings,
+        warmup=False,
+        require_cuda=True,
+    )
 
 
 def _runner(providers, provider_options):
@@ -47,8 +58,7 @@ def test_main_fails_when_model_loading_fails(tmp_path, capsys):
     _assert_failure(result, capsys.readouterr().out)
     factory.assert_called_once_with(
         str(model_path),
-        warmup=False,
-        require_cuda=True,
+        _expected_options(),
     )
 
 
@@ -67,8 +77,7 @@ def test_main_fails_for_cpu_fallback(tmp_path, capsys):
     _assert_failure(result, capsys.readouterr().out)
     factory.assert_called_once_with(
         str(model_path),
-        warmup=False,
-        require_cuda=True,
+        _expected_options(),
     )
 
 
@@ -115,8 +124,7 @@ def test_main_succeeds_only_for_cuda_with_matching_options(tmp_path, capsys):
     assert "验证完成" in output
     factory.assert_called_once_with(
         str(model_path),
-        warmup=False,
-        require_cuda=True,
+        _expected_options(),
     )
 
 

@@ -1,7 +1,7 @@
-from services.base.runtime_status import RuntimeStatusRegistry
+from services.inference.status import RuntimeStatusRegistry
 
 
-def test_runtime_status_exposes_only_model_name_and_providers():
+def test_runtime_status_defaults_to_onnx_backend():
     registry = RuntimeStatusRegistry()
     registry.register(
         "/private/weights/panel_label/best.onnx",
@@ -11,6 +11,7 @@ def test_runtime_status_exposes_only_model_name_and_providers():
     assert registry.public_snapshot() == [
         {
             "model": "best.onnx",
+            "backend": "onnx",
             "providers": [
                 "CUDAExecutionProvider",
                 "CPUExecutionProvider",

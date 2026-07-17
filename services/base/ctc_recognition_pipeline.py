@@ -1,10 +1,19 @@
 """Backend-independent dynamic-width CTC recognition pipeline."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import numpy as np
 
-from .inference_runner import InferenceRunner
+from services.inference import InferenceRunner
+
+
+@dataclass(frozen=True)
+class CtcRecognitionResult:
+    """One greedily decoded CTC recognition result."""
+
+    text: str
+    score: float
 
 
 class BaseCtcRecognitionPipeline:
@@ -42,14 +51,14 @@ class BaseCtcRecognitionPipeline:
             "subclass must implement preprocess_batch or preprocess_image"
         )
 
-    def decode(self, logits: np.ndarray) -> list[dict[str, str | float]]:
+    def decode(self, logits: np.ndarray) -> list[CtcRecognitionResult]:
         """Greedily decode CTC logits, using class index zero as blank."""
         if logits.ndim != 3 or logits.shape[2] != len(self.characters) + 1:
             raise ValueError("CTC output does not match character dictionary")
 
         indices = logits.argmax(axis=2)
         scores = logits.max(axis=2)
-        results: list[dict[str, str | float]] = []
+        results: list[CtcRecognitionResult] = []
         for row_indices, row_scores in zip(indices, scores):
             keep = [
                 index
@@ -61,10 +70,10 @@ class BaseCtcRecognitionPipeline:
                 self.characters[int(row_indices[index]) - 1] for index in keep
             )
             score = float(np.mean(row_scores[keep])) if keep else 0.0
-            results.append({"rec_text": text, "rec_score": score})
+            results.append(CtcRecognitionResult(text=text, score=score))
         return results
 
-    def predict(self, images: Sequence[np.ndarray]) -> list[dict[str, str | float]]:
+    def predict(self, images: Sequence[np.ndarray]) -> list[CtcRecognitionResult]:
         """Preprocess, infer and decode a batch of images."""
         if not images:
             return []
@@ -102,3 +111,6 @@ class BaseCtcRecognitionPipeline:
         if self.max_width is not None:
             target_width = min(target_width, self.max_width)
         return target_width
+
+    def close(self) -> None:
+        self.runner.close()

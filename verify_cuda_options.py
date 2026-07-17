@@ -4,7 +4,8 @@
 from pathlib import Path
 from typing import Callable
 
-from services.base.inference_runner import OnnxRuntimeRunner
+from config import settings
+from services.inference import OnnxRuntimeOptions, OnnxRuntimeRunner
 
 
 DEFAULT_MODEL_PATH = Path(
@@ -37,10 +38,12 @@ def main(
         return 1
 
     try:
+        options = OnnxRuntimeOptions.from_settings(
+            settings, warmup=False, require_cuda=True
+        )
         runner = runner_factory(
             str(path),
-            warmup=False,
-            require_cuda=True,
+            options,
         )
     except Exception as exc:
         print(f"✗ 模型加载失败: {exc}")
@@ -61,7 +64,7 @@ def main(
         print("✗ Session 未返回 CUDA provider options")
         return 1
 
-    expected_options = OnnxRuntimeRunner._cuda_provider_options()
+    expected_options = options.cuda_provider_options()
     if not _options_match(actual_options, expected_options):
         print(f"✗ CUDA provider options 不匹配: {actual_options}")
         print(f"  预期配置: {expected_options}")

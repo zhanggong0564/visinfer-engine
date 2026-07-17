@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from services.inference_admission import InferenceAdmissionController
+from services.inference.admission import InferenceAdmissionController
 
 
 def _run(coro):

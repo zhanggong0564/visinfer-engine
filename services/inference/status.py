@@ -1,4 +1,4 @@
-"""Sanitized process-wide ONNX runtime status."""
+"""Sanitized process-wide inference runtime status."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +10,7 @@ from typing import Sequence
 class ModelRuntimeStatus:
     model_path: str
     providers: tuple[str, ...]
+    backend: str = "onnx"
 
 
 class RuntimeStatusRegistry:
@@ -17,9 +18,18 @@ class RuntimeStatusRegistry:
         self._lock = Lock()
         self._models: dict[str, ModelRuntimeStatus] = {}
 
-    def register(self, model_path: str, providers: Sequence[str]) -> None:
+    def register(
+        self,
+        model_path: str,
+        providers: Sequence[str],
+        backend: str = "onnx",
+    ) -> None:
         key = str(Path(model_path).resolve())
-        status = ModelRuntimeStatus(model_path=key, providers=tuple(providers))
+        status = ModelRuntimeStatus(
+            model_path=key,
+            providers=tuple(providers),
+            backend=backend,
+        )
         with self._lock:
             self._models[key] = status
 
@@ -31,6 +41,7 @@ class RuntimeStatusRegistry:
         return [
             {
                 "model": Path(status.model_path).name,
+                "backend": status.backend,
                 "providers": list(status.providers),
             }
             for status in statuses

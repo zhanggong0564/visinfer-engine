@@ -1,8 +1,11 @@
 import numpy as np
 import pytest
 
-from services.base.ctc_recognition_pipeline import BaseCtcRecognitionPipeline
-from services.base.inference_runner import TensorInfo
+from services.base.ctc_recognition_pipeline import (
+    BaseCtcRecognitionPipeline,
+    CtcRecognitionResult,
+)
+from services.inference import TensorInfo
 
 
 class _Runner:
@@ -53,14 +56,14 @@ def test_ctc_decode_removes_blank_and_consecutive_duplicates():
 
     result = _decoder().decode(logits)[0]
 
-    assert result["rec_text"] == "AAB"
-    assert result["rec_score"] == pytest.approx(0.9)
+    assert result.text == "AAB"
+    assert result.score == pytest.approx(0.9)
 
 
 def test_ctc_decode_empty_sequence_has_zero_confidence():
     result = _decoder().decode(_probabilities([0, 0], classes=3))[0]
 
-    assert result == {"rec_text": "", "rec_score": 0.0}
+    assert result == CtcRecognitionResult(text="", score=0.0)
 
 
 @pytest.mark.parametrize("logits", [np.zeros((4, 3)), np.zeros((1, 4, 4, 3))])

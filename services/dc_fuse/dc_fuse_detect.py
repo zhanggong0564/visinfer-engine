@@ -1,11 +1,25 @@
-"""直流熔丝检测器：适配无状态 YoloOnnxInfer（preprocess→post_process 均无每请求状态）。"""
+"""直流熔丝检测器：适配后端无关的无状态 YOLO 推理。"""
 
-from services.yolo import YoloOnnxInfer
+from services.inference import InferenceRunner
+from services.yolo import YoloInfer
 
 
-class DCFuseDetector(YoloOnnxInfer):
-    def __init__(self, model_path, confThreshold=0.5, nmsThreshold=0.5, task="det"):
-        super().__init__(model_path, nc=12, confThreshold=confThreshold, nmsThreshold=nmsThreshold, task=task)
+class DCFuseDetector(YoloInfer):
+    def __init__(
+        self,
+        confThreshold=0.5,
+        nmsThreshold=0.5,
+        task="det",
+        *,
+        runner: InferenceRunner,
+    ):
+        super().__init__(
+            nc=12,
+            runner=runner,
+            confThreshold=confThreshold,
+            nmsThreshold=nmsThreshold,
+            task=task,
+        )
         self.id2name = {
             0: "brass_plate_6",
             1: "lower_crossbeam_screw_10",

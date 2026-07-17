@@ -6,15 +6,15 @@ from typing import Sequence
 
 import numpy as np
 
-from .inference_runner import InferenceRunner
+from services.inference import InferenceRunner
 
 
 @dataclass(frozen=True)
 class ClassificationResult:
-    """Top-1 classification outputs for a batch."""
+    """One top-1 classification prediction."""
 
-    class_ids: np.ndarray
-    scores: np.ndarray
+    class_id: int
+    score: float
 
 
 class BaseClassificationPipeline(ABC):
@@ -33,8 +33,8 @@ class BaseClassificationPipeline(ABC):
 
     def predict(
         self, images: Sequence[np.ndarray]
-    ) -> list[dict[str, list[int] | list[float]]]:
-        """Return batch top-1 results in the plugin-compatible shape."""
+    ) -> list[ClassificationResult]:
+        """Return one backend-independent top-1 result per image."""
         if not images:
             return []
 
@@ -49,11 +49,10 @@ class BaseClassificationPipeline(ABC):
 
         class_ids = logits.argmax(axis=1)
         rows = np.arange(len(images))
-        result = ClassificationResult(
-            class_ids=class_ids,
-            scores=logits[rows, class_ids],
-        )
         return [
-            {"class_ids": [int(class_id)], "scores": [float(score)]}
-            for class_id, score in zip(result.class_ids, result.scores)
+            ClassificationResult(class_id=int(class_id), score=float(score))
+            for class_id, score in zip(class_ids, logits[rows, class_ids])
         ]
+
+    def close(self) -> None:
+        self.runner.close()

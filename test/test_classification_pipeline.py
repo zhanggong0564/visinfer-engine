@@ -3,7 +3,8 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from services.base import BaseClassificationPipeline, ClassificationResult, TensorInfo
+from services.base import BaseClassificationPipeline, ClassificationResult
+from services.inference import TensorInfo
 
 
 class FakeRunner:
@@ -30,25 +31,22 @@ def two_image_model(output):
     return StubClassifier(FakeRunner(outputs=[output]), labels=("zero", "one"))
 
 
-def test_classification_result_preserves_arrays():
-    class_ids = np.array([1, 0])
-    scores = np.array([0.9, 0.8], dtype=np.float32)
+def test_classification_result_contains_one_top1_prediction():
+    result = ClassificationResult(class_id=1, score=0.9)
 
-    result = ClassificationResult(class_ids=class_ids, scores=scores)
-
-    assert result.class_ids is class_ids
-    assert result.scores is scores
+    assert result.class_id == 1
+    assert result.score == pytest.approx(0.9)
 
 
-def test_classifier_returns_top1_in_compatibility_shape():
+def test_classifier_returns_typed_top1_results():
     runner = FakeRunner(
         outputs=[np.array([[0.1, 0.9], [0.8, 0.2]], dtype=np.float32)]
     )
     model = StubClassifier(runner, labels=("zero", "one"))
 
     assert model.predict([image(), image()]) == [
-        {"class_ids": [1], "scores": [pytest.approx(0.9)]},
-        {"class_ids": [0], "scores": [pytest.approx(0.8)]},
+        ClassificationResult(class_id=1, score=pytest.approx(0.9)),
+        ClassificationResult(class_id=0, score=pytest.approx(0.8)),
     ]
     runner.run.assert_called_once()
     inputs = runner.run.call_args.args[0]
