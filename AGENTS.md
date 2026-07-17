@@ -35,6 +35,8 @@ conda run -n ppocr python scripts/release/build_wheels.py --no-isolation
 
 创建提交、编写提交消息或准备合并请求前，必须读取并采用 `git-commit-guidelines` skill。提交格式为 `<type>(<scope>): <subject>`，例如 `feat(service): ...`、`fix(config): ...`；scope 必须从 skill 定义的 14 个固定值中选择。严格遵守“一次提交 = 一个 scope = 一个职责”，按路径显式暂存，不使用 `git add .` 混入其他改动。主题不超过 50 个字符、末尾不加句号，且不得附加 `Co-Authored-By` 或任何 AI 署名。
 
+首次执行 `git add` 前，必须先在对话中列出“文件 → 职责 → 验证命令”清单；清单每一行就是一个候选提交。只有文件缺一不可、拆开后无法构建或无法表达完整行为时，才可合并行。禁止以“属于同一功能/版本/发布主题”、位于同一目录或使用同一 scope 作为合并依据。发布改动必须分别判断构建镜像、离线部署、热更新、回滚、模型导出五类职责，逐项决定是否独立提交和验证；没有先给出清单，不得暂存或提交。
+
 合并请求需说明行为变化、验证命令、配置或模型影响，并关联问题；API 文档或可视化变化应附示例响应或截图。提交前检查 `git status` 和 `git diff --stat`，提交后使用 `git log --oneline -10` 验证拆分结果。
 
 ## 智能体协作约定
