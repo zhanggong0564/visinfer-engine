@@ -1,12 +1,30 @@
 import asyncio
 import json
+from unittest.mock import MagicMock
 
-from app import readiness_check, router_registry
-from services.inference_admission import AdmissionSnapshot
+from app import lifespan, readiness_check, router_registry
+from services.inference.admission import AdmissionSnapshot
 
 
 def _response_body(response):
     return json.loads(response.body.decode("utf-8"))
+
+
+def test_lifespan_closes_preloaded_scenarios_on_exception(monkeypatch):
+    monkeypatch.setattr(router_registry, "preload_all", MagicMock())
+    close_all = MagicMock()
+    monkeypatch.setattr(router_registry, "close_all", close_all)
+
+    async def exercise():
+        try:
+            async with lifespan(MagicMock()):
+                raise RuntimeError("shutdown")
+        except RuntimeError:
+            pass
+
+    asyncio.run(exercise())
+
+    close_all.assert_called_once_with()
 
 
 def test_readiness_returns_503_for_failed_scene(monkeypatch):

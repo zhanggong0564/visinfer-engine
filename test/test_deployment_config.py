@@ -14,7 +14,7 @@ LEGACY_DC_FUSE_FILES = (
     Path("services/dc_fuse/dc_fuse_detect.py"),
     Path("routers/dc_fuse_routers.py"),
     Path("schemas/dc_fuse_schemas.py"),
-    Path("config/dc_fuse_config.py"),
+    Path("services/dc_fuse/config.py"),
 )
 
 

@@ -16,7 +16,7 @@ from importlib.metadata import entry_points
 from typing import Dict, List, Optional
 from fastapi import APIRouter, FastAPI
 from config import settings
-from services import detection_factory
+from services.scenario_registry import scenario_registry
 from utils.logger import vision_logger
 from .base_router import BaseRouter
 
@@ -75,7 +75,7 @@ class RouterRegistry:
         """通过 entry_points 发现已安装的场景插件并收集其路由。
 
         每个插件在 pyproject 的 [project.entry-points."vie.plugins"] 暴露一个入口，
-        指向"import 即完成 detection_factory 注册、并暴露模块级 BaseRouter/APIRouter"
+        指向"import 即完成 scenario_registry 注册、并暴露模块级 BaseRouter/APIRouter"
         的模块。单个插件加载失败仅 warning 跳过，不影响其余插件与框架启动。
         """
         routers = []
@@ -90,12 +90,11 @@ class RouterRegistry:
             return routers
         seen_detector_types = {}
         for ep in eps:
-            factory_snapshot = dict(detection_factory._registry)
+            registry_snapshot = scenario_registry.snapshot()
             try:
                 module = ep.load()
             except Exception as e:
-                detection_factory._registry.clear()
-                detection_factory._registry.update(factory_snapshot)
+                scenario_registry.restore(registry_snapshot)
                 vision_logger.warning(f"加载插件入口 {ep.name} 失败: {e}")
                 continue
             candidates = self._collect_routers_from_module(
@@ -112,8 +111,7 @@ class RouterRegistry:
                 if count > 1
             }
             if conflicting_types:
-                detection_factory._registry.clear()
-                detection_factory._registry.update(factory_snapshot)
+                scenario_registry.restore(registry_snapshot)
                 vision_logger.warning(
                     "插件入口包含重复场景，拒绝整个入口 entry_point={} "
                     "detector_types={}",
@@ -144,13 +142,10 @@ class RouterRegistry:
 
             # 普通 APIRouter 无法声明其工厂注册关系，必须保留入口的合法变化。
             # 这里只恢复因跨入口场景重复而明确跳过的 detector_type。
-            for detector_type in skipped_detector_types:
-                if detector_type in factory_snapshot:
-                    detection_factory._registry[detector_type] = factory_snapshot[
-                        detector_type
-                    ]
-                else:
-                    detection_factory._registry.pop(detector_type, None)
+            scenario_registry.restore(
+                registry_snapshot,
+                scenario_names=skipped_detector_types,
+            )
             routers.extend(accepted)
         return routers
 
@@ -312,6 +307,24 @@ class RouterRegistry:
                     raise RuntimeError(
                         f"严格启动模式下 {br.detector_type} 预加载失败，拒绝启动"
                     ) from e
+
+    def close_all(self) -> None:
+        """Best-effort close all instantiated scenarios exactly once."""
+        seen = set()
+        for base_router in self.base_routers:
+            instance = base_router.instance
+            base_router.instance = None
+            if instance is None or id(instance) in seen:
+                continue
+            seen.add(id(instance))
+            try:
+                instance.close()
+            except Exception as exc:
+                vision_logger.warning(
+                    "关闭场景资源失败 detector_type={} error={}",
+                    base_router.detector_type,
+                    exc,
+                )
 
     def is_ready(self) -> bool:
         """至少有一个已预加载场景，且所有场景均成功时才 ready。"""

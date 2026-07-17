@@ -2,7 +2,7 @@
 import pytest
 from fastapi import APIRouter, FastAPI
 from routers.router_registry import RouteCandidate, RouterRegistry
-from services import detection_factory
+from services.scenario_registry import scenario_registry
 
 
 class TestRouterRegistry:
@@ -33,6 +33,7 @@ class TestRouterRegistry:
 
 import types
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 from routers.base_router import BaseRouter
 
 
@@ -276,7 +277,7 @@ def test_duplicate_plugin_load_restores_first_detector_factory(monkeypatch):
         pass
 
     def _module(name, detector_class):
-        detection_factory.register("scene_a")(detector_class)
+        scenario_registry.register("scene_a")(detector_class)
         module = types.ModuleType(name)
         router = _FakePluginRouter()
         router.detector_type = "scene_a"
@@ -291,7 +292,8 @@ def test_duplicate_plugin_load_restores_first_detector_factory(monkeypatch):
         def load(self):
             return _module(self.name, self.detector_class)
 
-    monkeypatch.setattr(detection_factory, "_registry", {})
+    snapshot = scenario_registry.snapshot()
+    scenario_registry.restore({})
     monkeypatch.setattr(
         "routers.router_registry.entry_points",
         lambda group=None: [
@@ -300,10 +302,13 @@ def test_duplicate_plugin_load_restores_first_detector_factory(monkeypatch):
         ],
     )
 
-    found = RouterRegistry().find_plugin_routers()
+    try:
+        found = RouterRegistry().find_plugin_routers()
 
-    assert [candidate.module_name for candidate in found] == ["first"]
-    assert detection_factory._registry["scene_a"] is FirstDetector
+        assert [candidate.module_name for candidate in found] == ["first"]
+        assert scenario_registry.snapshot()["scene_a"] is FirstDetector
+    finally:
+        scenario_registry.restore(snapshot)
 
 
 def test_plain_api_router_plugin_keeps_detector_factory_registration(monkeypatch):
@@ -315,20 +320,24 @@ def test_plain_api_router_plugin_keeps_detector_factory_registration(monkeypatch
         name = "plain_plugin"
 
         def load(self):
-            detection_factory.register("plain_scene")(PlainDetector)
+            scenario_registry.register("plain_scene")(PlainDetector)
             module = types.ModuleType("plain_plugin")
             module.router = APIRouter()
             return module
 
-    monkeypatch.setattr(detection_factory, "_registry", {})
+    snapshot = scenario_registry.snapshot()
+    scenario_registry.restore({})
     monkeypatch.setattr(
         "routers.router_registry.entry_points", lambda group=None: [_EP()]
     )
 
-    found = RouterRegistry().find_plugin_routers()
+    try:
+        found = RouterRegistry().find_plugin_routers()
 
-    assert [candidate.module_name for candidate in found] == ["plain_plugin"]
-    assert detection_factory._registry["plain_scene"] is PlainDetector
+        assert [candidate.module_name for candidate in found] == ["plain_plugin"]
+        assert scenario_registry.snapshot()["plain_scene"] is PlainDetector
+    finally:
+        scenario_registry.restore(snapshot)
 
 
 def test_same_entry_point_duplicate_scene_is_rejected_and_factory_rolled_back(
@@ -345,7 +354,7 @@ def test_same_entry_point_duplicate_scene_is_rejected_and_factory_rolled_back(
         name = "conflicting_plugin"
 
         def load(self):
-            detection_factory.register("scene_a")(ConflictingDetector)
+            scenario_registry.register("scene_a")(ConflictingDetector)
             module = types.ModuleType("conflicting_plugin")
             first = _FakePluginRouter()
             first.detector_type = "scene_a"
@@ -355,17 +364,19 @@ def test_same_entry_point_duplicate_scene_is_rejected_and_factory_rolled_back(
             module.second_router = second
             return module
 
-    monkeypatch.setattr(
-        detection_factory, "_registry", {"scene_a": ExistingDetector}
-    )
+    snapshot = scenario_registry.snapshot()
+    scenario_registry.restore({"scene_a": ExistingDetector})
     monkeypatch.setattr(
         "routers.router_registry.entry_points", lambda group=None: [_EP()]
     )
 
-    found = RouterRegistry().find_plugin_routers()
+    try:
+        found = RouterRegistry().find_plugin_routers()
 
-    assert found == []
-    assert detection_factory._registry == {"scene_a": ExistingDetector}
+        assert found == []
+        assert scenario_registry.snapshot() == {"scene_a": ExistingDetector}
+    finally:
+        scenario_registry.restore(snapshot)
 
 
 def test_find_plugin_routers_empty(monkeypatch):
@@ -458,3 +469,22 @@ def test_duplicate_scene_success_does_not_hide_earlier_failure(monkeypatch):
     assert reg.is_ready() is False
     assert reg.failed_scenes() == ["same_scene"]
     assert reg.preload_status["same_scene"]["error"] == "first instance failed"
+
+
+def test_close_all_deduplicates_instances_and_continues_after_failure():
+    reg = RouterRegistry()
+    failing = MagicMock()
+    failing.close.side_effect = RuntimeError("close failed")
+    healthy = MagicMock()
+    reg.base_routers = [
+        SimpleNamespace(detector_type="a", instance=failing),
+        SimpleNamespace(detector_type="a-copy", instance=failing),
+        SimpleNamespace(detector_type="b", instance=healthy),
+        SimpleNamespace(detector_type="lazy", instance=None),
+    ]
+
+    reg.close_all()
+
+    failing.close.assert_called_once_with()
+    healthy.close.assert_called_once_with()
+    assert all(router.instance is None for router in reg.base_routers)

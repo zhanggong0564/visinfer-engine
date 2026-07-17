@@ -24,9 +24,9 @@ from schemas.error_codes import ErrorCode, ERROR_CODE_MESSAGES
 from schemas.exceptions import VisionAPIError
 from routers import RouterRegistry
 import uvicorn
-from services import detection_factory
-from services.base.runtime_status import runtime_status_registry
-from services.inference_admission import inference_admission_controller
+from services.scenario_registry import scenario_registry
+from services.inference import runtime_status_registry
+from services.inference.admission import inference_admission_controller
 
 # 路由注册器：导入期只发现/注册路由，模型预加载延后到 lifespan
 router_registry = RouterRegistry()
@@ -34,12 +34,15 @@ router_registry = RouterRegistry()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期钩子：startup 统一预加载模型，shutdown 预留清理位。"""
+    """应用生命周期钩子：startup 预加载，shutdown 释放模型资源。"""
     vision_logger.info("应用启动：开始预加载检测模型 ...")
     router_registry.preload_all()
-    vision_logger.info(f"模型预加载完成，可用场景: {detection_factory.list_scenarios()}")
-    yield
-    vision_logger.info("应用关闭")
+    vision_logger.info(f"模型预加载完成，可用场景: {scenario_registry.list_scenarios()}")
+    try:
+        yield
+    finally:
+        router_registry.close_all()
+        vision_logger.info("应用关闭")
 
 
 # 创建FastAPI应用实例
@@ -164,7 +167,7 @@ async def root():
         "code": 1,
         "message": f"{settings.API_TITLE} 服务运行正常",
         "result": {"service": settings.API_TITLE, "version": settings.API_VERSION, "status": "running"},
-        "service": detection_factory.list_scenarios(),
+        "service": scenario_registry.list_scenarios(),
     }
 
 
@@ -181,7 +184,8 @@ async def readiness_check():
     admission = inference_admission_controller.snapshot()
     models = runtime_status_registry.public_snapshot()
     cuda_runtime_ready = bool(models) and all(
-        "CUDAExecutionProvider" in model["providers"] for model in models
+        "CUDAExecutionProvider" in model["providers"]
+        for model in models
     )
     ready = router_registry.is_ready() and (
         not settings.ONNX_REQUIRE_CUDA or cuda_runtime_ready

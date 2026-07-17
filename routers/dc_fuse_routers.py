@@ -7,7 +7,7 @@ import numpy as np
 from .base_router import BaseRouter
 from schemas.dc_fuse_schemas import DCFuseRequest
 from schemas.data_base import InputParamsBusiness
-import services.dc_fuse  # noqa: F401  导入即触发 @detection_factory.register("dc_fuse")
+import services.dc_fuse  # noqa: F401  导入即触发 @scenario_registry.register("dc_fuse")
 
 
 class DCFuseRouter(BaseRouter):

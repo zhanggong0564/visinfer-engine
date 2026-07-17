@@ -21,9 +21,9 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
 from config import settings
 from schemas import CommonResponse, ErrorCode, ERROR_CODE_MESSAGES
 from schemas.exceptions import InvalidParamsError, InternalError
-from services import detection_factory
+from services.scenario_registry import scenario_registry
 from services.call_stats import record_call
-from services.inference_admission import inference_admission_controller
+from services.inference.admission import inference_admission_controller
 from utils import vision_logger
 from utils.async_utils import run_sync
 from utils.timing import StageTimer
@@ -64,7 +64,7 @@ class BaseRouter(ABC):
 
     def get_detector_singleton(self):
         if self.instance is None:
-            detector = detection_factory.get_scenarios(self.detector_type)
+            detector = scenario_registry.create(self.detector_type)
             if not detector:
                 raise InternalError(
                     f"未找到 {self.detector_type} 检测器",

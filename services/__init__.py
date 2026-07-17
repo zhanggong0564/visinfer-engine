@@ -7,8 +7,4 @@
 @Description  :
 '''
 
-from .utils import rotate_points
-from .api import detection_factory
-
-
-__all__ = ["rotate_points", "detection_factory"]
+"""Industrial vision service components."""

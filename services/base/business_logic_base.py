@@ -7,6 +7,8 @@ from schemas.inference_context import InferenceContext
 from utils import vision_logger
 from utils.timing import StageTimer
 
+from .detector import Detector
+
 
 class BusinessLogicBase:
     """推理编排模板方法基类。
@@ -21,7 +23,7 @@ class BusinessLogicBase:
 
     def __init__(self, settings):
         self.settings = settings
-        self.detector = None
+        self.detector: Detector | None = None
         self._initialize(settings)
 
     def _initialize(self, settings):
@@ -33,12 +35,15 @@ class BusinessLogicBase:
     def detect(self, params: InputParamsBusiness):
         timer = StageTimer()
         try:
+            detector = self.detector
+            if detector is None:
+                raise RuntimeError("scenario detector is not initialized")
             with timer.stage("build_context"):
                 ctx = self.build_context(params)
             with timer.stage("preprocess_hook"):
                 self.preprocess_hook(ctx)
             with timer.stage("detector_infer"):
-                ctx.raw_result = self.detector.infer(ctx.image)
+                ctx.raw_result = detector.infer(ctx.image)
             with timer.stage("business_post_process"):
                 self.business_post_process(ctx)
             if self.should_normalize(ctx):
@@ -102,3 +107,10 @@ class BusinessLogicBase:
     def finalize_hook(self, ctx: InferenceContext) -> None:
         """结果收尾钩子，默认 no-op。"""
         pass
+
+    def close(self) -> None:
+        """Release the scenario pipeline if it was initialized."""
+        detector = self.detector
+        if detector is not None:
+            detector.close()
+            self.detector = None
