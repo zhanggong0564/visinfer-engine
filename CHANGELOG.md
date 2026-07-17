@@ -7,6 +7,23 @@
 
 ## [Unreleased]
 
+- **服务边界收口**：场景注册改为实例隔离的 `ScenarioRegistry`，插件加载回滚不再
+  操作私有注册表；推理准入迁入 `services.inference`，dc_fuse 配置归入场景包。
+- **视觉操作显式分层**：YOLO 专属编排迁出基础层，框、mask、NMS 和图像预处理
+  拆为显式 `services.vision` 模块，可视化归入路由展示层，并删除无调用遗留工具。
+- **后端无关模型契约**：检测模型构造器只接收 runner 和算法参数，模型路径统一由
+  runner factory 管理；分类与 CTC pipeline 返回类型化结果并补齐检测器关闭契约。
+- **推理基础设施分层**：推理契约、ONNX Runtime 实现、runner factory 与 runtime
+  status 迁移至 `services.inference`；YOLO、RF-DETR 与公共模型基类改为后端无关
+  命名并强制注入 runner，ONNX CUDA 策略通过显式不可变配置传递。
+- **模型资源生命周期**：统一 runner、模型 pipeline、业务场景和 FastAPI shutdown
+  关闭链路，幂等释放模型资源，并在部分初始化失败时回滚已创建的 runner。
+- **场景迁移 TODO**：`dc-fuse`、`indicator-light`、`lap-surf`、`line-squeeze`、
+  `plate-screw` 仍依赖已删除的旧框架入口，本轮不保证兼容。后续需逐插件完成
+  `services.api` → `ScenarioRegistry`/新业务初始化入口、`services.utils` →
+  `services.vision`、`services.base.inference_runner` → `services.inference`，
+  并将 `YoloOnnxInfer` 等旧模型类迁移为 runner 注入模型。完成标准为插件可注册、
+  全量测试通过、服务启动和关闭无资源泄漏；不得用临时兼容层或跳过逻辑掩盖失败。
 - **Docker 双 Runtime**：恢复 panel-label 与 scenes 两个服务镜像，镜像内置对应基线插件，并通过 `current/` 保留后续代码与权重覆盖能力。
 - **原子热更新**：`sync-plugin*.sh` 改用版本化 staging/current/previous，增加依赖指纹、entry point、权重和 readiness 校验，失败自动回滚。
 - **离线部署**：新增版本镜像、权重覆盖层、SHA256 清单的构建与部署脚本，并移除脚本中的默认生产服务器地址。
@@ -29,7 +46,7 @@
 
 ## [2.1.0] - 2026-07-13
 
-- **统一 ONNX 推理后端**：新增后端无关的 runner 协议与 ONNX Runtime 实现，YOLO、通用分类和动态宽度 CTC 识别统一通过 runner 执行，并仅为后续 TensorRT 后端预留扩展接口
+- **统一 ONNX 推理后端**：新增 runner 协议与 ONNX Runtime 实现，YOLO、通用分类和动态宽度 CTC 识别统一通过 runner 执行
 - **推理依赖收敛**：生产环境移除 PaddleOCR/PaddleX，切换为 ONNX Runtime GPU 依赖；运行时默认优先使用 CUDA 并保留 CPU 回退，严格对齐测试则强制使用 GPU；运行时镜像继续保留 OpenCV 所需的 `libgl1`
 - 框架 YOLO 管线复用无状态预处理、NMS 和坐标还原能力，公开推理接口与结果结构保持不变
 - 路由发现采用插件优先策略：同一 `detector_type` 同时存在内置兼容示例和独立插件时只注册并预加载插件；插件缺失或加载失败时保留旧实现
