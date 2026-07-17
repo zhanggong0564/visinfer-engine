@@ -334,21 +334,39 @@ def test_base_image_installs_local_onnx_wheel_before_requirements():
     local_install = f"pip install /tmp/{wheel} --no-deps"
     requirements_install = "pip install -r /tmp/requirements.txt"
 
-    assert f"COPY whl/{wheel} /tmp/" in dockerfile
+    assert f"COPY --from=ort_wheel /{wheel} /tmp/" in dockerfile
     assert local_install in dockerfile
     assert dockerfile.index(local_install) < dockerfile.index(requirements_install)
     assert "--force-reinstall" not in dockerfile
     assert "paddlepaddle_gpu" not in dockerfile.lower()
 
 
-def test_runtime_image_installs_opencv_system_libraries():
-    dockerfile = Path("Dockerfile.runtime").read_text(encoding="utf-8").lower()
-    apt_install = re.search(
-        r"apt-get install -y --no-install-recommends(?P<packages>.*?)&&",
-        dockerfile,
-        flags=re.DOTALL,
-    )
+def test_base_build_scripts_pass_external_wheel_as_named_context():
+    for path in (
+        Path("scripts/release/build_base.sh"),
+        Path("scripts/release/build_docker_release.sh"),
+    ):
+        script = path.read_text(encoding="utf-8")
+        assert "readlink -f whl" in script
+        assert "--build-context" in script
+        assert "ort_wheel=" in script
 
-    assert apt_install is not None
-    packages = set(re.findall(r"^\s*([a-z0-9.+-]+)\s*\\?$", apt_install["packages"], re.MULTILINE))
-    assert {"libgl1", "libgomp1"}.issubset(packages)
+
+def test_runtime_image_installs_opencv_system_libraries():
+    for path in (Path("Dockerfile.panel-label"), Path("Dockerfile.scenes")):
+        dockerfile = path.read_text(encoding="utf-8").lower()
+        apt_install = re.search(
+            r"apt-get install -y --no-install-recommends(?P<packages>.*?)&&",
+            dockerfile,
+            flags=re.DOTALL,
+        )
+
+        assert apt_install is not None
+        packages = set(
+            re.findall(
+                r"^\s*([a-z0-9.+-]+)\s*\\?$",
+                apt_install["packages"],
+                re.MULTILINE,
+            )
+        )
+        assert {"libgl1", "libgomp1"}.issubset(packages)
