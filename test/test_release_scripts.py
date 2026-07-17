@@ -79,3 +79,19 @@ def test_rollback_script_swaps_previous_and_validates_readiness():
     assert "previous" in script
     assert "--force-recreate" in script
     assert "/health/ready" in script
+
+
+def test_offline_release_script_builds_versioned_service_images_and_checksums():
+    script = Path("scripts/release/build_docker_release.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "RELEASE_VERSION" in script
+    assert "Dockerfile.panel-label" in script
+    assert "Dockerfile.scenes" in script
+    assert "mobile_vision:panel-label-" in script
+    assert "mobile_vision:scenes-" in script
+    assert "sha256sum" in script
+    assert "docker save" in script
+    assert "collect_weight_paths.py" in script
+    assert "PLUGIN_VERSIONS" in script
