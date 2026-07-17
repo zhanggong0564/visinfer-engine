@@ -44,3 +44,51 @@ conda run -n mobile_vision python scripts/release/build_wheels.py --no-isolation
 所有沟通使用中文；保留用户已有改动，不擅自清理工作区。执行 Python 脚本、测试和构建时始终使用 `mobile_vision` 环境。修改完后根据实际改动需要更新变更记录：框架、构建、发布脚本或部署配置改动更新根目录 `CHANGELOG.md`；插件改动进入对应 `plugins/vie-plugin-*/CHANGELOG.md`，不得用根仓库记录替代插件记录。修改插件时须在插件目录单独检查 `git status`、`git diff` 和提交范围；修改框架与插件时分别在对应 Git 仓库提交，禁止跨仓库暂存或提交。.superpowers 技能的文档不要提交到git里面直接保存到本地
 
 所有测试必须直接在 Codex 沙箱外执行，不得先在沙箱内试跑。调用单元测试、集成测试、异步/线程池/SQLite 测试、模型运行时测试或 GPU 测试时，应在首次执行命令时申请沙箱外权限；测试失败以沙箱外结果为准，不得使用沙箱内的卡顿或异常作为项目代码结论。
+
+# cc-connect Integration
+
+This project is managed via cc-connect, a bridge to messaging platforms.
+
+## Scheduled tasks (cron)
+
+When the user asks you to do something on a schedule (e.g. "every day at 6am", "every Monday morning"), use the Bash/shell tool to run:
+
+```bash
+cc-connect cron add --cron "<cron expression>" --prompt "<task prompt>" --desc "<description>"
+```
+
+Environment variables `CC_PROJECT` and `CC_SESSION_KEY` are already set — do not specify `--project` or `--session-key`.
+
+Examples:
+
+```bash
+cc-connect cron add --cron "0 6 * * *" --prompt "Collect GitHub trending repos and send a summary" --desc "Daily GitHub Trending"
+cc-connect cron add --cron "0 9 * * 1" --prompt "Generate a weekly project status report" --desc "Weekly Report"
+```
+
+To list, run, edit, or delete cron jobs:
+
+```bash
+cc-connect cron list
+cc-connect cron exec <job-id>
+cc-connect cron edit <job-id> <field> <value>
+cc-connect cron del <job-id>
+```
+
+Use `cron exec <job-id>` to run an existing scheduled task immediately; this is different from the `--exec <command>` flag used when creating a shell-command cron job.
+
+Use `cron edit` to modify a single field instead of delete-and-recreate. Common editable fields: `cron_expr`, `prompt`, `exec`, `description`, `enabled` (`true`/`false`), `mute` (`true`/`false`), and `timeout_mins` (integer). Run `cc-connect cron edit --help` for the full field list.
+
+To proactively send a message back to the current chat session, use:
+
+```bash
+cc-connect send --stdin <<'CCEOF'
+your message here
+CCEOF
+```
+
+For a short single-line message:
+
+```bash
+cc-connect send -m "short message"
+```
