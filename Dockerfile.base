@@ -1,7 +1,7 @@
 # =========================================================
 # VisInfer Engine (VIE) - 共享基础镜像（builder 环境）
 #
-# 这一层是三个场景镜像（Dockerfile / Dockerfile.panel-label / Dockerfile.scenes）
+# 这一层是 panel-label 与 scenes 两个服务镜像
 # 的公共依赖环境：cuda 系统库 + 构建工具链 + 装好【全部 pip 依赖】的 venv + Cython。
 # 它最慢最重（CUDA 运行库 + onnxruntime-gpu + Python 依赖），但在所有
 # 场景间字节级一致，故抽出来只构建一次，各场景镜像 `FROM mobile_vision:base` 复用，
@@ -10,14 +10,14 @@
 # 何时需要重建本镜像：仅当 requirements.txt / onnxruntime 等【依赖】变化时。
 #   业务代码（框架 + 插件）不进 base，留在各场景镜像 builder 阶段快速编译。
 #
-# 构建：  docker build -f Dockerfile.base -t mobile_vision:base .
-#   （或 bash scripts/release/build_base.sh）
+# 构建：bash scripts/release/build_base.sh
+# 脚本会把本地 ORT wheel 目录作为 BuildKit named context 传入。
 #
 # 依赖说明：
-#   - onnxruntime-gpu   1.20.1 (CUDA 12.x/cuDNN 9.x) : whl/onnxruntime_gpu-1.20.1-*.whl
+#   - onnxruntime-gpu 1.20.1 (CUDA 12.x/cuDNN 9.x)：由 whl/ 本地 wheel 安装
 # =========================================================
 
-ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu22.04
+ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
 FROM ${BASE_IMAGE} AS base
 
@@ -45,7 +45,7 @@ ENV PATH=/opt/venv/bin:$PATH
 
 # 复制依赖清单与部署提供的 CUDA 12.x ONNX Runtime wheel
 COPY requirements.txt /tmp/requirements.txt
-COPY whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl /tmp/
+COPY --from=ort_wheel /onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl /tmp/
 
 # 安装顺序说明：
 #  1. 先用 --no-deps 安装部署提供的 onnxruntime-gpu 1.20.1 本地 wheel，避免从索引重复下载
