@@ -59,7 +59,29 @@ plugins/
 deploy/
 # 运行期数据回流落盘目录（图片 + 记录）
 data/
+# 仅跟踪生产发布脚本；本地数据/基准脚本仍保持忽略。
 scripts
+!scripts/
+scripts/*
+!scripts/release/
+scripts/release/*
+!scripts/release/build_base.sh
+!scripts/release/build_docker_release.sh
+!scripts/release/build_wheels.py
+!scripts/release/collect_weight_paths.py
+!scripts/release/deploy_offline.sh
+!scripts/release/export_line_squeeze_onnx.sh
+!scripts/release/pack.py
+!scripts/release/py2so.py
+!scripts/release/remote_activate.sh
+!scripts/release/rollback-plugin.sh
+!scripts/release/sync-common.sh
+!scripts/release/sync-plugin.sh
+!scripts/release/sync-plugin-scenes.sh
+.release-staging/
+!docs/
+docs/*
+!docs/deploy.md
 
 # Superpowers 隔离开发工作区
 .worktrees/
