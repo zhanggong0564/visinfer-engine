@@ -20,7 +20,7 @@ from routers.upload_persistence import (  # noqa: E402
     decode_image,
     detect_image_extension,
 )
-from services.utils.visualize import render_detection_overlay  # noqa: E402
+from routers.visualization import render_detection_overlay  # noqa: E402
 
 
 def percentile(samples, value):

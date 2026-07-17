@@ -7,33 +7,22 @@
 @Description  :
 '''
 
-from .onnx_base import BaseOnnxInfer
 from .business_logic_base import BusinessLogicBase
+from .vision_infer import BaseVisionInfer
 from .classification_pipeline import (
     BaseClassificationPipeline,
     ClassificationResult,
 )
-from .ctc_recognition_pipeline import BaseCtcRecognitionPipeline
+from .ctc_recognition_pipeline import BaseCtcRecognitionPipeline, CtcRecognitionResult
 from .detector import Detector
-from .inference_runner import InferenceRunner, OnnxRuntimeRunner, TensorInfo
-from .runtime_status import (
-    ModelRuntimeStatus,
-    RuntimeStatusRegistry,
-    runtime_status_registry,
-)
 
 
 __all__ = [
-    "BaseOnnxInfer",
+    "BaseVisionInfer",
     "BaseClassificationPipeline",
     "BaseCtcRecognitionPipeline",
     "BusinessLogicBase",
     "ClassificationResult",
+    "CtcRecognitionResult",
     "Detector",
-    "InferenceRunner",
-    "ModelRuntimeStatus",
-    "OnnxRuntimeRunner",
-    "RuntimeStatusRegistry",
-    "TensorInfo",
-    "runtime_status_registry",
 ]

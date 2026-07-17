@@ -7,16 +7,16 @@
 @Description  :
 '''
 
-"""YoloOnnxInfer 单元测试"""
+"""YoloInfer 单元测试"""
 import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
 
 
 def test_preprocess_delegates_to_shared_pipeline(monkeypatch):
-    from services.yolo import YoloOnnxInfer
+    from services.yolo import YoloInfer
 
-    model = YoloOnnxInfer.__new__(YoloOnnxInfer)
+    model = YoloInfer.__new__(YoloInfer)
     model._input_model_shape = [1, 3, 8, 10]
     image = np.zeros((3, 5, 3), dtype=np.uint8)
     sentinel = (object(), object())
@@ -34,9 +34,9 @@ def test_preprocess_delegates_to_shared_pipeline(monkeypatch):
 
 def test_post_process_delegates_to_shared_pipeline(monkeypatch):
     from schemas.inference_context import PreprocMeta
-    from services.yolo import YoloOnnxInfer
+    from services.yolo import YoloInfer
 
-    model = YoloOnnxInfer.__new__(YoloOnnxInfer)
+    model = YoloInfer.__new__(YoloInfer)
     model.task = "det"
     model.confThreshold = 0.4
     model.nmsThreshold = 0.6
@@ -86,20 +86,26 @@ def test_post_process_delegates_to_shared_pipeline(monkeypatch):
     assert result.ori_img is original
 
 
-class TestYoloOnnxInfer:
-    """YoloOnnxInfer 测试"""
+class TestYoloInfer:
+    """YoloInfer 测试"""
 
     @pytest.fixture
     def mock_model(self):
         """模拟 ONNX 模型加载"""
         with patch.object(
-            __import__("services.base", fromlist=["BaseOnnxInfer"]).BaseOnnxInfer,
+            __import__("services.base", fromlist=["BaseVisionInfer"]).BaseVisionInfer,
             "__init__",
             lambda self, *args, **kwargs: None,
         ):
-            from services.yolo import YoloOnnxInfer
+            from services.yolo import YoloInfer
 
-            model = YoloOnnxInfer(model_path="fake_model.onnx", nc=80, confThreshold=0.5, nmsThreshold=0.5, task="det")
+            model = YoloInfer(
+                nc=80,
+                runner=object(),
+                confThreshold=0.5,
+                nmsThreshold=0.5,
+                task="det",
+            )
             # 模拟必要属性
             model._input_model_shape = (1, 3, 640, 640)
             model.id2name = {i: f"class_{i}" for i in range(80)}
@@ -119,7 +125,7 @@ class TestYoloOnnxInfer:
         """测试预处理返回 (tensor, PreprocMeta) 元组"""
         from schemas.inference_context import PreprocMeta
         input_image = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-        with patch("services.base.yolo_pipeline.letterbox") as mock_letterbox:
+        with patch("services.yolo_ops.letterbox") as mock_letterbox:
             mock_letterbox.return_value = (
                 np.zeros((640, 640, 3), dtype=np.uint8), 1.0, 0, 0,
             )
@@ -136,7 +142,7 @@ class TestYoloOnnxInfer:
         # 全白图像
         white_image = np.ones((480, 640, 3), dtype=np.uint8) * 255
 
-        with patch("services.base.yolo_pipeline.letterbox") as mock_letterbox:
+        with patch("services.yolo_ops.letterbox") as mock_letterbox:
             mock_letterbox.return_value = (np.ones((640, 640, 3), dtype=np.uint8) * 255, 1.0, 0, 0)
 
             tensor, _ = mock_model.preprocess(white_image)
@@ -279,15 +285,15 @@ class TestYoloOnnxInfer:
         assert mock_model.id2name[79] == "class_79"
 
 
-class TestYoloOnnxInferIntegration:
+class TestYoloInferIntegration:
     """集成测试（需要真实模型文件时跳过）"""
 
     @pytest.mark.skip(reason="需要真实模型文件")
     def test_full_inference_pipeline(self):
         """完整推理流程测试"""
-        from services.yolo import YoloOnnxInfer
+        from services.yolo import YoloInfer
 
-        model = YoloOnnxInfer("path/to/model.onnx", nc=80)
+        model = YoloInfer(nc=80, runner=object())
         image = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
 
         result = model(image)

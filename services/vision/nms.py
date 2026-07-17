@@ -8,7 +8,7 @@
 '''
 
 import numpy as np
-from .utils import xywh2xyxy
+from .boxes import xywh2xyxy
 
 
 def non_max_suppression_v8(
@@ -141,15 +141,6 @@ def non_max_suppression_v8(
             boxes = x[:, :4] + c
             i = numpy_nms(boxes, scores, iou_thres)
         i = i[:max_det]
-        # if merge and (1 < n < 3e3):
-        #     iou = box_iou(boxes[i], boxes) > iou_thres
-        #     weights = iou * scores[None]
-        #     x[i, :4] = np.dot(weights, x[:, :4]) / weights.sum(
-        #         1, keepdims=True
-        #     )
-        #     if redundant:
-        #         i = i[iou.sum(1) > 1]
-
         output[xi] = x[i]
 
     return output
@@ -158,18 +149,6 @@ def non_max_suppression_v8(
 def box_area(boxes):
     return (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
 
-
-def box_iou(box1, box2):
-    area1 = box_area(box1)  # N
-    area2 = box_area(box2)  # M
-    # broadcasting
-    lt = np.maximum(box1[:, np.newaxis, :2], box2[:, :2])
-    rb = np.minimum(box1[:, np.newaxis, 2:], box2[:, 2:])
-    wh = rb - lt
-    wh = np.maximum(0, wh)  # [N, M, 2]
-    inter = wh[:, :, 0] * wh[:, :, 1]
-    iou = inter / (area1[:, np.newaxis] + area2 - inter)
-    return iou  # Nx
 
 
 def numpy_nms(boxes, scores, iou_threshold):

@@ -39,9 +39,9 @@ def main():
     product_type = sys.argv[3] if len(sys.argv) > 3 else ""
     out_path = sys.argv[4] if len(sys.argv) > 4 else "vis_out.jpg"
 
-    __import__(PLUGIN_MODULES[scene])  # 导入即触发 @detection_factory.register
-    from services.api import detection_factory
-    from services.utils.visualize import render_detection_overlay
+    __import__(PLUGIN_MODULES[scene])  # 导入即触发 @scenario_registry.register
+    from services.scenario_registry import scenario_registry
+    from routers.visualization import render_detection_overlay
     from schemas.data_base import InputParamsBusiness
     from config import settings
 
@@ -63,7 +63,7 @@ def main():
         if guideline:
             guides = [tuple(guideline)]
 
-    detector = detection_factory.get_scenarios(scene)
+    detector = scenario_registry.create(scene)
     result = detector.detect(params)
     result_dict = result if isinstance(result, dict) else result.to_dict()
 

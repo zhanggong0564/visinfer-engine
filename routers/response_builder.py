@@ -6,7 +6,7 @@ from typing import Any, Callable, Optional
 import numpy as np
 
 from schemas import CommonResponse, ERROR_CODE_MESSAGES, ErrorCode
-from services.utils.visualize import render_detection_overlay
+from .visualization import render_detection_overlay
 from utils.async_utils import run_sync
 
 

@@ -91,14 +91,16 @@ def build_predictor(
     import onnxruntime as ort
 
     from vie_plugin_panel_label.ocr_models import PanelLabelTextRecognizer
-    from services.base import OnnxRuntimeRunner
+    from services.inference import OnnxRuntimeOptions, OnnxRuntimeRunner
 
     providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
     runner = OnnxRuntimeRunner(
         str(ONNX_MODEL),
-        providers=providers,
-        execution_mode=onnx_execution_mode,
-        enable_profiling=enable_onnx_profiling,
+        OnnxRuntimeOptions(
+            providers=tuple(providers),
+            execution_mode=onnx_execution_mode,
+            enable_profiling=enable_onnx_profiling,
+        ),
     )
     print(
         f"ONNX execution_mode: {onnx_execution_mode}; "
@@ -110,7 +112,6 @@ def build_predictor(
             f"可用 provider={ort.get_available_providers()}"
         )
     model = PanelLabelTextRecognizer(
-        str(ONNX_MODEL),
         str(ONNX_METADATA),
         runner=runner,
     )

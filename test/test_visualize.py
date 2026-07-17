@@ -1,10 +1,10 @@
-"""services/utils/visualize 绘制模块单元测试"""
+"""Router response visualization unit tests."""
 import base64
 
 import cv2
 import numpy as np
 
-from services.utils.visualize import (
+from routers.visualization import (
     render_detection_overlay,
     _hex_to_bgr,
     _coords_to_points,
@@ -39,7 +39,7 @@ def test_coords_use_float32_intermediate(monkeypatch):
             seen["dtype"] = dtype
         return original_asarray(value, dtype=dtype, *args, **kwargs)
 
-    monkeypatch.setattr("services.utils.visualize.np.asarray", capture)
+    monkeypatch.setattr("routers.visualization.np.asarray", capture)
     _coords_to_points([0, 0, 1, 0, 1, 1, 0, 1], new_w=100, new_h=50, scale=1.0)
     assert seen["dtype"] == np.float32
 
@@ -52,7 +52,7 @@ def test_base64_receives_numpy_encode_buffer(monkeypatch):
         seen["type"] = type(buffer)
         return original_b64encode(buffer)
 
-    monkeypatch.setattr("services.utils.visualize.base64.b64encode", capture)
+    monkeypatch.setattr("routers.visualization.base64.b64encode", capture)
     result = render_detection_overlay(np.zeros((32, 32, 3), dtype=np.uint8), [])
 
     assert result.startswith("data:image/jpeg;base64,")

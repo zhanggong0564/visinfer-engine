@@ -1,24 +1,23 @@
-"""services/utils 核心工具函数单元测试"""
+"""Focused vision-operation unit tests."""
 import numpy as np
 import pytest
-from services.utils.box import (
+from services.vision.nms import (
     box_area,
-    box_iou,
     numpy_nms,
     non_max_suppression_v8,
 )
-from services.utils.utils import (
+from services.vision.boxes import (
     xywh2xyxy,
     xywhr2xyxyxyxy,
-    sigmoid,
-    sort_boxes,
     scale_boxes,
     clip_boxes,
-    letterbox,
+)
+from services.vision.masks import (
     crop_mask,
     process_mask,
     scale_masks,
 )
+from services.vision.preprocessing import letterbox
 
 
 class TestBoxArea:
@@ -30,33 +29,6 @@ class TestBoxArea:
         areas = box_area(np.array([[0, 0, 5, 5], [1, 1, 4, 4]]))
         assert areas[0] == 25.0
         assert areas[1] == 9.0
-
-
-class TestBoxIou:
-    def test_full_overlap(self):
-        box1 = np.array([[0, 0, 10, 10]])
-        box2 = np.array([[0, 0, 10, 10]])
-        iou = box_iou(box1, box2)
-        assert iou[0, 0] == pytest.approx(1.0)
-
-    def test_no_overlap(self):
-        box1 = np.array([[0, 0, 5, 5]])
-        box2 = np.array([[10, 10, 15, 15]])
-        iou = box_iou(box1, box2)
-        assert iou[0, 0] == 0.0
-
-    def test_partial_overlap(self):
-        box1 = np.array([[0, 0, 10, 10]])
-        box2 = np.array([[5, 5, 15, 15]])
-        iou = box_iou(box1, box2)
-        # 交集=25, 并集=200-25=175, iou=25/175≈0.1429
-        assert 0.14 < iou[0, 0] < 0.15
-
-    def test_multiple_to_multiple(self):
-        box1 = np.array([[0, 0, 10, 10], [5, 5, 15, 15]])
-        box2 = np.array([[0, 0, 10, 10]])
-        iou = box_iou(box1, box2)
-        assert iou.shape == (2, 1)
 
 
 class TestNumpyNms:
@@ -91,14 +63,7 @@ class TestNumpyNms:
         keep = numpy_nms(boxes, scores, 1.0)
         assert len(keep) == 2
 
-    def test_does_not_build_full_iou_matrix(self, monkeypatch):
-        """NMS 只能计算当前框对剩余框的一维 IoU，不能构造 N×N 矩阵。"""
-        monkeypatch.setattr(
-            "services.utils.box.box_iou",
-            lambda *args: (_ for _ in ()).throw(
-                AssertionError("full IoU matrix must not be used")
-            ),
-        )
+    def test_handles_large_input_without_full_iou_matrix(self):
         boxes = np.array(
             [[i, 0, i + 10, 10] for i in range(1000)], dtype=np.float32
         )
@@ -167,52 +132,6 @@ class TestXywhr2Xyxyxyxy:
         ], dtype=np.float32)
         corners = xywhr2xyxyxyxy(center)
         assert corners.shape == (2, 4, 2)
-
-
-class TestSigmoid:
-    def test_zero(self):
-        assert sigmoid(0.0) == 0.5
-
-    def test_large_positive(self):
-        assert sigmoid(10.0) == pytest.approx(1.0, abs=0.001)
-
-    def test_large_negative(self):
-        assert sigmoid(-10.0) == pytest.approx(0.0, abs=0.001)
-
-    def test_numpy_array(self):
-        x = np.array([0.0, 1.0, -1.0])
-        y = sigmoid(x)
-        assert y[0] == 0.5
-        assert y[1] > 0.5
-        assert y[2] < 0.5
-
-
-class TestSortBoxes:
-    def test_empty(self):
-        boxes, indices = sort_boxes([])
-        assert boxes == []
-        assert indices == []
-
-    def test_single_row(self):
-        boxes = [
-            [50, 10, 80, 30],
-            [10, 10, 40, 30],
-            [100, 10, 130, 30],
-        ]
-        sorted_boxes, indices = sort_boxes(boxes)
-        # 按X排序
-        assert sorted_boxes[0][0] < sorted_boxes[1][0] < sorted_boxes[2][0]
-
-    def test_multi_row(self):
-        boxes = [
-            [100, 50, 130, 70],  # 第二行右
-            [10, 10, 40, 30],    # 第一行左
-            [50, 10, 80, 30],    # 第一行右
-            [10, 50, 40, 70],    # 第二行左
-        ]
-        sorted_boxes, _ = sort_boxes(boxes)
-        # 第一行两个应在前
-        assert len(sorted_boxes) == 4
 
 
 class TestScaleBoxes:

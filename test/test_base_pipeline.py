@@ -1,10 +1,12 @@
 """推理编排层（Detector 协议 + 模板方法）单元测试"""
+import inspect
+
 from routers.response_builder import ResponseBuilder
 import numpy as np
 import pytest
 from services.base.detector import Detector
-from services.base.inference_runner import TensorInfo
-from services.base.onnx_base import BaseOnnxInfer
+from services.inference import TensorInfo
+from services.base.vision_infer import BaseVisionInfer
 from schemas.exceptions import ModelInferenceError
 
 
@@ -26,8 +28,11 @@ class _FakeRunner:
         self.inputs.append(inputs)
         return [np.zeros((1, 6, 1), dtype=np.float32)]
 
+    def close(self):
+        self.closed = True
 
-class _StubOnnxInfer(BaseOnnxInfer):
+
+class _StubVisionInfer(BaseVisionInfer):
     def preprocess(self, image):
         meta = type("Meta", (), {})()
         return np.zeros((1, 3, 32, 32), dtype=np.float32), meta
@@ -36,9 +41,9 @@ class _StubOnnxInfer(BaseOnnxInfer):
         return EXPECTED_RESULT
 
 
-def test_base_onnx_infer_uses_injected_runner():
+def test_base_vision_infer_uses_injected_runner():
     runner = _FakeRunner()
-    model = _StubOnnxInfer("unused.onnx", runner=runner)
+    model = _StubVisionInfer(runner=runner)
 
     result = model.infer(np.zeros((32, 32, 3), dtype=np.uint8))
 
@@ -49,11 +54,11 @@ def test_base_onnx_infer_uses_injected_runner():
     assert result is EXPECTED_RESULT
 
 
-def test_base_onnx_infer_preserves_model_inference_error():
+def test_base_vision_infer_preserves_model_inference_error():
     expected = ModelInferenceError("runner failed")
     runner = _FakeRunner()
     runner.run = lambda inputs: (_ for _ in ()).throw(expected)
-    model = _StubOnnxInfer("unused.onnx", runner=runner)
+    model = _StubVisionInfer(runner=runner)
 
     with pytest.raises(ModelInferenceError) as caught:
         model.infer(np.zeros((32, 32, 3), dtype=np.uint8))
@@ -61,10 +66,10 @@ def test_base_onnx_infer_preserves_model_inference_error():
     assert caught.value is expected
 
 
-def test_base_onnx_infer_wraps_unexpected_error():
+def test_base_vision_infer_wraps_unexpected_error():
     runner = _FakeRunner()
     runner.run = lambda inputs: (_ for _ in ()).throw(RuntimeError("backend failed"))
-    model = _StubOnnxInfer("unused.onnx", runner=runner)
+    model = _StubVisionInfer(runner=runner)
 
     with pytest.raises(ModelInferenceError) as caught:
         model.infer(np.zeros((32, 32, 3), dtype=np.uint8))
@@ -72,17 +77,47 @@ def test_base_onnx_infer_wraps_unexpected_error():
     assert caught.value.context["original_error"] == "backend failed"
 
 
+def test_base_vision_infer_closes_injected_runner_idempotently():
+    runner = _FakeRunner()
+    model = _StubVisionInfer(runner=runner)
+
+    model.close()
+    model.close()
+
+    assert runner.closed is True
+
+
 class TestDetectorProtocol:
-    def test_runtime_checkable_accepts_infer_object(self):
+    def test_runtime_checkable_accepts_infer_and_close_object(self):
         class Dummy:
             def infer(self, image):
                 return "ok"
+
+            def close(self):
+                pass
+
         assert isinstance(Dummy(), Detector)
+
+    def test_runtime_checkable_rejects_object_without_close(self):
+        class InferOnly:
+            def infer(self, image):
+                return "ok"
+
+        assert not isinstance(InferOnly(), Detector)
 
     def test_runtime_checkable_rejects_non_infer_object(self):
         class NoInfer:
             pass
         assert not isinstance(NoInfer(), Detector)
+
+
+def test_model_constructors_do_not_accept_model_paths():
+    from services.rfdetr import RFDetrInfer
+    from services.yolo import YoloInfer
+
+    assert "model_path" not in inspect.signature(BaseVisionInfer).parameters
+    assert "model_path" not in inspect.signature(YoloInfer).parameters
+    assert "model_path" not in inspect.signature(RFDetrInfer).parameters
 
 
 import threading
@@ -116,6 +151,14 @@ class _OrderLogic(BusinessLogicBase):
 
 
 class TestTemplateMethodOrder:
+    def test_detect_rejects_uninitialized_detector(self):
+        logic = _OrderLogic(MagicMock())
+        logic.detector = None
+        params = InputParamsBusiness(image=np.zeros((10, 10, 3), dtype=np.uint8))
+
+        with pytest.raises(RuntimeError, match="not initialized"):
+            logic.detect(params)
+
     def test_hook_call_order(self):
         logic = _OrderLogic(MagicMock())
         params = InputParamsBusiness(image=np.zeros((10, 10, 3), dtype=np.uint8))

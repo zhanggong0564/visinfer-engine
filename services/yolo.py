@@ -7,13 +7,17 @@
 @Description  :
 '''
 
-from .base import BaseOnnxInfer
-from .base.yolo_pipeline import (
+import numpy as np
+
+from .base import BaseVisionInfer
+from .inference import InferenceRunner
+from .yolo_ops import (
     prepare_yolo_input,
     restore_yolo_boxes,
     run_yolo_nms,
 )
-from .utils import *
+from .vision.boxes import xywhr2xyxyxyxy
+from .vision.masks import masks2segments_with_boxes, process_mask, scale_masks
 from collections import defaultdict
 from schemas.data_base import DetectResult
 from schemas.inference_context import PreprocMeta
@@ -21,9 +25,20 @@ import time
 from utils import vision_logger
 
 
-class YoloOnnxInfer(BaseOnnxInfer):
-    def __init__(self, model_path, nc, confThreshold=0.5, nmsThreshold=0.5, task="det"):
-        super().__init__(model_path, confThreshold=confThreshold, nmsThreshold=nmsThreshold)
+class YoloInfer(BaseVisionInfer):
+    def __init__(
+        self,
+        nc,
+        runner: InferenceRunner,
+        confThreshold=0.5,
+        nmsThreshold=0.5,
+        task="det",
+    ):
+        super().__init__(
+            runner,
+            confThreshold=confThreshold,
+            nmsThreshold=nmsThreshold,
+        )
         self.confThreshold = confThreshold
         self.nmsThreshold = nmsThreshold
         self.agnostic = False

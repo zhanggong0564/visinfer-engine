@@ -1,12 +1,13 @@
 import numpy as np
 
 from schemas.inference_context import PreprocMeta
-from services.base.yolo_pipeline import (
+from services.yolo_ops import (
     prepare_yolo_input,
     restore_yolo_boxes,
     run_yolo_nms,
 )
-from services.utils import letterbox, scale_boxes
+from services.vision.boxes import scale_boxes
+from services.vision.preprocessing import letterbox
 
 
 def test_prepare_yolo_input_matches_existing_pipeline():
@@ -37,7 +38,7 @@ def test_run_yolo_nms_forwards_exact_arguments(monkeypatch):
         return sentinel
 
     monkeypatch.setattr(
-        "services.base.yolo_pipeline.non_max_suppression_v8", fake_nms
+        "services.yolo_ops.non_max_suppression_v8", fake_nms
     )
     prediction = np.zeros((1, 6, 2), dtype=np.float32)
 

@@ -3,8 +3,9 @@ from typing import Sequence
 import numpy as np
 
 from schemas.inference_context import PreprocMeta
-from services.utils import letterbox, scale_boxes
-from services.utils.box import non_max_suppression_v8
+from services.vision.boxes import scale_boxes
+from services.vision.preprocessing import letterbox
+from services.vision.nms import non_max_suppression_v8
 
 
 def prepare_yolo_input(
