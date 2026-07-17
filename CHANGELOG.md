@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+- **Docker 双 Runtime**：恢复 panel-label 与 scenes 两个服务镜像，镜像内置对应基线插件，并通过 `current/` 保留后续代码与权重覆盖能力。
+- **原子热更新**：`sync-plugin*.sh` 改用版本化 staging/current/previous，增加依赖指纹、entry point、权重和 readiness 校验，失败自动回滚。
+- **离线部署**：新增版本镜像、权重覆盖层、SHA256 清单的构建与部署脚本，并移除脚本中的默认生产服务器地址。
+- **ONNX 运行依赖**：显式加入 PyYAML，line-squeeze OCR 改为 ONNX 后 scenes 镜像继续保持无 PaddleOCR/PaddleX。
+
 ## [2.1.2] - 2026-07-16
 
 - **ONNX 运行时稳定性治理**：GPU 部署强制校验实际 CUDA Provider，禁止 Session
