@@ -313,6 +313,16 @@ def test_runtime_requirements_use_onnx_without_paddle():
     assert str(by_name["onnxruntime-gpu"][0].specifier) == "==1.20.1"
     assert "paddleocr" not in by_name
     assert "paddlex" not in by_name
+    assert "pyyaml" in by_name
+
+
+def test_local_onnx_runtime_wheel_is_resolvable():
+    wheel = Path(
+        "whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64."
+        "manylinux_2_28_x86_64.whl"
+    )
+
+    assert wheel.resolve(strict=True).is_file()
 
 
 def test_base_image_installs_local_onnx_wheel_before_requirements():
