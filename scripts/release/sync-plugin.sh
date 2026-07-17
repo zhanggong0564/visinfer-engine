@@ -1,118 +1,15 @@
 #!/usr/bin/env bash
-# =========================================================
-# panel_label 业务代码 + 模型权重热更新：
-#   编译 .so → 解包到 pkg/ → 同步 pkg/ 与 weights/panel_label/ 到服务器 → 重启容器
-#
-# 适用场景：改了业务逻辑（框架 services/schemas/routers/utils/config 或
-# panel_label 插件）或更新了模型权重，环境未变。免去重打整镜像（几个 G）
-# 重传——代码只传几 MB 的 .so，权重 rsync 增量只传变化的模型文件。
-# 原理见 docker-compose.panel-label.yml 里 PYTHONPATH 与 weights 覆盖层。
-#
-# 用法（仓库根目录）：
-#   bash scripts/release/sync-plugin.sh                 # 编译+同步+远程重启（默认服务器）
-#   bash scripts/release/sync-plugin.sh --local         # 只编译+解包到 pkg/，不连服务器
-#   bash scripts/release/sync-plugin.sh --no-build      # 跳过编译，用已有 dist/*.whl
-#   bash scripts/release/sync-plugin.sh --no-weights    # 跳过权重同步，只传代码
-#   REMOTE=user@host REMOTE_DIR=/path bash scripts/release/sync-plugin.sh   # 覆盖目标
-#
-# ⚠️ ABI：本机用来编译的 Python 必须是 CPython 3.10（与统一 runtime 镜像一致），且 glibc
-#    不高于容器（ubuntu22.04 / glibc 2.35）。本机 WSL ubuntu22.04 或 conda py310 一般满足。
-#    若远程 import 报 .so 版本/符号错误，改在 runtime builder 依赖环境里编：
-#      docker build -f Dockerfile.runtime --target builder -t vie-runtime:builder .
-#      docker run --rm -v "$PWD":/src -w /src vie-runtime:builder \
-#        python scripts/release/build_wheels.py --no-isolation --plugins panel-label
-#    再 bash scripts/release/sync-plugin.sh --no-build 同步；panel-label 服务本身仍运行在统一 runtime 镜像上。
-# =========================================================
+# panel_label atomic hot update: framework + plugin + app/static + referenced weights.
 set -euo pipefail
 
-# 脚本现位于 scripts/release/，距仓库根两级，故上溯 ../..
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-cd "$ROOT"
+SERVICE="panel-label"
+RUNTIME_DOCKERFILE="Dockerfile.panel-label"
+PLUGINS=(panel-label)
+WHEEL_PATTERNS=("vie_framework-*.whl" "vie_plugin_panel_label-*.whl")
+CONFIGS=("plugins/vie-plugin-panel-label/vie_plugin_panel_label/config.py")
+EXPECTED_ENTRYPOINTS=(panel_label)
+COMPOSE_FILE="docker-compose.panel-label.yml"
+CONTAINER_NAME="mobile-vision-panel-label"
+HEALTH_URL="http://127.0.0.1:3001/health/ready"
 
-PYTHON="${PYTHON:-python}"
-REMOTE="${REMOTE:-sun@192.168.100.183}"
-REMOTE_DIR="${REMOTE_DIR:-/media/sun/V1/zhanggong/deploy/mobile_vison/deploy3}"
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.panel-label.yml}"
-
-DO_BUILD=1
-DO_PUSH=1
-DO_WEIGHTS=1
-for arg in "$@"; do
-  case "$arg" in
-    --no-build)   DO_BUILD=0 ;;
-    --local)      DO_PUSH=0 ;;
-    --no-weights) DO_WEIGHTS=0 ;;
-    -h|--help)  sed -n '2,25p' "$0"; exit 0 ;;
-    *) echo "未知参数: $arg" >&2; exit 1 ;;
-  esac
-done
-
-if [ "$DO_BUILD" -eq 1 ]; then
-  echo "==> [1/3] 编译 framework + panel_label → dist/*.whl"
-  # 先清旧 wheel，避免跨多次构建堆积、后续 glob 选到陈旧版本
-  rm -f dist/vie_framework-*.whl dist/vie_plugin_panel_label-*.whl
-  "$PYTHON" scripts/release/build_wheels.py --no-isolation --plugins panel-label
-fi
-
-echo "==> [2/3] 解包 wheel 到 pkg/（PYTHONPATH 覆盖层）"
-shopt -s nullglob
-FW=(dist/vie_framework-*.whl)
-PL=(dist/vie_plugin_panel_label-*.whl)
-if [ ${#FW[@]} -eq 0 ] || [ ${#PL[@]} -eq 0 ]; then
-  echo "!! dist/ 缺少 wheel，请先去掉 --no-build 编译" >&2; exit 1
-fi
-rm -rf pkg && mkdir -p pkg
-# wheel 即 zip：解出 routers/services/schemas/utils/config + vie_plugin_panel_label + *.dist-info
-unzip -o -q "${FW[-1]}" -d pkg
-unzip -o -q "${PL[-1]}" -d pkg
-echo "    pkg/ 顶层："; ls -1 pkg | sed 's/^/      /'
-
-# app.py 是入口脚本、不进 wheel，pkg/ 的 PYTHONPATH 覆盖不到它；以独立卷下发。
-# 刷新部署包内快照（单一真相源 = 仓库根 app.py/static），供全新部署整目录传输时携带。
-cp -f app.py deploy/app.py
-rm -rf deploy/static
-mkdir -p deploy/static
-cp -R static/swagger-ui deploy/static/
-echo "    已刷新 deploy/app.py 快照（入口脚本覆盖层）"
-echo "    已刷新 deploy/static/ 快照（Swagger UI 离线资源）"
-
-if [ "$DO_PUSH" -eq 0 ]; then
-  echo "==> [3/3] --local：跳过同步与重启。本地 pkg/ 已就绪。"
-  exit 0
-fi
-
-echo "==> [3/3] 同步 pkg/（及权重、入口脚本、离线文档资源）到 ${REMOTE}:${REMOTE_DIR} 并强制重建容器"
-ssh "$REMOTE" "mkdir -p '${REMOTE_DIR}/pkg' '${REMOTE_DIR}/weights/panel_label' '${REMOTE_DIR}/static'"
-rsync -avz --delete pkg/ "${REMOTE}:${REMOTE_DIR}/pkg/"
-# 入口脚本覆盖层：app.py 单文件同步到 compose 同级目录（compose 以 ./app.py:ro 挂载）。
-rsync -avz app.py "${REMOTE}:${REMOTE_DIR}/app.py"
-# 部署编排与 Swagger UI 离线资源覆盖层：新增挂载需要 up -d 应用，而不是仅 restart。
-rsync -avz deploy/docker-compose.panel-label.yml "${REMOTE}:${REMOTE_DIR}/docker-compose.panel-label.yml"
-rsync -avz --delete deploy/static/ "${REMOTE}:${REMOTE_DIR}/static/"
-if [ "$DO_WEIGHTS" -eq 1 ]; then
-  # 只同步插件 config.py 实际引用的权重，不整目录推送未用的大模型（旧 rec/det/orient 版本）。
-  # 单一真相源 = config.py：从中解析所有 ./weights/panel_label/<...> 字面量，config 改了自动跟随，
-  # 不在脚本里写死模型名。--delete-excluded + 过滤规则让远端 weights/panel_label/ 严格等于"已用集"，
-  # 多余旧模型一并清掉（回滚换模型走 config.py 改路径 → 重跑本脚本即自愈，勿清空 pkg/ 回基线）。
-  # 前提：远端 compose 已挂载 ./weights:/app/workspace/weights:ro 覆盖层。
-  CFG="plugins/vie-plugin-panel-label/vie_plugin_panel_label/config.py"
-  mapfile -t USED < <(grep -oE '\./weights/panel_label/[^"]+' "$CFG" \
-                      | sed 's#^\./weights/panel_label/##' | sort -u)
-  if [ "${#USED[@]}" -eq 0 ]; then
-    echo "!! 未能从 $CFG 解析出权重路径，放弃权重同步以免 --delete 误删远端" >&2
-    exit 1
-  fi
-  for w in "${USED[@]}"; do
-    [ -e "weights/panel_label/$w" ] || {
-      echo "!! 本地缺失 config 引用的权重 weights/panel_label/$w，放弃同步" >&2; exit 1; }
-  done
-  echo "    仅同步 config.py 引用的权重（${#USED[@]} 项）："
-  printf '      %s\n' "${USED[@]}"
-  FILTER=(--include='*/')
-  for w in "${USED[@]}"; do FILTER+=(--include="/${w}" --include="/${w}/***"); done
-  FILTER+=(--exclude='*')
-  rsync -avz --delete --delete-excluded --prune-empty-dirs "${FILTER[@]}" \
-    weights/panel_label/ "${REMOTE}:${REMOTE_DIR}/weights/panel_label/"
-fi
-ssh "$REMOTE" "cd '${REMOTE_DIR}' && docker compose -f '${COMPOSE_FILE}' up -d --force-recreate"
-echo "==> 完成。验证：bash verify-QF2.sh  （或查日志 docker compose logs -f）"
+source "$(dirname "$0")/sync-common.sh" "$@"
