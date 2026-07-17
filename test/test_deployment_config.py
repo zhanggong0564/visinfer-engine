@@ -273,17 +273,19 @@ def test_deploy_bundle_includes_offline_swagger_assets():
 
 
 def test_sync_script_pushes_offline_swagger_assets_and_applies_compose():
-    script = Path("scripts/release/sync-plugin.sh").read_text(encoding="utf-8")
+    script = Path("scripts/release/sync-common.sh").read_text(encoding="utf-8")
+    activate = Path("scripts/release/remote_activate.sh").read_text(encoding="utf-8")
 
-    assert "deploy/static/" in script
-    assert "docker-compose.panel-label.yml" in script
-    assert "docker compose -f '${COMPOSE_FILE}' up -d" in script
+    assert "static/swagger-ui" in script
+    assert 'cp "$COMPOSE_FILE"' in script
+    assert 'docker compose -f "$COMPOSE_FILE" up -d --force-recreate' in activate
 
 
 def test_panel_label_weight_sync_deletes_excluded_stale_model_files():
-    script = Path("scripts/release/sync-plugin.sh").read_text(encoding="utf-8")
+    script = Path("scripts/release/sync-common.sh").read_text(encoding="utf-8")
 
-    assert "--delete-excluded" in script
+    assert "collect_weight_paths.py" in script
+    assert 'rsync -a --files-from="$LOCAL_STAGE/weight-paths.txt"' in script
 
 
 def test_framework_wheel_keeps_third_party_dependencies_external():
