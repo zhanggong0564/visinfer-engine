@@ -68,3 +68,14 @@ def test_sync_scripts_use_atomic_versioned_releases(script_name):
     assert "trap 'rollback' ERR" in script
     assert "192.168." not in script
     assert "REMOTE_DIR:-/" not in script
+
+
+def test_rollback_script_swaps_previous_and_validates_readiness():
+    script = Path("scripts/release/rollback-plugin.sh").read_text(encoding="utf-8")
+
+    assert "--remote" in script
+    assert "--remote-dir" in script
+    assert "current" in script
+    assert "previous" in script
+    assert "--force-recreate" in script
+    assert "/health/ready" in script
