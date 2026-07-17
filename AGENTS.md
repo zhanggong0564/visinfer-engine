@@ -8,13 +8,13 @@
 
 ## 构建、测试与开发命令
 
-所有 Python 命令使用 `ppocr` Conda 环境：
+所有 Python 命令使用 `mobile_vision` Conda 环境：
 
 ```bash
-conda run -n ppocr python app.py
-conda run -n ppocr python -m pytest test/ -v
-conda run -n ppocr python -m pytest plugins/vie-plugin-panel-label/tests/ -v
-conda run -n ppocr python scripts/release/build_wheels.py --no-isolation
+conda run -n mobile_vision python app.py
+conda run -n mobile_vision python -m pytest test/ -v
+conda run -n mobile_vision python -m pytest plugins/vie-plugin-panel-label/tests/ -v
+conda run -n mobile_vision python scripts/release/build_wheels.py --no-isolation
 ```
 
 服务默认监听 `0.0.0.0:3001`。修改插件时必须同时运行框架测试和对应插件测试。场景容器使用 `docker compose -f docker-compose.scenes.yml up -d` 启动，非明确重建镜像时不要添加 `--build`。运行时镜像必须保留 `libgl1`，否则 PaddleOCR 传递安装的 OpenCV 可能因缺少 `libGL.so.1` 而启动失败。
@@ -41,4 +41,4 @@ conda run -n ppocr python scripts/release/build_wheels.py --no-isolation
 
 ## 智能体协作约定
 
-所有沟通使用中文；保留用户已有改动，不擅自清理工作区。执行 Python 脚本、测试和构建时始终使用 `ppocr` 环境。修改完后根据实际改动需要更新变更记录：框架、构建、发布脚本或部署配置改动更新根目录 `CHANGELOG.md`；插件改动进入对应 `plugins/vie-plugin-*/CHANGELOG.md`，不得用根仓库记录替代插件记录。修改插件时须在插件目录单独检查 `git status`、`git diff` 和提交范围；修改框架与插件时分别在对应 Git 仓库提交，禁止跨仓库暂存或提交。.superpowers 技能的文档不要提交到git里面直接保存到本地
+所有沟通使用中文；保留用户已有改动，不擅自清理工作区。执行 Python 脚本、测试和构建时始终使用 `mobile_vision` 环境。修改完后根据实际改动需要更新变更记录：框架、构建、发布脚本或部署配置改动更新根目录 `CHANGELOG.md`；插件改动进入对应 `plugins/vie-plugin-*/CHANGELOG.md`，不得用根仓库记录替代插件记录。修改插件时须在插件目录单独检查 `git status`、`git diff` 和提交范围；修改框架与插件时分别在对应 Git 仓库提交，禁止跨仓库暂存或提交。.superpowers 技能的文档不要提交到git里面直接保存到本地
