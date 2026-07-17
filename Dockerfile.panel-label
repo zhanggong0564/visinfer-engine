@@ -1,0 +1,69 @@
+# VIE panel_label production image: framework + panel_label plugin.
+ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+ARG BUILDER_IMAGE=mobile_vision:base
+
+FROM ${BUILDER_IMAGE} AS builder
+WORKDIR /build
+COPY pyproject.toml setup.py ./
+COPY services/ ./services/
+COPY schemas/ ./schemas/
+COPY routers/ ./routers/
+COPY utils/ ./utils/
+COPY config/ ./config/
+COPY scripts/release/build_wheels.py ./scripts/release/build_wheels.py
+COPY plugins/vie-plugin-panel-label/ ./plugins/vie-plugin-panel-label/
+RUN python scripts/release/build_wheels.py --no-isolation --plugins panel-label \
+    && pip install --no-deps dist/vie_framework-*.whl dist/vie_plugin_panel_label-*.whl
+
+FROM ${BASE_IMAGE} AS runtime
+ARG RELEASE_VERSION=dev
+ARG REQUIREMENTS_SHA256=unknown
+ARG RUNTIME_CONTRACT_SHA256=unknown
+ARG FRAMEWORK_VERSION=unknown
+ARG PLUGIN_VERSIONS=unknown
+LABEL org.opencontainers.image.version="${RELEASE_VERSION}" \
+      io.vie.python-abi="cp310" \
+      io.vie.requirements-sha256="${REQUIREMENTS_SHA256}" \
+      io.vie.runtime-contract-sha256="${RUNTIME_CONTRACT_SHA256}" \
+      io.vie.framework-version="${FRAMEWORK_VERSION}" \
+      io.vie.plugins="panel_label" \
+      io.vie.plugin-versions="${PLUGIN_VERSIONS}"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PATH=/opt/venv/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    RELOAD=False \
+    TZ=Asia/Shanghai \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g; s@//security.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.10 \
+        libglib2.0-0 \
+        libgl1 \
+        libgomp1 \
+        libssl3 \
+        curl \
+        tzdata \
+    && ln -fs /usr/share/zoneinfo/${TZ} /etc/localtime \
+    && echo "${TZ}" > /etc/timezone \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+RUN groupadd --system --gid 1000 appuser \
+    && useradd --system --uid 1000 --gid appuser --create-home --home-dir /home/appuser appuser \
+    && mkdir -p /app/workspace/logs /app/workspace/data /app/workspace/pkg /app/workspace/weights \
+    && chown -R appuser:appuser /app /opt/venv
+
+WORKDIR /app/workspace
+COPY --chown=appuser:appuser app.py /app/workspace/app.py
+COPY --chown=appuser:appuser static /app/workspace/static
+USER appuser
+EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:3001/health/ready || exit 1
+ENTRYPOINT ["python3.10", "app.py"]

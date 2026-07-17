@@ -5,13 +5,12 @@
 # 查看日志：    docker compose -f docker-compose.panel-label.yml logs -f
 # 停止：        docker compose -f docker-compose.panel-label.yml down
 #
-# 与主 docker-compose.yml 的唯一区别：镜像/容器名加 -panel-label 后缀，
-# 以便与全量镜像共存；本服务运行在统一 runtime 镜像上。
+# 镜像内置 framework + panel_label 基线插件；current/ 是后续原子热更新覆盖层。
 # =========================================================
 
 services:
   mobile-vision-panel-label:
-    image: mobile_vision:runtime
+    image: ${PANEL_LABEL_IMAGE:-mobile_vision:panel-label}
     container_name: mobile-vision-panel-label
 
     ports:
@@ -33,8 +32,7 @@ services:
       - STRICT_STARTUP=true
       - INFERENCE_MAX_CONCURRENCY=1
       - ENABLED_SCENES=["panel_label"]
-      # 业务代码热更新覆盖层：PYTHONPATH 排在 site-packages 之前，pkg/ 里的新 .so
-      # 包会盖掉镜像内置旧版；pkg/ 为空则自动回退镜像内置版（全新部署无需 pkg/）。
+      # current/pkg 优先于镜像 site-packages；为空时回退镜像内置基线插件。
       - PYTHONPATH=/app/workspace/pkg
 
     volumes:
@@ -42,15 +40,10 @@ services:
       - ./logs:/app/workspace/logs
       # 数据回流图片 + 记录（按 型号/ok|ng 分目录）持久化到宿主，避免随容器重建丢失
       - ./data:/app/workspace/data
-      # 业务 .so 热更新层：scripts/release/sync-plugin.sh 同步编译后的包到此，restart 即生效，
-      # 免去重打整镜像（几个 G）重传。只读挂载，容器无法改写宿主交付物。
-      - ./pkg:/app/workspace/pkg:ro
-      - ./app.py:/app/workspace/app.py:ro
-      - ./static:/app/workspace/static:ro
-      # 模型权重热更新层：sync-plugin.sh 增量 rsync 新权重到宿主 ./weights，
-      # restart 即生效，盖掉镜像内置权重。首次启用先从现有容器拷出存量权重落盘：
-      #   docker cp mobile-vision-panel-label:/app/workspace/weights ./weights
-      - ./weights:/app/workspace/weights:ro
+      - ./current/pkg:/app/workspace/pkg:ro
+      - ./current/app.py:/app/workspace/app.py:ro
+      - ./current/static:/app/workspace/static:ro
+      - ./current/weights:/app/workspace/weights:ro
 
     restart: unless-stopped
 
