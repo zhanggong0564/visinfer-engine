@@ -20,6 +20,14 @@ RUN python scripts/release/build_wheels.py --no-isolation \
         --plugins dc-fuse indicator-light lap-surf line-squeeze plate-screw \
     && pip install --no-deps dist/vie_framework-*.whl dist/vie_plugin_*.whl
 
+# ChromaDB is required only by indicator_light. It depends on the CPU
+# onnxruntime distribution, so restore the deployment-provided GPU wheel last.
+COPY requirements.scenes.txt /tmp/requirements.scenes.txt
+COPY whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl /tmp/
+RUN pip install -r /tmp/requirements.scenes.txt \
+    && pip install /tmp/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl \
+        --no-deps --force-reinstall
+
 FROM ${BASE_IMAGE} AS runtime
 ARG RELEASE_VERSION=dev
 ARG REQUIREMENTS_SHA256=unknown
