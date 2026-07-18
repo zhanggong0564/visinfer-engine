@@ -1,4 +1,5 @@
 import importlib.util
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -95,3 +96,38 @@ def test_offline_release_script_builds_versioned_service_images_and_checksums():
     assert "docker save" in script
     assert "collect_weight_paths.py" in script
     assert "PLUGIN_VERSIONS" in script
+    assert "CUDAExecutionProvider" in script
+    assert "requirements.scenes.txt" in script
+    assert "--service panel|scenes|all" in script
+    assert 'OUTPUT_SUFFIX="-panel-label"' in script
+    assert 'OUTPUT_SUFFIX="-scenes"' in script
+    assert 'RELEASE_ID="baseline-${RELEASE_VERSION}" bash "$SYNC_SCRIPT" --local' in script
+
+
+def test_offline_release_script_help_lists_service_split():
+    result = subprocess.run(
+        ["bash", "scripts/release/build_docker_release.sh", "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "--service panel|scenes|all" in result.stdout
+    assert "只构建 panel-label 服务" in result.stdout
+    assert "只构建 scenes 服务" in result.stdout
+
+
+def test_release_scripts_use_configurable_mobile_vision_environment():
+    release_script = Path("scripts/release/build_docker_release.sh").read_text(
+        encoding="utf-8"
+    )
+    sync_script = Path("scripts/release/sync-common.sh").read_text(encoding="utf-8")
+
+    for script in (release_script, sync_script):
+        assert 'CONDA_ENV="${CONDA_ENV:-mobile_vision}"' in script
+        assert "conda run -n ppocr" not in script
+
+    assert "setuptools.config.pyprojecttoml" in release_script
+    assert 'WHEEL_BUILDER_IMAGE="${WHEEL_BUILDER_IMAGE:-mobile_vision:base}"' in sync_script
+    assert 'docker image inspect "$WHEEL_BUILDER_IMAGE"' in sync_script
+    assert "使用隔离构建" in sync_script
