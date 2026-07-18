@@ -33,7 +33,7 @@
 ## 功能特性
 
 - **多场景支持**：直流熔丝检测、指示灯检测、搭界面检测、铁片检测等  
-- **模块化架构**：采用工厂模式和路由自动注册机制，易于扩展新场景  
+- **模块化架构**：采用 `ScenarioRegistry` 和路由自动注册机制，易于扩展新场景
 - **高性能**：基于 ONNX 模型推理，支持高并发请求  
 - **完善的 API 文档**：集成 Swagger UI，提供可视化 API 调试界面  
 - **异常处理**：全局异常捕获和统一的错误响应格式（HTTP 200 + CommonResponse）
@@ -75,13 +75,14 @@ mobile_vision/
 │   ├── exceptions.py            # 自定义异常（VisionAPIError 体系）
 │   └── inference_context.py     # 推理上下文 InferenceContext
 ├── services/                    # 框架服务层（仅共享基类，不含具体场景）
-│   ├── api.py                   # 检测工厂 detection_factory
+│   ├── scenario_registry.py     # 场景类型注册与实例构造
 │   ├── base/
 │   │   ├── business_logic_base.py # 业务逻辑基类（模板方法 + 钩子）
 │   │   ├── detector.py
-│   │   └── onnx_base.py         # ONNX 推理基类（无状态）
-│   ├── yolo.py                  # YOLO ONNX 推理
-│   └── utils/                   # 辅助工具（box.py / utils.py）
+│   │   └── vision_infer.py      # 后端无关视觉推理基类
+│   ├── inference/               # runner 契约、ONNX Runtime 后端与状态
+│   ├── vision/                  # 框、mask、NMS 与图像预处理
+│   └── yolo.py                  # runner 注入的 YOLO 推理
 ├── plugins/                     # 场景插件（独立维护，通过 entry_points 发现）
 │   ├── vie-plugin-dc-fuse/         # 直流熔丝
 │   ├── vie-plugin-indicator-light/ # 指示灯
@@ -191,7 +192,7 @@ python app.py
 
 ## 如何集成新场景
 
-v2.0.0 起场景有两种接入形态，**核心契约一致**（工厂注册 + `business_post_process(ctx)` 模板钩子 +
+v2.0.0 起场景有两种接入形态，**核心契约一致**（`ScenarioRegistry` 注册 + `business_post_process(ctx)` 模板钩子 +
 `BaseRouter`），区别仅在「打包/发现方式」：
 
 | 形态 | 发现方式 | 适用 | 推荐度 |
@@ -205,11 +206,13 @@ v2.0.0 起场景有两种接入形态，**核心契约一致**（工厂注册 + 
 ### 1. 实现推理层 `services/new_scene/new_scene_detect.py`
 
 ```python
-from services.yolo import YoloOnnxInfer
+from services.inference import InferenceRunner
+from services.yolo import YoloInfer
 
-class NewSceneDetector(YoloOnnxInfer):
-    def __init__(self, model_path, confThreshold=0.5, nmsThreshold=0.5, task="det"):
-        super().__init__(model_path, nc=12, confThreshold=confThreshold,
+class NewSceneDetector(YoloInfer):
+    def __init__(self, runner: InferenceRunner, confThreshold=0.5,
+                 nmsThreshold=0.5, task="det"):
+        super().__init__(nc=12, runner=runner, confThreshold=confThreshold,
                          nmsThreshold=nmsThreshold, task=task)
         self.id2name = {0: "label_0", 1: "label_1"}  # 类别映射
 ```
@@ -221,18 +224,34 @@ class NewSceneDetector(YoloOnnxInfer):
 > `ctx.result`；坐标输出像素值，归一化交给基类 `normalize_hook` 统一处理。
 
 ```python
-from services.api import detection_factory
 from services.base import BusinessLogicBase
+from services.inference import OnnxRuntimeOptions, RunnerSpec, create_inference_runner
+from services.scenario_registry import scenario_registry
 from schemas.data_base import MoMResult, DetectionItem, MessageType
+from schemas.exceptions import ModelInferenceError
 from schemas.inference_context import InferenceContext
 from config.new_scene_config import NewSceneConfig
 from .new_scene_detect import NewSceneDetector
 
-@detection_factory.register("new_scene")
+@scenario_registry.register("new_scene")
 class NewSceneDetectorAPI(BusinessLogicBase):
     def _initialize_model(self, settings):
         cfg = NewSceneConfig()
-        self.detector = NewSceneDetector(cfg.model_path, cfg.confThreshold)
+        runner = None
+        try:
+            runner = create_inference_runner(
+                RunnerSpec(scenario="new_scene", onnx_path=cfg.model_path),
+                OnnxRuntimeOptions.from_settings(settings),
+            )
+            self.detector = NewSceneDetector(runner, cfg.confThreshold)
+        except Exception as exc:
+            if runner is not None:
+                runner.close()
+            raise ModelInferenceError(
+                "new_scene 模型加载失败",
+                scenario="new_scene",
+                original_error=exc,
+            ) from exc
 
     def business_post_process(self, ctx: InferenceContext) -> None:
         result = ctx.raw_result                      # DetectResult
@@ -259,7 +278,7 @@ import numpy as np
 from .base_router import BaseRouter
 from schemas.new_scene_schemas import NewSceneRequest
 from schemas.data_base import InputParamsBusiness
-import services.new_scene  # noqa: F401  导入即触发 @detection_factory.register
+import services.new_scene.business_logic  # noqa: F401  触发 ScenarioRegistry 注册
 
 class NewSceneRouter(BaseRouter):
     def request_schema(self, json_dict):
@@ -294,20 +313,29 @@ class NewSceneConfig:
 
 ### 使用 Docker 部署
 
-首次部署构建两个按服务拆分的离线镜像与权重包：
+首次部署可按服务分别构建离线镜像与权重包：
 
 ```bash
-RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh
+# 只构建 panel-label（也可写作 panel）
+RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service panel
+
+# 只构建 scenes
+RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service scenes
 ```
 
-服务器分别部署 panel-label（3001）和 scenes（3005）：
+单服务构建分别输出到 `dist/docker-release-panel-label-2.1.3/` 和
+`dist/docker-release-scenes-2.1.3/`。服务器分别部署 panel-label（3001）和 scenes（3005）：
 
 ```bash
-bash deploy_offline.sh --bundle /path/docker-release-2.1.3 \
+bash deploy_offline.sh --bundle /path/docker-release-panel-label-2.1.3 \
   --service panel-label --deploy-dir /srv/vie/panel-label
-bash deploy_offline.sh --bundle /path/docker-release-2.1.3 \
+bash deploy_offline.sh --bundle /path/docker-release-scenes-2.1.3 \
   --service scenes --deploy-dir /srv/vie/scenes
 ```
+
+不指定 `--service` 时仍会一次构建两个服务，并输出到
+`dist/docker-release-2.1.3/`；已有正确 `mobile_vision:base` 时可在第二次单服务构建中设置
+`SKIP_BASE_BUILD=1` 跳过基础镜像构建。
 
 ### 直接部署
 
