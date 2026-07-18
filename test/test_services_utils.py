@@ -11,6 +11,7 @@ from services.vision.boxes import (
     xywhr2xyxyxyxy,
     scale_boxes,
     clip_boxes,
+    sort_boxes,
 )
 from services.vision.masks import (
     crop_mask,
@@ -165,6 +166,32 @@ class TestClipBoxes:
         boxes = np.array([[-5, -5, 150, 150]], dtype=np.float32)
         clip_boxes(boxes, (100, 100))
         np.testing.assert_array_equal(boxes, np.array([[0, 0, 100, 100]]))
+
+
+class TestSortBoxes:
+    def test_empty_input_returns_empty_boxes_and_indices(self):
+        assert sort_boxes([]) == ([], [])
+
+    def test_orders_rows_top_to_bottom_and_each_row_left_to_right(self):
+        boxes = [
+            [60, 5, 80, 25, 0.9],
+            [10, 8, 30, 28, 0.8],
+            [50, 50, 70, 70, 0.7],
+            [5, 52, 25, 72, 0.6],
+        ]
+
+        sorted_boxes, original_indices = sort_boxes(boxes)
+
+        assert original_indices == [1, 0, 3, 2]
+        assert sorted_boxes == [boxes[index] for index in original_indices]
+
+    def test_zero_height_boxes_still_sort_left_to_right(self):
+        boxes = [[20, 10, 30, 10], [5, 10, 15, 10]]
+
+        sorted_boxes, original_indices = sort_boxes(boxes)
+
+        assert original_indices == [1, 0]
+        assert sorted_boxes == [boxes[1], boxes[0]]
 
 
 class TestLetterbox:
