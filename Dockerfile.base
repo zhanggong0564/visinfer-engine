@@ -11,7 +11,7 @@
 #   业务代码（框架 + 插件）不进 base，留在各场景镜像 builder 阶段快速编译。
 #
 # 构建：bash scripts/release/build_base.sh
-# 脚本会把本地 ORT wheel 目录作为 BuildKit named context 传入。
+# 本地 ORT wheel 通过标准 build context 复制，兼容 legacy builder 与 BuildKit。
 #
 # 依赖说明：
 #   - onnxruntime-gpu 1.20.1 (CUDA 12.x/cuDNN 9.x)：由 whl/ 本地 wheel 安装
@@ -45,7 +45,7 @@ ENV PATH=/opt/venv/bin:$PATH
 
 # 复制依赖清单与部署提供的 CUDA 12.x ONNX Runtime wheel
 COPY requirements.txt /tmp/requirements.txt
-COPY --from=ort_wheel /onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl /tmp/
+COPY whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl /tmp/
 
 # 安装顺序说明：
 #  1. 先用 --no-deps 安装部署提供的 onnxruntime-gpu 1.20.1 本地 wheel，避免从索引重复下载
