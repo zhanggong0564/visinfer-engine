@@ -25,10 +25,10 @@ cd "$ROOT"
 
 TAG="${TAG:-mobile_vision:base}"
 BASE_IMAGE="${BASE_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04}"
-WHEEL_CONTEXT="$(readlink -f whl)"
-test -f "${WHEEL_CONTEXT}/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+ORT_WHEEL="whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+test -f "$ORT_WHEEL"
 
 echo "==> 构建基础镜像 ${TAG}（Dockerfile.base）—— 含全部 pip 依赖，首次较慢"
-docker build --build-context "ort_wheel=${WHEEL_CONTEXT}" \
-  --build-arg "BASE_IMAGE=${BASE_IMAGE}" -f Dockerfile.base -t "${TAG}" .
+docker build --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+  -f Dockerfile.base -t "${TAG}" .
 echo "==> 完成。各场景镜像现在可 FROM ${TAG} 快速构建（见本脚本头部注释）。"
