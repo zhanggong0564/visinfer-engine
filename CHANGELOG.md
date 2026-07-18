@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+- **检测框排序共享能力**：`services.vision.boxes` 新增按行、行内从左到右排序的
+  `sort_boxes`，并返回排序后框及原始索引，供场景插件复用。
 - **服务边界收口**：场景注册改为实例隔离的 `ScenarioRegistry`，插件加载回滚不再
   操作私有注册表；推理准入迁入 `services.inference`，dc_fuse 配置归入场景包。
 - **视觉操作显式分层**：YOLO 专属编排迁出基础层，框、mask、NMS 和图像预处理
@@ -25,6 +27,10 @@
   并将 `YoloOnnxInfer` 等旧模型类迁移为 runner 注入模型。完成标准为插件可注册、
   全量测试通过、服务启动和关闭无资源泄漏；不得用临时兼容层或跳过逻辑掩盖失败。
 - **Docker 双 Runtime**：恢复 panel-label 与 scenes 两个服务镜像，镜像内置对应基线插件，并通过 `current/` 保留后续代码与权重覆盖能力。
+- **按服务构建离线包**：`build_docker_release.sh` 支持通过 `--service panel|scenes` 分别构建和输出服务包，保留 `all` 的兼容用法。
+- **发布环境修复**：Docker 离线构建与覆盖层生成统一默认使用 `mobile_vision` Conda 环境，并兼容 Python 3.10；缺少本地 Cython 时改用基础镜像或隔离构建。
+- **Docker 构建兼容**：基础镜像改用标准 build context 复制本地 ONNX Runtime wheel，兼容未安装 buildx 的 legacy builder，并排除权重和本地发布产物以缩小构建上下文。
+- **场景依赖隔离**：将 ChromaDB 从公共依赖拆到 scenes 专属依赖，并在安装后恢复本地 `onnxruntime-gpu`，避免 panel 引入无关依赖或 scenes 被 CPU ONNX Runtime 覆盖。
 - **原子热更新**：`sync-plugin*.sh` 改用版本化 staging/current/previous，增加依赖指纹、entry point、权重和 readiness 校验，失败自动回滚。
 - **离线部署**：新增版本镜像、权重覆盖层、SHA256 清单的构建与部署脚本，并移除脚本中的默认生产服务器地址。
 - **ONNX 运行依赖**：显式加入 PyYAML，line-squeeze OCR 改为 ONNX 后 scenes 镜像继续保持无 PaddleOCR/PaddleX。
