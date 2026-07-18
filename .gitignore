@@ -10,6 +10,7 @@ encrypted
 !scripts/release/sync-plugin.sh
 **.onnx
 **.txt
+!requirements.scenes.txt
 **.JPG
 **.tar
 weights
