@@ -44,6 +44,15 @@ build
 dist
 *.egg-info
 encrypted
+.release-staging
+pkg
+
+# 模型由离线覆盖层单独打包，不进入 runtime 镜像构建上下文。
+weights
+
+# 基础镜像只需要固定版本的 ONNX Runtime wheel。
+whl/*
+!whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
 
 # --- 测试与本地调试 ---
 test
@@ -53,6 +62,7 @@ demo
 .scratch
 datasets
 output
+vis
 
 # --- 文档与说明 ---
 *.md
