@@ -1,5 +1,7 @@
 """Bounding-box geometry operations."""
 
+from collections.abc import Sequence
+
 import numpy as np
 
 
@@ -52,6 +54,41 @@ def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None, padding=True, xyw
     boxes[..., :4] /= gain
     clip_boxes(boxes, img0_shape)
     return boxes
+
+
+def sort_boxes(
+    boxes: Sequence[Sequence[float]],
+) -> tuple[list[Sequence[float]], list[int]]:
+    """Order boxes top-to-bottom and left-to-right within each row."""
+    if len(boxes) == 0:
+        return [], []
+
+    coords = np.asarray(
+        [[box[0], box[1], box[2], box[3]] for box in boxes],
+        dtype=np.float64,
+    )
+    x_mins, y_mins, x_maxs, y_maxs = coords.T
+    center_xs = (x_mins + x_maxs) / 2
+
+    row_threshold = float(np.mean(y_maxs - y_mins))
+    if not np.isfinite(row_threshold) or row_threshold <= 0:
+        row_threshold = 1.0
+
+    y_order = np.argsort(y_mins)
+    rows = [[int(y_order[0])]]
+    base_y = y_mins[y_order[0]]
+    for raw_index in y_order[1:]:
+        index = int(raw_index)
+        if abs(y_mins[index] - base_y) < row_threshold:
+            rows[-1].append(index)
+        else:
+            rows.append([index])
+            base_y = y_mins[index]
+
+    sorted_indices = []
+    for row in rows:
+        sorted_indices.extend(sorted(row, key=lambda index: center_xs[index]))
+    return [boxes[index] for index in sorted_indices], sorted_indices
 
 
 
