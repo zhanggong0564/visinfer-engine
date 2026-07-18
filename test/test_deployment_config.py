@@ -311,9 +311,32 @@ def test_runtime_requirements_use_onnx_without_paddle():
 
     assert len(by_name["onnxruntime-gpu"]) == 1
     assert str(by_name["onnxruntime-gpu"][0].specifier) == "==1.20.1"
+    assert "onnxruntime" not in by_name
+    assert "chromadb" not in by_name
     assert "paddleocr" not in by_name
     assert "paddlex" not in by_name
     assert "pyyaml" in by_name
+
+
+def test_scenes_requirements_include_chromadb_without_cpu_onnxruntime():
+    requirements = [
+        Requirement(line)
+        for raw_line in Path("requirements.scenes.txt").read_text(
+            encoding="utf-8"
+        ).splitlines()
+        if (line := raw_line.strip()) and not line.startswith("#")
+    ]
+    by_name = {requirement.name.lower(): requirement for requirement in requirements}
+
+    assert str(by_name["chromadb"].specifier) == "==1.5.9"
+    assert "onnxruntime" not in by_name
+
+    dockerfile = Path("Dockerfile.scenes").read_text(encoding="utf-8")
+    scenes_install = "pip install -r /tmp/requirements.scenes.txt"
+    gpu_reinstall = "--no-deps --force-reinstall"
+    assert scenes_install in dockerfile
+    assert gpu_reinstall in dockerfile
+    assert dockerfile.index(scenes_install) < dockerfile.index(gpu_reinstall)
 
 
 def test_local_onnx_runtime_wheel_is_resolvable():
@@ -334,22 +357,25 @@ def test_base_image_installs_local_onnx_wheel_before_requirements():
     local_install = f"pip install /tmp/{wheel} --no-deps"
     requirements_install = "pip install -r /tmp/requirements.txt"
 
-    assert f"COPY --from=ort_wheel /{wheel} /tmp/" in dockerfile
+    assert f"COPY whl/{wheel} /tmp/" in dockerfile
     assert local_install in dockerfile
     assert dockerfile.index(local_install) < dockerfile.index(requirements_install)
     assert "--force-reinstall" not in dockerfile
     assert "paddlepaddle_gpu" not in dockerfile.lower()
 
 
-def test_base_build_scripts_pass_external_wheel_as_named_context():
+def test_base_build_scripts_use_legacy_compatible_wheel_context():
     for path in (
         Path("scripts/release/build_base.sh"),
         Path("scripts/release/build_docker_release.sh"),
     ):
         script = path.read_text(encoding="utf-8")
-        assert "readlink -f whl" in script
-        assert "--build-context" in script
-        assert "ort_wheel=" in script
+        assert "ORT_WHEEL=" in script
+        assert "--build-context" not in script
+
+    dockerfile = Path("Dockerfile.base").read_text(encoding="utf-8")
+    assert "COPY whl/onnxruntime_gpu-" in dockerfile
+    assert "--from=ort_wheel" not in dockerfile
 
 
 def test_runtime_image_installs_opencv_system_libraries():
