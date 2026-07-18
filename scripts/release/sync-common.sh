@@ -11,6 +11,9 @@ DO_WEIGHTS=1
 REMOTE="${REMOTE:-}"
 REMOTE_DIR="${REMOTE_DIR:-}"
 RELEASE_ID="${RELEASE_ID:-$(date +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)}"
+CONDA_ENV="${CONDA_ENV:-mobile_vision}"
+CONDA_PYTHON=(conda run -n "$CONDA_ENV" python)
+WHEEL_BUILDER_IMAGE="${WHEEL_BUILDER_IMAGE:-mobile_vision:base}"
 
 usage() {
   echo "用法: $0 [--local] [--no-build] [--no-weights] [--remote user@host] [--remote-dir /path]"
@@ -38,8 +41,20 @@ if [ "$DO_BUILD" -eq 1 ]; then
   for pattern in "${WHEEL_PATTERNS[@]}"; do
     find dist -maxdepth 1 -type f -name "$pattern" -delete 2>/dev/null || true
   done
-  conda run -n ppocr python scripts/release/build_wheels.py \
-    --no-isolation --plugins "${PLUGINS[@]}"
+  BUILD_WHEEL_ARGS=(--plugins "${PLUGINS[@]}")
+  if "${CONDA_PYTHON[@]}" -c "import Cython" >/dev/null 2>&1; then
+    BUILD_WHEEL_ARGS=(--no-isolation "${BUILD_WHEEL_ARGS[@]}")
+    "${CONDA_PYTHON[@]}" scripts/release/build_wheels.py "${BUILD_WHEEL_ARGS[@]}"
+  elif docker image inspect "$WHEEL_BUILDER_IMAGE" >/dev/null 2>&1; then
+    echo "Conda 环境 ${CONDA_ENV} 未安装 Cython，使用 ${WHEEL_BUILDER_IMAGE} 构建 wheel"
+    docker run --rm --user "$(id -u):$(id -g)" \
+      --volume "$ROOT:/workspace" --workdir /workspace \
+      "$WHEEL_BUILDER_IMAGE" python scripts/release/build_wheels.py \
+      --no-isolation "${BUILD_WHEEL_ARGS[@]}"
+  else
+    echo "未找到 Cython 或 ${WHEEL_BUILDER_IMAGE}，使用隔离构建"
+    "${CONDA_PYTHON[@]}" scripts/release/build_wheels.py "${BUILD_WHEEL_ARGS[@]}"
+  fi
 fi
 
 LOCAL_STAGE=".release-staging/${SERVICE}/${RELEASE_ID}"
@@ -69,15 +84,15 @@ cp app.py "$LOCAL_STAGE/app.py"
 cp -R static/swagger-ui "$LOCAL_STAGE/static/"
 cp "$COMPOSE_FILE" "$LOCAL_STAGE/$COMPOSE_FILE"
 
-conda run -n ppocr python scripts/release/collect_weight_paths.py \
+"${CONDA_PYTHON[@]}" scripts/release/collect_weight_paths.py \
   --root weights "${CONFIGS[@]}" > "$LOCAL_STAGE/weight-paths.txt"
 if [ "$DO_WEIGHTS" -eq 1 ]; then
   rsync -a --files-from="$LOCAL_STAGE/weight-paths.txt" weights/ "$LOCAL_STAGE/weights/"
 fi
 
-REQUIREMENTS_SHA256="$(sha256sum requirements.txt | awk '{print $1}')"
-PYTHON_ABI="$(conda run -n ppocr python -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')"
-RUNTIME_CONTRACT_SHA256="$(sha256sum requirements.txt Dockerfile.base "$RUNTIME_DOCKERFILE" | sha256sum | awk '{print $1}')"
+REQUIREMENTS_SHA256="$(sha256sum "${RUNTIME_REQUIREMENTS[@]}" | sha256sum | awk '{print $1}')"
+PYTHON_ABI="$("${CONDA_PYTHON[@]}" -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')"
+RUNTIME_CONTRACT_SHA256="$(sha256sum "${RUNTIME_REQUIREMENTS[@]}" Dockerfile.base "$RUNTIME_DOCKERFILE" | sha256sum | awk '{print $1}')"
 cat > "$LOCAL_STAGE/release.env" <<EOF
 RELEASE_ID=${RELEASE_ID}
 SERVICE=${SERVICE}
