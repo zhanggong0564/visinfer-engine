@@ -12,7 +12,7 @@
 
 ## 1. 构建前置条件
 
-构建机需要 Docker、Conda `ppocr` 环境和下列本地资产：
+构建机需要 Docker、Conda `mobile_vision` 环境和下列本地资产：
 
 ```text
 whl/onnxruntime_gpu-1.20.1-...whl
@@ -38,19 +38,32 @@ bash scripts/release/export_line_squeeze_onnx.sh
 
 ### 2.1 构建交付包
 
+按服务分别构建（推荐，两个构建可以独立传输和部署）：
+
 ```bash
-RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh
+# panel-label 服务（panel 也可以）
+RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service panel
+
+# scenes 服务
+RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service scenes
 ```
 
-输出位于 `dist/docker-release-2.1.3/`，包含：
+输出分别位于 `dist/docker-release-panel-label-2.1.3/` 和
+`dist/docker-release-scenes-2.1.3/`，每个目录包含对应服务的：
 
-- panel/scenes 两个 gzip Docker 镜像；
-- 两套首次覆盖层及配置实际引用的完整权重；
-- 两份 Compose；
+- gzip Docker 镜像；
+- 首次覆盖层及配置实际引用的完整权重；
+- 对应 Compose；
 - `deploy_offline.sh`；
 - `SHA256SUMS`。
 
-依赖未变化且本机已有正确 `mobile_vision:base` 时可设置 `SKIP_BASE_BUILD=1`。
+不指定 `--service` 时仍兼容一次构建两个服务，输出到
+`dist/docker-release-2.1.3/`。已有正确 `mobile_vision:base` 时可设置
+`SKIP_BASE_BUILD=1` 跳过基础镜像构建。
+
+脚本默认使用 `mobile_vision` Conda 环境；需要使用其他已准备好构建依赖的环境时，
+可通过 `CONDA_ENV=<环境名>` 覆盖。环境中没有 Cython 时，插件 wheel 优先使用
+`mobile_vision:base` 构建；该镜像也不存在时再使用隔离构建。
 
 #### 基础镜像源
 
@@ -85,16 +98,16 @@ docker manifest inspect "$BASE_IMAGE"
 
 ### 2.2 传输与部署
 
-先传输整个发布目录，然后在服务器分别部署：
+分别传输上述两个发布目录，然后在服务器部署对应服务：
 
 ```bash
 bash deploy_offline.sh \
-  --bundle /path/docker-release-2.1.3 \
+  --bundle /path/docker-release-panel-label-2.1.3 \
   --service panel-label \
   --deploy-dir /srv/vie/panel-label
 
 bash deploy_offline.sh \
-  --bundle /path/docker-release-2.1.3 \
+  --bundle /path/docker-release-scenes-2.1.3 \
   --service scenes \
   --deploy-dir /srv/vie/scenes
 ```
@@ -129,7 +142,7 @@ bash scripts/release/sync-plugin-scenes.sh \
 
 每次 sync 会生成 `YYYYMMDDHHMMSS-<git短哈希>`：
 
-1. 在 `ppocr` 环境构建完整 framework + 服务插件 wheel；
+1. 在 `CONDA_ENV` 指定的环境（默认 `mobile_vision`）构建完整 framework + 服务插件 wheel；
 2. 从插件配置解析并验证权重；
 3. 上传到 `releases/<release-id>.staging`；
 4. 校验镜像依赖指纹、entry points 和权重完整性；
