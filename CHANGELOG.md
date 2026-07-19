@@ -26,11 +26,14 @@
   `services.vision`、`services.base.inference_runner` → `services.inference`，
   并将 `YoloOnnxInfer` 等旧模型类迁移为 runner 注入模型。完成标准为插件可注册、
   全量测试通过、服务启动和关闭无资源泄漏；不得用临时兼容层或跳过逻辑掩盖失败。
-- **Docker 双 Runtime**：恢复 panel-label 与 scenes 两个服务镜像，镜像内置对应基线插件，并通过 `current/` 保留后续代码与权重覆盖能力。
+- **统一 Runtime 镜像**：panel-label 与 scenes 共用只包含环境和 framework 的运行镜像，场景插件及权重仅通过各服务 `current/` 覆盖层交付。
 - **按服务构建离线包**：`build_docker_release.sh` 支持通过 `--service panel|scenes` 分别构建和输出服务包，保留 `all` 的兼容用法。
 - **发布环境修复**：Docker 离线构建与覆盖层生成统一默认使用 `mobile_vision` Conda 环境，并兼容 Python 3.10；缺少本地 Cython 时改用基础镜像或隔离构建。
 - **Docker 构建兼容**：基础镜像改用标准 build context 复制本地 ONNX Runtime wheel，兼容未安装 buildx 的 legacy builder，并排除权重和本地发布产物以缩小构建上下文。
-- **场景依赖隔离**：将 ChromaDB 从公共依赖拆到 scenes 专属依赖，并在安装后恢复本地 `onnxruntime-gpu`，避免 panel 引入无关依赖或 scenes 被 CPU ONNX Runtime 覆盖。
+- **公共运行依赖**：统一运行环境包含 ChromaDB，并在安装后恢复本地 `onnxruntime-gpu`，避免 CPU ONNX Runtime 覆盖 CUDA Provider。
+- **离线构建上下文修复**：发布脚本将外部符号链接中的 ONNX Runtime wheel 实体复制到临时 Docker 上下文，修复公共 base/runtime 无法 `COPY` wheel 的问题。
+- **离线镜像去重**：双服务发布包只构建和导出一次公共 runtime 镜像，panel/scenes 目录仅保存各自 overlay 与部署配置。
+- **基础覆盖层去重**：首次部署的场景 overlay 不再重复打包 runtime 已内置的 framework，热更新仍可按需携带 framework。
 - **原子热更新**：`sync-plugin*.sh` 改用版本化 staging/current/previous，增加依赖指纹、entry point、权重和 readiness 校验，失败自动回滚。
 - **离线部署**：新增版本镜像、权重覆盖层、SHA256 清单的构建与部署脚本，并移除脚本中的默认生产服务器地址。
 - **ONNX 运行依赖**：显式加入 PyYAML，line-squeeze OCR 改为 ONNX 后 scenes 镜像继续保持无 PaddleOCR/PaddleX。
