@@ -2,7 +2,7 @@
 
 生产部署采用“首次离线镜像 + 后续原子覆盖层更新”：
 
-- `mobile_vision:base`：CUDA 12.4、Python 3.10、全部运行依赖和编译环境。
+- `mobile_vision:base`：CUDA 12.4、cuDNN 9、Python 3.10、全部运行依赖和编译环境。
 - `mobile_vision:runtime-<版本>`：所有服务共用，只包含运行环境、framework、`app.py` 和静态资源。
 - `panel-label/current/`：panel_label 插件和对应权重。
 - `scenes/current/`：dc_fuse、indicator_light、lap_surf、line_squeeze、plate_screw 插件和对应权重。
@@ -55,8 +55,8 @@ RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service pan
 RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service scenes
 ```
 
-输出分别位于 `dist/docker-release-panel-label-2.1.3/` 和
-`dist/docker-release-scenes-2.1.3/`，每个单服务目录包含：
+输出分别位于 `dist/docker-release-2.1.3-panel-label/` 和
+`dist/docker-release-2.1.3-scenes/`，每个单服务目录包含：
 
 - 根目录唯一的公共 runtime gzip 镜像；
 - 首次覆盖层及配置实际引用的完整权重；
@@ -84,8 +84,8 @@ swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runt
 ```
 
 该地址中的 `docker.io/nvidia/cuda` 表示代理的上游是 Docker Hub 官方
-`nvidia/cuda` 仓库。当前可用 tag 是 `12.4.1-cudnn-runtime-ubuntu22.04`；不要改回
-`12.4.1-cudnn9-runtime-ubuntu22.04`，华为云代理中不存在后一个 tag。
+`nvidia/cuda` 仓库。当前使用的 ONNX Runtime wheel 链接 CUDA 12 和
+cuDNN 9 动态库，因此基础镜像必须保持对应 ABI。
 
 需要绕过华为云、直接使用 Docker Hub 时执行：
 
@@ -113,12 +113,12 @@ docker manifest inspect "$BASE_IMAGE"
 
 ```bash
 bash deploy_offline.sh \
-  --bundle /path/docker-release-panel-label-2.1.3 \
+  --bundle /path/docker-release-2.1.3-panel-label \
   --service panel-label \
   --deploy-dir /srv/vie/panel-label
 
 bash deploy_offline.sh \
-  --bundle /path/docker-release-scenes-2.1.3 \
+  --bundle /path/docker-release-2.1.3-scenes \
   --service scenes \
   --deploy-dir /srv/vie/scenes
 ```
