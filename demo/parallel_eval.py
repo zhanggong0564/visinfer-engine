@@ -344,7 +344,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Panel Label 并发评测脚本", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--test-dir", default="demo/data/panel_label/charging_pile", help="测试集根目录")
+    parser.add_argument("--test-dir", default="demo/test_set", help="测试集根目录")
     parser.add_argument("--vis-dir", default="demo/test_set_vis_parallel", help="可视化输出根目录")
     parser.add_argument("--log-dir", default="demo/logs", help="日志输出目录")
     parser.add_argument("--workers", type=int, default=4, help="并发进程数")
