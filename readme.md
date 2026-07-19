@@ -322,14 +322,14 @@ RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service pan
 RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service scenes
 ```
 
-单服务构建分别输出到 `dist/docker-release-panel-label-2.1.3/` 和
-`dist/docker-release-scenes-2.1.3/`。每个单服务包根目录包含一份公共 runtime
+单服务构建分别输出到 `dist/docker-release-2.1.3-panel-label/` 和
+`dist/docker-release-2.1.3-scenes/`。每个单服务包根目录包含一份公共 runtime
 镜像，服务目录只包含对应 overlay。服务器分别部署 panel-label（3001）和 scenes（3005）：
 
 ```bash
-bash deploy_offline.sh --bundle /path/docker-release-panel-label-2.1.3 \
+bash deploy_offline.sh --bundle /path/docker-release-2.1.3-panel-label \
   --service panel-label --deploy-dir /srv/vie/panel-label
-bash deploy_offline.sh --bundle /path/docker-release-scenes-2.1.3 \
+bash deploy_offline.sh --bundle /path/docker-release-2.1.3-scenes \
   --service scenes --deploy-dir /srv/vie/scenes
 ```
 
