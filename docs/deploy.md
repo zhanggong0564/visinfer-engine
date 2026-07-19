@@ -2,9 +2,10 @@
 
 生产部署采用“首次离线镜像 + 后续原子覆盖层更新”：
 
-- `mobile_vision:base`：CUDA 12.4、Python 3.10、ONNX Runtime GPU 和编译环境。
-- `mobile_vision:panel-label-<版本>`：framework + panel_label 基线插件。
-- `mobile_vision:scenes-<版本>`：framework + dc_fuse、indicator_light、lap_surf、line_squeeze、plate_screw 基线插件。
+- `mobile_vision:base`：CUDA 12.4、Python 3.10、全部运行依赖和编译环境。
+- `mobile_vision:runtime-<版本>`：所有服务共用，只包含运行环境、framework、`app.py` 和静态资源。
+- `panel-label/current/`：panel_label 插件和对应权重。
+- `scenes/current/`：dc_fuse、indicator_light、lap_surf、line_squeeze、plate_screw 插件和对应权重。
 - `current/`：后续 sync 发布的 framework、插件、入口、静态资源和权重快照。
 - `logs/`、`data/`：跨发布持久化，不进入版本目录。
 
@@ -38,7 +39,13 @@ bash scripts/release/export_line_squeeze_onnx.sh
 
 ### 2.1 构建交付包
 
-按服务分别构建（推荐，两个构建可以独立传输和部署）：
+两个服务一起交付时，直接构建 `all`（默认），公共镜像只构建、导出和传输一次：
+
+```bash
+RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh
+```
+
+仅交付一个服务时再按服务构建：
 
 ```bash
 # panel-label 服务（panel 也可以）
@@ -49,16 +56,19 @@ RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service sce
 ```
 
 输出分别位于 `dist/docker-release-panel-label-2.1.3/` 和
-`dist/docker-release-scenes-2.1.3/`，每个目录包含对应服务的：
+`dist/docker-release-scenes-2.1.3/`，每个单服务目录包含：
 
-- gzip Docker 镜像；
+- 根目录唯一的公共 runtime gzip 镜像；
 - 首次覆盖层及配置实际引用的完整权重；
 - 对应 Compose；
 - `deploy_offline.sh`；
 - `SHA256SUMS`。
 
-不指定 `--service` 时仍兼容一次构建两个服务，输出到
-`dist/docker-release-2.1.3/`。已有正确 `mobile_vision:base` 时可设置
+不指定 `--service` 时一次构建两个服务，输出到
+`dist/docker-release-2.1.3/`。该目录只有一份公共 `image.tar.gz`，
+其中只包含运行环境和框架；`panel-label/` 与 `scenes/` 的基础 overlay
+仅构建并包含各自插件和模型，不会再次编译或打包 framework。已有依赖指纹匹配的
+`mobile_vision:base` 时可设置
 `SKIP_BASE_BUILD=1` 跳过基础镜像构建。
 
 脚本默认使用 `mobile_vision` Conda 环境；需要使用其他已准备好构建依赖的环境时，
@@ -98,7 +108,8 @@ docker manifest inspect "$BASE_IMAGE"
 
 ### 2.2 传输与部署
 
-分别传输上述两个发布目录，然后在服务器部署对应服务：
+单服务可分别传输对应发布目录。两个服务一起交付时，推荐构建并传输 `all`
+目录，公共镜像只需传输一份；部署脚本会从包根目录加载该镜像：
 
 ```bash
 bash deploy_offline.sh \

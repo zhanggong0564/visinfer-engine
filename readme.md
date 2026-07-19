@@ -97,9 +97,8 @@ mobile_vision/
 │   └── build_wheels.py          # 一键构建框架 + 全部插件二进制 wheel
 ├── scripts/data/                # OCR 数据集与标注工具（auto_annotate / export_ocr / ...）
 ├── weights/                     # 模型权重（weights/{场景}/{任务}_{架构}_v{N}，规范见 weights/README.md）
-├── Dockerfile.base              # 公共 CUDA/Python/依赖构建底座
-├── Dockerfile.panel-label       # framework + panel_label 基线插件镜像
-├── Dockerfile.scenes            # framework + 其余五场景基线插件镜像
+├── Dockerfile.base              # 全服务公共依赖与编译环境
+├── Dockerfile.runtime           # framework + 环境，不包含插件和权重
 ├── docker-compose.panel-label.yml # panel 服务编排（端口 3001）
 ├── docker-compose.scenes.yml    # scenes 服务编排（端口 3005）
 ├── requirements.txt             # 依赖包列表
@@ -324,7 +323,8 @@ RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service sce
 ```
 
 单服务构建分别输出到 `dist/docker-release-panel-label-2.1.3/` 和
-`dist/docker-release-scenes-2.1.3/`。服务器分别部署 panel-label（3001）和 scenes（3005）：
+`dist/docker-release-scenes-2.1.3/`。每个单服务包根目录包含一份公共 runtime
+镜像，服务目录只包含对应 overlay。服务器分别部署 panel-label（3001）和 scenes（3005）：
 
 ```bash
 bash deploy_offline.sh --bundle /path/docker-release-panel-label-2.1.3 \
@@ -334,7 +334,8 @@ bash deploy_offline.sh --bundle /path/docker-release-scenes-2.1.3 \
 ```
 
 不指定 `--service` 时仍会一次构建两个服务，并输出到
-`dist/docker-release-2.1.3/`；已有正确 `mobile_vision:base` 时可在第二次单服务构建中设置
+`dist/docker-release-2.1.3/`；该包只导出一次公共 runtime 镜像，panel/scenes
+共享使用。已有依赖指纹匹配的 `mobile_vision:base` 时可设置
 `SKIP_BASE_BUILD=1` 跳过基础镜像构建。
 
 ### 直接部署
