@@ -45,6 +45,23 @@ def test_collect_weight_paths_rejects_missing_assets(tmp_path):
         module.collect_weight_paths([config], root)
 
 
+def test_panel_weight_collection_includes_ocr_metadata():
+    module = _load_weight_collector()
+    config = Path(
+        "plugins/vie-plugin-panel-label/vie_plugin_panel_label/config.py"
+    )
+
+    paths = set(module.collect_weight_paths([config], Path("weights")))
+
+    assert {
+        Path("panel_label/v2/textline_ori_lcnet_v2/inference.yml"),
+        Path(
+            "panel_label/v2/"
+            "PP-OCRv5_server_rec_merged_v6_diff_lr/inference.yml"
+        ),
+    } <= paths
+
+
 @pytest.mark.parametrize(
     "script_name",
     ("sync-plugin.sh", "sync-plugin-scenes.sh"),
@@ -96,6 +113,13 @@ def test_offline_release_script_exports_one_common_runtime_and_service_overlays(
     assert "docker save" in script
     assert "collect_weight_paths.py" in script
     assert "CUDAExecutionProvider" in script
+    assert "CUDA_SMOKE_MODEL" in script
+    assert "ort.InferenceSession" in script
+    assert "--gpus all" in script
+    assert "a5b4e1641db48752118dda353b8614c6d6570344062b58faea70b5350c41cf68" in script
+    assert "from services.scenario_registry import scenario_registry" in script
+    assert "EXPECTED_VIE_PLUGINS" in script
+    assert "entry_point.load()" in script
     assert "requirements.scenes.txt" in script
     assert "--service panel|scenes|all" in script
     assert 'OUTPUT_SUFFIX="-panel-label"' in script
@@ -104,6 +128,13 @@ def test_offline_release_script_exports_one_common_runtime_and_service_overlays(
     assert script.count('docker save "$RUNTIME_IMAGE"') == 1
     assert '> "$OUT/image.tar.gz"' in script
     assert '"$SERVICE/image.tar.gz"' not in script
+
+
+def test_scenario_registry_type_alias_is_cython_compatible():
+    source = Path("services/scenario_registry.py").read_text(encoding="utf-8")
+
+    assert "ScenarioType = Type[BusinessLogicBase]" in source
+    assert "ScenarioType = type[BusinessLogicBase]" not in source
 
 
 def test_baseline_overlay_can_exclude_framework():
