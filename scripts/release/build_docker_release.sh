@@ -94,8 +94,13 @@ project_version() {
 }
 
 ORT_WHEEL="whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+ORT_WHEEL_SHA256="a5b4e1641db48752118dda353b8614c6d6570344062b58faea70b5350c41cf68"
 test -f "$ORT_WHEEL" || {
   echo "缺少 ONNX Runtime wheel: $ORT_WHEEL" >&2
+  exit 1
+}
+test "$(sha256sum "$ORT_WHEEL" | awk '{print $1}')" = "$ORT_WHEEL_SHA256" || {
+  echo "ONNX Runtime wheel 不是 CUDA 12/cuDNN 9 官方构建: $ORT_WHEEL" >&2
   exit 1
 }
 
@@ -122,9 +127,20 @@ if [ "$TARGET" = "scenes" ] || [ "$TARGET" = "all" ]; then
     exit 1
   }
 fi
-conda run -n "$CONDA_ENV" python scripts/release/collect_weight_paths.py --root weights \
-  "${WEIGHT_CONFIGS[@]}" \
-  >/dev/null
+WEIGHT_PATH_OUTPUT="$(conda run -n "$CONDA_ENV" python \
+  scripts/release/collect_weight_paths.py --root weights "${WEIGHT_CONFIGS[@]}")"
+mapfile -t WEIGHT_PATHS <<< "$WEIGHT_PATH_OUTPUT"
+CUDA_SMOKE_MODEL=""
+for weight_path in "${WEIGHT_PATHS[@]}"; do
+  if [[ "$weight_path" = *.onnx ]]; then
+    CUDA_SMOKE_MODEL="$weight_path"
+    break
+  fi
+done
+test -n "$CUDA_SMOKE_MODEL" || {
+  echo "发布权重中没有可用于 CUDA Session 验证的 ONNX 模型" >&2
+  exit 1
+}
 
 REQUIREMENTS_SHA256="$(sha256sum requirements.txt requirements.scenes.txt | sha256sum | awk '{print $1}')"
 FRAMEWORK_VERSION="$(project_version pyproject.toml)"
@@ -157,6 +173,9 @@ elif ! docker image inspect mobile_vision:base >/dev/null 2>&1; then
 elif [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.requirements-sha256"}}' mobile_vision:base)" != "$REQUIREMENTS_SHA256" ]; then
   echo "SKIP_BASE_BUILD=1 但 mobile_vision:base 依赖指纹不匹配" >&2
   exit 1
+elif [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.base-image"}}' mobile_vision:base)" != "$BASE_IMAGE" ]; then
+  echo "SKIP_BASE_BUILD=1 但 mobile_vision:base 基础镜像不匹配" >&2
+  exit 1
 fi
 
 RUNTIME_CONTRACT_SHA256="$(sha256sum requirements.txt requirements.scenes.txt Dockerfile.base Dockerfile.runtime | sha256sum | awk '{print $1}')"
@@ -169,7 +188,12 @@ docker build -f "$BUILD_CONTEXT/Dockerfile.runtime" \
   --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION" \
   -t "$RUNTIME_IMAGE" "$BUILD_CONTEXT"
 docker run --rm --entrypoint python3.10 "$RUNTIME_IMAGE" \
-  -c "import chromadb, importlib.metadata as m, onnxruntime as ort; expected={'panel_label','dc_fuse','indicator_light','lap_surf','line_squeeze','plate_screw'}; actual={e.name for e in m.entry_points(group='vie.plugins')}; assert expected.isdisjoint(actual), actual; assert 'CUDAExecutionProvider' in ort.get_available_providers(), ort.get_available_providers()"
+  -c "import chromadb, importlib.metadata as m, onnxruntime as ort; from services.scenario_registry import scenario_registry; expected={'panel_label','dc_fuse','indicator_light','lap_surf','line_squeeze','plate_screw'}; actual={e.name for e in m.entry_points(group='vie.plugins')}; assert expected.isdisjoint(actual), actual; assert 'CUDAExecutionProvider' in ort.get_available_providers(), ort.get_available_providers()"
+docker run --rm --gpus all --entrypoint python3.10 \
+  --volume "$ROOT/weights:/app/workspace/weights:ro" \
+  --env "CUDA_SMOKE_MODEL=/app/workspace/weights/$CUDA_SMOKE_MODEL" \
+  "$RUNTIME_IMAGE" \
+  -c "import os, onnxruntime as ort; session=ort.InferenceSession(os.environ['CUDA_SMOKE_MODEL'], providers=['CUDAExecutionProvider']); assert session.get_providers()[0] == 'CUDAExecutionProvider', session.get_providers()"
 
 mkdir -p "$OUT"
 docker save "$RUNTIME_IMAGE" | gzip -1 > "$OUT/image.tar.gz"
@@ -179,17 +203,28 @@ for service in "${SERVICES[@]}"; do
     COMPOSE_FILE="docker-compose.panel-label.yml"
     HEALTH_URL="http://127.0.0.1:3001/health/ready"
     SYNC_SCRIPT="scripts/release/sync-plugin.sh"
+    EXPECTED_PLUGINS=(panel_label)
   else
     COMPOSE_FILE="docker-compose.scenes.yml"
     HEALTH_URL="http://127.0.0.1:3005/health/ready"
     SYNC_SCRIPT="scripts/release/sync-plugin-scenes.sh"
+    EXPECTED_PLUGINS=(dc_fuse indicator_light lap_surf line_squeeze plate_screw)
   fi
 
   INCLUDE_FRAMEWORK=0 RELEASE_ID="baseline-${RELEASE_VERSION}" \
     bash "$SYNC_SCRIPT" --local
+  LOCAL_STAGE=".release-staging/$service/baseline-${RELEASE_VERSION}"
+  EXPECTED_PLUGIN_NAMES="$(IFS=,; echo "${EXPECTED_PLUGINS[*]}")"
+  docker run --rm --entrypoint python3.10 \
+    --volume "$ROOT/$LOCAL_STAGE/pkg:/app/workspace/pkg:ro" \
+    --volume "$ROOT/$LOCAL_STAGE/weights:/app/workspace/weights:ro" \
+    --env PYTHONPATH=/app/workspace/pkg \
+    --env "EXPECTED_VIE_PLUGINS=$EXPECTED_PLUGIN_NAMES" \
+    "$RUNTIME_IMAGE" \
+    -c "import importlib.metadata as m, os; expected=set(os.environ['EXPECTED_VIE_PLUGINS'].split(',')); entry_points=list(m.entry_points(group='vie.plugins')); actual={entry_point.name for entry_point in entry_points}; assert actual == expected, (actual, expected); [entry_point.load() for entry_point in entry_points]"
   mkdir -p "$OUT/$service"
   tar -czf "$OUT/$service/overlay.tar.gz" \
-    -C ".release-staging/$service/baseline-${RELEASE_VERSION}" \
+    -C "$LOCAL_STAGE" \
     pkg weights app.py static weight-paths.txt "$COMPOSE_FILE" release.env
   cp "$COMPOSE_FILE" "$OUT/$service/$COMPOSE_FILE"
   cat > "$OUT/$service/release.env" <<EOF
