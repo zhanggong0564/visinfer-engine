@@ -54,6 +54,7 @@ def test_onnx_runtime_gpu_image_matches_ort_120_cuda_requirements():
     ):
         dockerfile = Path(dockerfile_name).read_text(encoding="utf-8")
         assert f"ARG BASE_IMAGE={expected_base}" in dockerfile
+        assert 'io.vie.base-image="${BASE_IMAGE}"' in dockerfile
 
     requirements = Path("requirements.txt").read_text(encoding="utf-8")
     assert "onnxruntime-gpu==1.20.1" in requirements
