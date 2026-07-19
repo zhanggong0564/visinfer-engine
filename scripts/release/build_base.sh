@@ -13,9 +13,8 @@
 #   bash scripts/release/build_base.sh                 # 构建 mobile_vision:base
 #   TAG=mobile_vision:base-20260626 bash scripts/release/build_base.sh   # 自定义 tag
 #
-# 构建完 base 后，分别构建内置基线插件的服务镜像：
-#   docker build -f Dockerfile.panel-label -t mobile_vision:panel-label .
-#   docker build -f Dockerfile.scenes -t mobile_vision:scenes .
+# 构建完 base 后，构建所有服务共用的 runtime 镜像：
+#   docker build -f Dockerfile.runtime -t mobile_vision:runtime .
 # =========================================================
 set -euo pipefail
 
@@ -27,8 +26,10 @@ TAG="${TAG:-mobile_vision:base}"
 BASE_IMAGE="${BASE_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04}"
 ORT_WHEEL="whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
 test -f "$ORT_WHEEL"
+REQUIREMENTS_SHA256="$(sha256sum requirements.txt requirements.scenes.txt | sha256sum | awk '{print $1}')"
 
 echo "==> 构建基础镜像 ${TAG}（Dockerfile.base）—— 含全部 pip 依赖，首次较慢"
 docker build --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+  --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256" \
   -f Dockerfile.base -t "${TAG}" .
 echo "==> 完成。各场景镜像现在可 FROM ${TAG} 快速构建（见本脚本头部注释）。"

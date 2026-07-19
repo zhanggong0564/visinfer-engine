@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SERVICE="scenes"
-RUNTIME_DOCKERFILE="Dockerfile.scenes"
+RUNTIME_DOCKERFILE="Dockerfile.runtime"
 RUNTIME_REQUIREMENTS=(requirements.txt requirements.scenes.txt)
 PLUGINS=(dc-fuse indicator-light lap-surf line-squeeze plate-screw)
 WHEEL_PATTERNS=(

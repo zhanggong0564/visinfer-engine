@@ -26,7 +26,7 @@ BUNDLE="$(cd "$BUNDLE" && pwd)"
 cd "$BUNDLE"
 sha256sum -c SHA256SUMS
 source "$SERVICE/release.env"
-gunzip -c "$SERVICE/image.tar.gz" | docker load
+gunzip -c image.tar.gz | docker load
 
 mkdir -p "$DEPLOY_DIR/releases/$RELEASE_VERSION" "$DEPLOY_DIR/logs" "$DEPLOY_DIR/data"
 chown -R 1000:1000 "$DEPLOY_DIR/logs" "$DEPLOY_DIR/data"

@@ -9,6 +9,7 @@
                   不传则构建全部插件。框架 wheel 始终构建（所有插件都依赖它）。
   --framework-only 只构建 vie_framework，跳过所有插件（统一 runtime 镜像用：
                   镜像不烤任何场景，插件经 pkg/ 覆盖层按服务装卸）。与 --plugins 互斥。
+  --plugins-only  只构建 --plugins 指定的插件，不重复构建框架（基础 overlay 用）。
 
 产物：dist/*.whl —— 业务模块均为 .so，无明文。部署时：
     pip install -r requirements.txt
@@ -73,19 +74,25 @@ def main():
                     help="用当前环境构建（需已装 Cython/setuptools/wheel）")
     ap.add_argument("--plugins", nargs="*", default=None, metavar="NAME",
                     help="只构建指定插件（如 panel-label）；不传则构建全部")
-    ap.add_argument("--framework-only", action="store_true",
-                    help="只构建 vie_framework，跳过所有插件（统一 runtime 镜像用）")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--framework-only", action="store_true",
+                      help="只构建 vie_framework，跳过所有插件（统一 runtime 镜像用）")
+    mode.add_argument("--plugins-only", action="store_true",
+                      help="只构建 --plugins 指定的插件，跳过 vie_framework")
     args = ap.parse_args()
 
     if args.framework_only and args.plugins is not None:
         sys.exit("--framework-only 与 --plugins 互斥：前者不构建任何插件")
+    if args.plugins_only and args.plugins is None:
+        sys.exit("--plugins-only 必须同时指定 --plugins")
 
     out = (ROOT / args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
 
     plugins = [] if args.framework_only else select_plugins(args.plugins)
 
-    build_one(ROOT, out, args.no_isolation)        # vie-framework（所有插件都依赖，始终构建）
+    if not args.plugins_only:
+        build_one(ROOT, out, args.no_isolation)
     for plugin in plugins:                          # 选中的场景插件
         build_one(plugin, out, args.no_isolation)
 

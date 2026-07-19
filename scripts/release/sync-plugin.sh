@@ -3,8 +3,8 @@
 set -euo pipefail
 
 SERVICE="panel-label"
-RUNTIME_DOCKERFILE="Dockerfile.panel-label"
-RUNTIME_REQUIREMENTS=(requirements.txt)
+RUNTIME_DOCKERFILE="Dockerfile.runtime"
+RUNTIME_REQUIREMENTS=(requirements.txt requirements.scenes.txt)
 PLUGINS=(panel-label)
 WHEEL_PATTERNS=("vie_framework-*.whl" "vie_plugin_panel_label-*.whl")
 CONFIGS=("plugins/vie-plugin-panel-label/vie_plugin_panel_label/config.py")

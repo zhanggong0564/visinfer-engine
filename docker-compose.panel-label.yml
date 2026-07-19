@@ -5,12 +5,12 @@
 # 查看日志：    docker compose -f docker-compose.panel-label.yml logs -f
 # 停止：        docker compose -f docker-compose.panel-label.yml down
 #
-# 镜像内置 framework + panel_label 基线插件；current/ 是后续原子热更新覆盖层。
+# 公共 runtime 镜像只包含环境和 framework；panel 插件与权重来自 current/。
 # =========================================================
 
 services:
   mobile-vision-panel-label:
-    image: ${PANEL_LABEL_IMAGE:-mobile_vision:panel-label}
+    image: ${VIE_RUNTIME_IMAGE:-mobile_vision:runtime}
     container_name: mobile-vision-panel-label
 
     ports:
@@ -32,7 +32,7 @@ services:
       - STRICT_STARTUP=true
       - INFERENCE_MAX_CONCURRENCY=1
       - ENABLED_SCENES=["panel_label"]
-      # current/pkg 优先于镜像 site-packages；为空时回退镜像内置基线插件。
+      # 场景插件只存在于 current/pkg。
       - PYTHONPATH=/app/workspace/pkg
 
     volumes:

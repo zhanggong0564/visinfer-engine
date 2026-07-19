@@ -14,6 +14,7 @@ RELEASE_ID="${RELEASE_ID:-$(date +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)}"
 CONDA_ENV="${CONDA_ENV:-mobile_vision}"
 CONDA_PYTHON=(conda run -n "$CONDA_ENV" python)
 WHEEL_BUILDER_IMAGE="${WHEEL_BUILDER_IMAGE:-mobile_vision:base}"
+INCLUDE_FRAMEWORK="${INCLUDE_FRAMEWORK:-1}"
 
 usage() {
   echo "用法: $0 [--local] [--no-build] [--no-weights] [--remote user@host] [--remote-dir /path]"
@@ -42,6 +43,9 @@ if [ "$DO_BUILD" -eq 1 ]; then
     find dist -maxdepth 1 -type f -name "$pattern" -delete 2>/dev/null || true
   done
   BUILD_WHEEL_ARGS=(--plugins "${PLUGINS[@]}")
+  if [ "$INCLUDE_FRAMEWORK" -eq 0 ]; then
+    BUILD_WHEEL_ARGS+=(--plugins-only)
+  fi
   if "${CONDA_PYTHON[@]}" -c "import Cython" >/dev/null 2>&1; then
     BUILD_WHEEL_ARGS=(--no-isolation "${BUILD_WHEEL_ARGS[@]}")
     "${CONDA_PYTHON[@]}" scripts/release/build_wheels.py "${BUILD_WHEEL_ARGS[@]}"
@@ -65,6 +69,9 @@ fi
 mkdir -p "$LOCAL_STAGE/pkg" "$LOCAL_STAGE/static" "$LOCAL_STAGE/weights"
 
 for pattern in "${WHEEL_PATTERNS[@]}"; do
+  if [ "$INCLUDE_FRAMEWORK" -eq 0 ] && [ "$pattern" = "vie_framework-*.whl" ]; then
+    continue
+  fi
   mapfile -t wheels < <(find dist -maxdepth 1 -type f -name "$pattern" -print | sort)
   if [ "${#wheels[@]}" -ne 1 ]; then
     echo "期望且仅允许一个 wheel 匹配 $pattern，实际 ${#wheels[@]} 个" >&2

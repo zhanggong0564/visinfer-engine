@@ -50,8 +50,7 @@ def test_onnx_runtime_gpu_image_matches_ort_120_cuda_requirements():
     )
     for dockerfile_name in (
         "Dockerfile.base",
-        "Dockerfile.panel-label",
-        "Dockerfile.scenes",
+        "Dockerfile.runtime",
     ):
         dockerfile = Path(dockerfile_name).read_text(encoding="utf-8")
         assert f"ARG BASE_IMAGE={expected_base}" in dockerfile
@@ -62,8 +61,7 @@ def test_onnx_runtime_gpu_image_matches_ort_120_cuda_requirements():
 
 def test_container_healthchecks_use_readiness_endpoint():
     for path in (
-        Path("Dockerfile.panel-label"),
-        Path("Dockerfile.scenes"),
+        Path("Dockerfile.runtime"),
         Path("docker-compose.panel-label.yml"),
         Path("docker-compose.scenes.yml"),
     ):
@@ -71,10 +69,10 @@ def test_container_healthchecks_use_readiness_endpoint():
         assert "http://127.0.0.1:3001/health/ready" in content
 
 
-def test_panel_label_compose_uses_service_image_and_versioned_overlay():
+def test_panel_label_compose_uses_common_runtime_and_versioned_overlay():
     compose = Path("docker-compose.panel-label.yml").read_text(encoding="utf-8")
 
-    assert "image: ${PANEL_LABEL_IMAGE:-mobile_vision:panel-label}" in compose
+    assert "image: ${VIE_RUNTIME_IMAGE:-mobile_vision:runtime}" in compose
     assert "build:" not in compose
     assert 'ENABLED_SCENES=["panel_label"]' in compose
     assert "STRICT_STARTUP=true" in compose
@@ -83,43 +81,33 @@ def test_panel_label_compose_uses_service_image_and_versioned_overlay():
         assert f"./current/{mount}:/app/workspace/{mount}:ro" in compose
 
 
-def test_scenes_compose_uses_service_image_and_versioned_overlay():
+def test_scenes_compose_uses_common_runtime_and_versioned_overlay():
     compose = Path("docker-compose.scenes.yml").read_text(encoding="utf-8")
 
-    assert "image: ${SCENES_IMAGE:-mobile_vision:scenes}" in compose
+    assert "image: ${VIE_RUNTIME_IMAGE:-mobile_vision:runtime}" in compose
     assert "build:" not in compose
     for mount in ("pkg", "weights", "app.py", "static"):
         assert f"./current/{mount}:/app/workspace/{mount}:ro" in compose
 
 
-def test_service_dockerfiles_bake_only_their_plugins():
-    panel = Path("Dockerfile.panel-label").read_text(encoding="utf-8")
-    scenes = Path("Dockerfile.scenes").read_text(encoding="utf-8")
+def test_common_runtime_bakes_framework_without_plugins():
+    runtime = Path("Dockerfile.runtime").read_text(encoding="utf-8")
 
-    assert "COPY plugins/vie-plugin-panel-label/" in panel
-    assert "--plugins panel-label" in panel
-    assert "vie-plugin-line-squeeze" not in panel
-
-    for plugin in (
-        "dc-fuse",
-        "indicator-light",
-        "lap-surf",
-        "line-squeeze",
-        "plate-screw",
-    ):
-        assert f"COPY plugins/vie-plugin-{plugin}/" in scenes
-    assert "vie-plugin-panel-label" not in scenes
+    assert "--framework-only" in runtime
+    assert "COPY plugins/" not in runtime
+    assert "vie_plugin_" not in runtime
+    assert not Path("Dockerfile.panel-label").exists()
+    assert not Path("Dockerfile.scenes").exists()
 
 
-def test_service_images_publish_sync_compatibility_labels():
-    for path in (Path("Dockerfile.panel-label"), Path("Dockerfile.scenes")):
-        dockerfile = path.read_text(encoding="utf-8")
-        assert "io.vie.python-abi" in dockerfile
-        assert "io.vie.requirements-sha256" in dockerfile
-        assert "io.vie.runtime-contract-sha256" in dockerfile
-        assert "io.vie.framework-version" in dockerfile
-        assert "io.vie.plugins" in dockerfile
-        assert "io.vie.plugin-versions" in dockerfile
+def test_common_runtime_publishes_sync_compatibility_labels():
+    dockerfile = Path("Dockerfile.runtime").read_text(encoding="utf-8")
+
+    assert "io.vie.python-abi" in dockerfile
+    assert "io.vie.requirements-sha256" in dockerfile
+    assert "io.vie.runtime-contract-sha256" in dockerfile
+    assert "io.vie.framework-version" in dockerfile
+    assert 'io.vie.plugins=""' in dockerfile
 
 
 def test_deploy_panel_label_compose_uses_service_image_and_versioned_overlay():
@@ -229,9 +217,8 @@ def test_openapi_documents_panel_label_json_data_example_from_real_request_log()
 
 
 def test_docker_images_include_offline_swagger_assets():
-    for dockerfile_name in ("Dockerfile.panel-label", "Dockerfile.scenes"):
-        dockerfile = Path(dockerfile_name).read_text(encoding="utf-8")
-        assert "static /app/workspace/static" in dockerfile
+    dockerfile = Path("Dockerfile.runtime").read_text(encoding="utf-8")
+    assert "static /app/workspace/static" in dockerfile
 
 
 def test_deploy_bundle_swagger_ui_uses_local_static_assets():
@@ -331,7 +318,7 @@ def test_scenes_requirements_include_chromadb_without_cpu_onnxruntime():
     assert str(by_name["chromadb"].specifier) == "==1.5.9"
     assert "onnxruntime" not in by_name
 
-    dockerfile = Path("Dockerfile.scenes").read_text(encoding="utf-8")
+    dockerfile = Path("Dockerfile.base").read_text(encoding="utf-8")
     scenes_install = "pip install -r /tmp/requirements.scenes.txt"
     gpu_reinstall = "--no-deps --force-reinstall"
     assert scenes_install in dockerfile
@@ -356,11 +343,13 @@ def test_base_image_installs_local_onnx_wheel_before_requirements():
     )
     local_install = f"pip install /tmp/{wheel} --no-deps"
     requirements_install = "pip install -r /tmp/requirements.txt"
+    scenes_install = "pip install -r /tmp/requirements.scenes.txt"
 
     assert f"COPY whl/{wheel} /tmp/" in dockerfile
+    assert "COPY requirements.scenes.txt /tmp/requirements.scenes.txt" in dockerfile
     assert local_install in dockerfile
     assert dockerfile.index(local_install) < dockerfile.index(requirements_install)
-    assert "--force-reinstall" not in dockerfile
+    assert dockerfile.index(scenes_install) < dockerfile.index("--force-reinstall")
     assert "paddlepaddle_gpu" not in dockerfile.lower()
 
 
@@ -378,21 +367,32 @@ def test_base_build_scripts_use_legacy_compatible_wheel_context():
     assert "--from=ort_wheel" not in dockerfile
 
 
-def test_runtime_image_installs_opencv_system_libraries():
-    for path in (Path("Dockerfile.panel-label"), Path("Dockerfile.scenes")):
-        dockerfile = path.read_text(encoding="utf-8").lower()
-        apt_install = re.search(
-            r"apt-get install -y --no-install-recommends(?P<packages>.*?)&&",
-            dockerfile,
-            flags=re.DOTALL,
-        )
+def test_offline_build_stages_symlinked_wheel_inside_docker_context():
+    script = Path("scripts/release/build_docker_release.sh").read_text(
+        encoding="utf-8"
+    )
 
-        assert apt_install is not None
-        packages = set(
-            re.findall(
-                r"^\s*([a-z0-9.+-]+)\s*\\?$",
-                apt_install["packages"],
-                re.MULTILINE,
-            )
+    assert 'BUILD_CONTEXT="$(mktemp -d ' in script
+    assert 'cp -L "$ORT_WHEEL" "$BUILD_CONTEXT/$ORT_WHEEL"' in script
+    assert '-f "$BUILD_CONTEXT/Dockerfile.base"' in script
+    assert '-f "$BUILD_CONTEXT/Dockerfile.runtime"' in script
+    assert '"$BUILD_CONTEXT"' in script
+
+
+def test_runtime_image_installs_opencv_system_libraries():
+    dockerfile = Path("Dockerfile.runtime").read_text(encoding="utf-8").lower()
+    apt_install = re.search(
+        r"apt-get install -y --no-install-recommends(?P<packages>.*?)&&",
+        dockerfile,
+        flags=re.DOTALL,
+    )
+
+    assert apt_install is not None
+    packages = set(
+        re.findall(
+            r"^\s*([a-z0-9.+-]+)\s*\\?$",
+            apt_install["packages"],
+            re.MULTILINE,
         )
-        assert {"libgl1", "libgomp1"}.issubset(packages)
+    )
+    assert {"libgl1", "libgomp1"}.issubset(packages)

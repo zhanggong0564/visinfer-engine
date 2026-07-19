@@ -1,12 +1,12 @@
 # =========================================================
 # VisInfer Engine (VIE) - scenes 服务编排：除线标(panel_label)外的全部场景
 #
-# 跑 scenes 专属 runtime 镜像，内置 framework 与 5 个基线插件；
-# current/ 提供后续原子热更新覆盖层：
+# 跑所有服务共用的 runtime 镜像，仅内置环境与 framework；
+# 5 个场景插件与权重由 current/ 提供：
 #   dc_fuse / indicator_light / lap_surf / line_squeeze / plate_screw
 # 设计文档：docs/superpowers/specs/2026-06-26-unified-runtime-image-design.md
 #
-# 镜像构建：docker build -f Dockerfile.scenes -t mobile_vision:scenes .
+# 镜像构建：docker build -f Dockerfile.runtime -t mobile_vision:runtime .
 # 启动：    docker compose -f docker-compose.scenes.yml up -d        # ←【不要】加 --build
 # 推场景：  bash scripts/release/sync-plugin-scenes.sh               # 编译5场景 .so + 推 pkg/weights → 重启
 # 查看日志：docker compose -f docker-compose.scenes.yml logs -f
@@ -17,7 +17,7 @@
 
 services:
   mobile-vision-scenes:
-    image: ${SCENES_IMAGE:-mobile_vision:scenes}
+    image: ${VIE_RUNTIME_IMAGE:-mobile_vision:runtime}
     container_name: mobile-vision-scenes
 
     # panel-label 占用 3001；本服务用 3005 以便同机并存。单独部署可改回 3001。
@@ -42,7 +42,7 @@ services:
       # 场景白名单：仅注册/预加载这 5 个场景；未列出的（如 panel_label）即便代码在镜像里也不启用。
       # 改部署场景只动这一行（JSON 数组，pydantic-settings 解析为 set）。
       - ENABLED_SCENES=["dc_fuse","indicator_light","lap_surf","line_squeeze","plate_screw"]
-      # current/pkg 优先于镜像 site-packages；为空时回退镜像内置基线插件。
+      # 场景插件只存在于 current/pkg。
       - PYTHONPATH=/app/workspace/pkg
 
     volumes:

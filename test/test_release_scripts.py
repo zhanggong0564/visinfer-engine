@@ -82,26 +82,43 @@ def test_rollback_script_swaps_previous_and_validates_readiness():
     assert "/health/ready" in script
 
 
-def test_offline_release_script_builds_versioned_service_images_and_checksums():
+def test_offline_release_script_exports_one_common_runtime_and_service_overlays():
     script = Path("scripts/release/build_docker_release.sh").read_text(
         encoding="utf-8"
     )
 
     assert "RELEASE_VERSION" in script
-    assert "Dockerfile.panel-label" in script
-    assert "Dockerfile.scenes" in script
-    assert "mobile_vision:panel-label-" in script
-    assert "mobile_vision:scenes-" in script
+    assert "Dockerfile.runtime" in script
+    assert "mobile_vision:runtime-" in script
+    assert "Dockerfile.panel-label" not in script
+    assert "Dockerfile.scenes" not in script
     assert "sha256sum" in script
     assert "docker save" in script
     assert "collect_weight_paths.py" in script
-    assert "PLUGIN_VERSIONS" in script
     assert "CUDAExecutionProvider" in script
     assert "requirements.scenes.txt" in script
     assert "--service panel|scenes|all" in script
     assert 'OUTPUT_SUFFIX="-panel-label"' in script
     assert 'OUTPUT_SUFFIX="-scenes"' in script
-    assert 'RELEASE_ID="baseline-${RELEASE_VERSION}" bash "$SYNC_SCRIPT" --local' in script
+    assert 'INCLUDE_FRAMEWORK=0 RELEASE_ID="baseline-${RELEASE_VERSION}"' in script
+    assert script.count('docker save "$RUNTIME_IMAGE"') == 1
+    assert '> "$OUT/image.tar.gz"' in script
+    assert '"$SERVICE/image.tar.gz"' not in script
+
+
+def test_baseline_overlay_can_exclude_framework():
+    script = Path("scripts/release/sync-common.sh").read_text(encoding="utf-8")
+
+    assert 'INCLUDE_FRAMEWORK="${INCLUDE_FRAMEWORK:-1}"' in script
+    assert '[ "$pattern" = "vie_framework-*.whl" ]' in script
+    assert "BUILD_WHEEL_ARGS+=(--plugins-only)" in script
+
+
+def test_wheel_builder_supports_plugins_only_mode():
+    script = Path("scripts/release/build_wheels.py").read_text(encoding="utf-8")
+
+    assert '"--plugins-only"' in script
+    assert "if not args.plugins_only:" in script
 
 
 def test_offline_release_script_help_lists_service_split():
@@ -131,3 +148,18 @@ def test_release_scripts_use_configurable_mobile_vision_environment():
     assert 'WHEEL_BUILDER_IMAGE="${WHEEL_BUILDER_IMAGE:-mobile_vision:base}"' in sync_script
     assert 'docker image inspect "$WHEEL_BUILDER_IMAGE"' in sync_script
     assert "使用隔离构建" in sync_script
+
+
+def test_services_share_runtime_contract_and_offline_image():
+    panel_sync = Path("scripts/release/sync-plugin.sh").read_text(encoding="utf-8")
+    scenes_sync = Path("scripts/release/sync-plugin-scenes.sh").read_text(
+        encoding="utf-8"
+    )
+    deploy = Path("scripts/release/deploy_offline.sh").read_text(encoding="utf-8")
+
+    for script in (panel_sync, scenes_sync):
+        assert 'RUNTIME_DOCKERFILE="Dockerfile.runtime"' in script
+        assert "RUNTIME_REQUIREMENTS=(requirements.txt requirements.scenes.txt)" in script
+
+    assert "gunzip -c image.tar.gz | docker load" in deploy
+    assert 'gunzip -c "$SERVICE/image.tar.gz"' not in deploy

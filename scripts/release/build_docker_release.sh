@@ -126,86 +126,80 @@ conda run -n "$CONDA_ENV" python scripts/release/collect_weight_paths.py --root 
   "${WEIGHT_CONFIGS[@]}" \
   >/dev/null
 
-PANEL_REQUIREMENTS_SHA256="$(sha256sum requirements.txt | sha256sum | awk '{print $1}')"
-SCENES_REQUIREMENTS_SHA256="$(sha256sum requirements.txt requirements.scenes.txt | sha256sum | awk '{print $1}')"
+REQUIREMENTS_SHA256="$(sha256sum requirements.txt requirements.scenes.txt | sha256sum | awk '{print $1}')"
 FRAMEWORK_VERSION="$(project_version pyproject.toml)"
 OUT="${OUTPUT_DIR:-dist/docker-release-${RELEASE_VERSION}${OUTPUT_SUFFIX}}"
 test ! -e "$OUT" || { echo "输出目录已存在: $OUT" >&2; exit 1; }
 
+BUILD_CONTEXT="$(mktemp -d "${TMPDIR:-/tmp}/vie-docker-release.XXXXXX")"
+cleanup() {
+  rm -rf -- "$BUILD_CONTEXT"
+}
+trap cleanup EXIT
+
+mkdir -p "$BUILD_CONTEXT/scripts/release" "$BUILD_CONTEXT/whl"
+cp -a .dockerignore Dockerfile.base Dockerfile.runtime \
+  pyproject.toml setup.py requirements.txt requirements.scenes.txt app.py \
+  services schemas routers utils config static \
+  "$BUILD_CONTEXT/"
+cp -a scripts/release/build_wheels.py "$BUILD_CONTEXT/scripts/release/"
+# whl/ may be a symlink to storage outside the repository. Docker does not
+# follow links outside its build context, so stage the wheel as a regular file.
+cp -L "$ORT_WHEEL" "$BUILD_CONTEXT/$ORT_WHEEL"
+
 if [ "${SKIP_BASE_BUILD:-0}" != "1" ]; then
   docker build --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
-    -f Dockerfile.base -t mobile_vision:base .
+    --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256" \
+    -f "$BUILD_CONTEXT/Dockerfile.base" -t mobile_vision:base "$BUILD_CONTEXT"
 elif ! docker image inspect mobile_vision:base >/dev/null 2>&1; then
   echo "SKIP_BASE_BUILD=1 但本机不存在 mobile_vision:base" >&2
   exit 1
+elif [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.requirements-sha256"}}' mobile_vision:base)" != "$REQUIREMENTS_SHA256" ]; then
+  echo "SKIP_BASE_BUILD=1 但 mobile_vision:base 依赖指纹不匹配" >&2
+  exit 1
 fi
 
-PANEL_RUNTIME_CONTRACT_SHA256="$(sha256sum requirements.txt Dockerfile.base Dockerfile.panel-label | sha256sum | awk '{print $1}')"
-SCENES_RUNTIME_CONTRACT_SHA256="$(sha256sum requirements.txt requirements.scenes.txt Dockerfile.base Dockerfile.scenes | sha256sum | awk '{print $1}')"
+RUNTIME_CONTRACT_SHA256="$(sha256sum requirements.txt requirements.scenes.txt Dockerfile.base Dockerfile.runtime | sha256sum | awk '{print $1}')"
+RUNTIME_IMAGE="mobile_vision:runtime-${RELEASE_VERSION}"
+docker build -f "$BUILD_CONTEXT/Dockerfile.runtime" \
+  --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+  --build-arg RELEASE_VERSION="$RELEASE_VERSION" \
+  --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256" \
+  --build-arg RUNTIME_CONTRACT_SHA256="$RUNTIME_CONTRACT_SHA256" \
+  --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION" \
+  -t "$RUNTIME_IMAGE" "$BUILD_CONTEXT"
+docker run --rm --entrypoint python3.10 "$RUNTIME_IMAGE" \
+  -c "import chromadb, importlib.metadata as m, onnxruntime as ort; expected={'panel_label','dc_fuse','indicator_light','lap_surf','line_squeeze','plate_screw'}; actual={e.name for e in m.entry_points(group='vie.plugins')}; assert expected.isdisjoint(actual), actual; assert 'CUDAExecutionProvider' in ort.get_available_providers(), ort.get_available_providers()"
 
-if [ "$TARGET" = "panel-label" ] || [ "$TARGET" = "all" ]; then
-  PANEL_PLUGIN_VERSIONS="panel_label=$(project_version plugins/vie-plugin-panel-label/pyproject.toml)"
-  docker build -f Dockerfile.panel-label \
-    --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
-    --build-arg RELEASE_VERSION="$RELEASE_VERSION" \
-    --build-arg REQUIREMENTS_SHA256="$PANEL_REQUIREMENTS_SHA256" \
-    --build-arg RUNTIME_CONTRACT_SHA256="$PANEL_RUNTIME_CONTRACT_SHA256" \
-    --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION" \
-    --build-arg PLUGIN_VERSIONS="$PANEL_PLUGIN_VERSIONS" \
-    -t "mobile_vision:panel-label-${RELEASE_VERSION}" .
-  docker run --rm --entrypoint python3.10 "mobile_vision:panel-label-${RELEASE_VERSION}" \
-    -c "import importlib.metadata as m, importlib.util, onnxruntime as ort; assert {'panel_label'} <= {e.name for e in m.entry_points(group='vie.plugins')}; assert importlib.util.find_spec('chromadb') is None; assert 'CUDAExecutionProvider' in ort.get_available_providers(), ort.get_available_providers()"
-fi
-
-if [ "$TARGET" = "scenes" ] || [ "$TARGET" = "all" ]; then
-  SCENES_PLUGIN_VERSIONS=""
-  for plugin in dc-fuse indicator-light lap-surf line-squeeze plate-screw; do
-    plugin_version="$(project_version "plugins/vie-plugin-${plugin}/pyproject.toml")"
-    plugin_label="${plugin//-/_}=${plugin_version}"
-    SCENES_PLUGIN_VERSIONS="${SCENES_PLUGIN_VERSIONS:+${SCENES_PLUGIN_VERSIONS},}${plugin_label}"
-  done
-  docker build -f Dockerfile.scenes \
-    --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
-    --build-arg RELEASE_VERSION="$RELEASE_VERSION" \
-    --build-arg REQUIREMENTS_SHA256="$SCENES_REQUIREMENTS_SHA256" \
-    --build-arg RUNTIME_CONTRACT_SHA256="$SCENES_RUNTIME_CONTRACT_SHA256" \
-    --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION" \
-    --build-arg PLUGIN_VERSIONS="$SCENES_PLUGIN_VERSIONS" \
-    -t "mobile_vision:scenes-${RELEASE_VERSION}" .
-  docker run --rm --entrypoint python3.10 "mobile_vision:scenes-${RELEASE_VERSION}" \
-    -c "import chromadb, importlib.metadata as m, onnxruntime as ort; assert {'dc_fuse','indicator_light','lap_surf','line_squeeze','plate_screw'} <= {e.name for e in m.entry_points(group='vie.plugins')}; assert 'CUDAExecutionProvider' in ort.get_available_providers(), ort.get_available_providers()"
-fi
+mkdir -p "$OUT"
+docker save "$RUNTIME_IMAGE" | gzip -1 > "$OUT/image.tar.gz"
 
 for service in "${SERVICES[@]}"; do
   if [ "$service" = "panel-label" ]; then
-    IMAGE="mobile_vision:panel-label-${RELEASE_VERSION}"
     COMPOSE_FILE="docker-compose.panel-label.yml"
-    IMAGE_VAR="PANEL_LABEL_IMAGE"
     HEALTH_URL="http://127.0.0.1:3001/health/ready"
     SYNC_SCRIPT="scripts/release/sync-plugin.sh"
   else
-    IMAGE="mobile_vision:scenes-${RELEASE_VERSION}"
     COMPOSE_FILE="docker-compose.scenes.yml"
-    IMAGE_VAR="SCENES_IMAGE"
     HEALTH_URL="http://127.0.0.1:3005/health/ready"
     SYNC_SCRIPT="scripts/release/sync-plugin-scenes.sh"
   fi
 
-  RELEASE_ID="baseline-${RELEASE_VERSION}" bash "$SYNC_SCRIPT" --local
+  INCLUDE_FRAMEWORK=0 RELEASE_ID="baseline-${RELEASE_VERSION}" \
+    bash "$SYNC_SCRIPT" --local
   mkdir -p "$OUT/$service"
-  docker save "$IMAGE" | gzip -1 > "$OUT/$service/image.tar.gz"
   tar -czf "$OUT/$service/overlay.tar.gz" \
     -C ".release-staging/$service/baseline-${RELEASE_VERSION}" \
     pkg weights app.py static weight-paths.txt "$COMPOSE_FILE" release.env
   cp "$COMPOSE_FILE" "$OUT/$service/$COMPOSE_FILE"
   cat > "$OUT/$service/release.env" <<EOF
 RELEASE_VERSION=${RELEASE_VERSION}
-${IMAGE_VAR}=${IMAGE}
+VIE_RUNTIME_IMAGE=${RUNTIME_IMAGE}
 COMPOSE_FILE=${COMPOSE_FILE}
 HEALTH_URL=${HEALTH_URL}
 EOF
 done
 
 cp scripts/release/deploy_offline.sh "$OUT/deploy_offline.sh"
-(cd "$OUT" && find "${SERVICES[@]}" -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+(cd "$OUT" && find image.tar.gz "${SERVICES[@]}" -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
 echo "离线发布包已生成: $OUT"
