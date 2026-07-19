@@ -1,14 +1,16 @@
 """Scene registration and construction."""
 
 from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import Any, Type
 
 from config import settings
 
 from .base.business_logic_base import BusinessLogicBase
 
 
-ScenarioType = type[BusinessLogicBase]
+# Cython evaluates this alias while initializing the compiled module. Using
+# typing.Type keeps the Python 3.10 wheel importable after Cython compilation.
+ScenarioType = Type[BusinessLogicBase]
 
 
 class ScenarioRegistry:
