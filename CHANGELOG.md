@@ -31,9 +31,12 @@
 - **发布环境修复**：Docker 离线构建与覆盖层生成统一默认使用 `mobile_vision` Conda 环境，并兼容 Python 3.10；缺少本地 Cython 时改用基础镜像或隔离构建。
 - **Docker 构建兼容**：基础镜像改用标准 build context 复制本地 ONNX Runtime wheel，兼容未安装 buildx 的 legacy builder，并排除权重和本地发布产物以缩小构建上下文。
 - **公共运行依赖**：统一运行环境包含 ChromaDB，并在安装后恢复本地 `onnxruntime-gpu`，避免 CPU ONNX Runtime 覆盖 CUDA Provider。
+- **CUDA 运行时 ABI 修复**：本地 ONNX Runtime wheel 对齐并锁定 CUDA 12.4 + cuDNN 9 官方构建的 SHA256；离线构建使用真实模型创建 CUDA Session，并校验 base 镜像来源，避免仅凭 provider 名称误放行不可启动镜像。
 - **离线构建上下文修复**：发布脚本将外部符号链接中的 ONNX Runtime wheel 实体复制到临时 Docker 上下文，修复公共 base/runtime 无法 `COPY` wheel 的问题。
 - **离线镜像去重**：双服务发布包只构建和导出一次公共 runtime 镜像，panel/scenes 目录仅保存各自 overlay 与部署配置。
 - **基础覆盖层去重**：首次部署的场景 overlay 不再重复打包 runtime 已内置的 framework，热更新仍可按需携带 framework。
+- **二进制运行时校验**：场景注册类型别名兼容 Cython 编译，并在离线构建中实际导入框架、挂载 overlay 和加载目标 entry point，阻止不可启动的二进制包进入发布产物。
+- **离线权重完整性**：panel-label 显式声明 OCR 方向分类与文字识别 metadata，基础 overlay 会随 ONNX 模型一并收集运行时必需的 `inference.yml`。
 - **原子热更新**：`sync-plugin*.sh` 改用版本化 staging/current/previous，增加依赖指纹、entry point、权重和 readiness 校验，失败自动回滚。
 - **离线部署**：新增版本镜像、权重覆盖层、SHA256 清单的构建与部署脚本，并移除脚本中的默认生产服务器地址。
 - **ONNX 运行依赖**：显式加入 PyYAML，line-squeeze OCR 改为 ONNX 后 scenes 镜像继续保持无 PaddleOCR/PaddleX。
