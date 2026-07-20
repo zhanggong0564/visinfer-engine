@@ -323,8 +323,8 @@ RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service sce
 ```
 
 单服务构建分别输出到 `dist/docker-release-2.1.3-panel-label/` 和
-`dist/docker-release-2.1.3-scenes/`。每个单服务包根目录包含一份公共 runtime
-镜像，服务目录只包含对应 overlay。服务器分别部署 panel-label（3001）和 scenes（3005）：
+`dist/docker-release-2.1.3-scenes/`。每个单服务包根目录包含所选场景镜像，
+场景镜像直接继承公共 base，只新增对应插件。服务器分别部署 panel-label（3001）和 scenes（3005）：
 
 ```bash
 bash deploy_offline.sh --bundle /path/docker-release-2.1.3-panel-label \
@@ -334,8 +334,9 @@ bash deploy_offline.sh --bundle /path/docker-release-2.1.3-scenes \
 ```
 
 不指定 `--service` 时仍会一次构建两个服务，并输出到
-`dist/docker-release-2.1.3/`；该包只导出一次公共 runtime 镜像，panel/scenes
-共享使用。已有依赖指纹匹配的 `mobile_vision:base` 时可设置
+`dist/docker-release-2.1.3/`；该包只生成一份 `image.tar.gz`，其中包含两个场景
+镜像引用，共享 base layers 只保存一次。已有完整基础合同指纹匹配的
+`mobile_vision:base` 时可设置
 `SKIP_BASE_BUILD=1` 跳过基础镜像构建。
 
 ### 直接部署
