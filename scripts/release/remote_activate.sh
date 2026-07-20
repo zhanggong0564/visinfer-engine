@@ -2,6 +2,17 @@
 # Runs on the deployment host; activates a staged release and rolls back on failure.
 set -euo pipefail
 
+select_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+  elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE=(docker-compose)
+  else
+    echo "未找到 Docker Compose（docker compose 或 docker-compose）" >&2
+    exit 1
+  fi
+}
+
 ROOT="$1"
 RELEASE_ID="$2"
 COMPOSE_FILE="$3"
@@ -14,6 +25,7 @@ WITH_WEIGHTS="$9"
 EXPECTED_ENTRYPOINTS="${10}"
 STAGE="${ROOT}/releases/${RELEASE_ID}.staging"
 FINAL="${ROOT}/releases/${RELEASE_ID}"
+select_compose
 
 cd "$ROOT"
 test -d "$STAGE/pkg"
@@ -70,7 +82,7 @@ rollback() {
     ln -sfn "$OLD_TARGET" current.rollback
     mv -Tf current.rollback current
     cp "$(readlink -f current)/$COMPOSE_FILE" "$ROOT/$COMPOSE_FILE"
-    docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+    "${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --force-recreate
     for _ in $(seq 1 60); do
       curl -fsS "$HEALTH_URL" >/dev/null && return 0
       sleep 5
@@ -81,8 +93,8 @@ rollback() {
 }
 trap 'rollback' ERR
 
-docker compose -f "$COMPOSE_FILE" config --quiet
-docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" config --quiet
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --force-recreate
 for _ in $(seq 1 60); do
   if curl -fsS "$HEALTH_URL" >/dev/null; then
     exit 0
@@ -91,6 +103,6 @@ for _ in $(seq 1 60); do
 done
 
 echo "新发布未通过 readiness，自动 rollback" >&2
-docker compose -f "$COMPOSE_FILE" logs --tail=200 >&2 || true
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" logs --tail=200 >&2 || true
 rollback
 exit 1
