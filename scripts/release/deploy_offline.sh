@@ -40,8 +40,19 @@ sha256sum -c SHA256SUMS
 source "$SERVICE/release.env"
 gunzip -c image.tar.gz | docker load
 
+mkdir -p "$DEPLOY_DIR"
+DEPLOY_DIR="$(cd "$DEPLOY_DIR" && pwd)"
 mkdir -p "$DEPLOY_DIR/releases/$RELEASE_VERSION" "$DEPLOY_DIR/logs" "$DEPLOY_DIR/data"
-chown -R 1000:1000 "$DEPLOY_DIR/logs" "$DEPLOY_DIR/data"
+if [ "$SERVICE" = "panel-label" ]; then
+  DEPLOY_IMAGE="${PANEL_LABEL_IMAGE:?发布包缺少 PANEL_LABEL_IMAGE}"
+else
+  DEPLOY_IMAGE="${SCENES_IMAGE:?发布包缺少 SCENES_IMAGE}"
+fi
+if ! chown -R 1000:1000 "$DEPLOY_DIR/logs" "$DEPLOY_DIR/data" 2>/dev/null; then
+  docker run --rm --user 0:0 --entrypoint chown \
+    --volume "$DEPLOY_DIR:/deploy" \
+    "$DEPLOY_IMAGE" -R 1000:1000 /deploy/logs /deploy/data
+fi
 tar -xzf "$SERVICE/overlay.tar.gz" -C "$DEPLOY_DIR/releases/$RELEASE_VERSION"
 cp "$SERVICE/$COMPOSE_FILE" "$DEPLOY_DIR/$COMPOSE_FILE"
 cp "$SERVICE/release.env" "$DEPLOY_DIR/.env"
