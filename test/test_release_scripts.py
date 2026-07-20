@@ -180,7 +180,7 @@ def test_release_scripts_use_configurable_mobile_vision_environment():
         assert "conda run -n ppocr" not in script
 
     assert "setuptools.config.pyprojecttoml" in release_script
-    assert 'WHEEL_BUILDER_IMAGE="${WHEEL_BUILDER_IMAGE:-mobile_vision:base}"' in sync_script
+    assert 'WHEEL_BUILDER_IMAGE="${WHEEL_BUILDER_IMAGE:-mobile_vision:base-builder}"' in sync_script
     assert 'docker image inspect "$WHEEL_BUILDER_IMAGE"' in sync_script
     assert "使用隔离构建" in sync_script
 

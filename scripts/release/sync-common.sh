@@ -13,7 +13,7 @@ REMOTE_DIR="${REMOTE_DIR:-}"
 RELEASE_ID="${RELEASE_ID:-$(date +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)}"
 CONDA_ENV="${CONDA_ENV:-mobile_vision}"
 CONDA_PYTHON=(conda run -n "$CONDA_ENV" python)
-WHEEL_BUILDER_IMAGE="${WHEEL_BUILDER_IMAGE:-mobile_vision:base}"
+WHEEL_BUILDER_IMAGE="${WHEEL_BUILDER_IMAGE:-mobile_vision:base-builder}"
 INCLUDE_FRAMEWORK="${INCLUDE_FRAMEWORK:-1}"
 INCLUDE_PLUGINS="${INCLUDE_PLUGINS:-1}"
 
