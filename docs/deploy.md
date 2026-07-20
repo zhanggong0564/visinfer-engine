@@ -128,7 +128,7 @@ bash deploy_offline.sh \
   --deploy-dir /srv/vie/scenes
 ```
 
-部署脚本校验 SHA256、加载镜像、创建 `releases/<版本>`、原子设置 `current`，为 `logs/` 和 `data/` 设置 uid 1000 权限，然后等待 readiness。部署账号须有 Docker、目标目录和 `chown` 权限。
+部署脚本校验 SHA256、加载镜像、创建 `releases/<版本>`、原子设置 `current`，为 `logs/` 和 `data/` 设置 uid 1000 权限，然后等待 readiness。部署账号须有 Docker 和目标目录权限；宿主机不能直接 `chown` 时，脚本会使用已加载的服务镜像设置目录属主。
 
 指示灯注册参考图位于受控内网地址时，通过环境变量显式允许对应主机名或 IP：
 
