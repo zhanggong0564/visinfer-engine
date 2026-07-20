@@ -1,0 +1,18 @@
+[submodule "plugins/vie-plugin-dc-fuse"]
+	path = plugins/vie-plugin-dc-fuse
+	url = https://github.com/zhanggong0564/vie-plugin-dc-fuse.git
+[submodule "plugins/vie-plugin-indicator-light"]
+	path = plugins/vie-plugin-indicator-light
+	url = https://github.com/zhanggong0564/vie-plugin-indicator-light.git
+[submodule "plugins/vie-plugin-lap-surf"]
+	path = plugins/vie-plugin-lap-surf
+	url = https://github.com/zhanggong0564/vie-plugin-lap-surf.git
+[submodule "plugins/vie-plugin-line-squeeze"]
+	path = plugins/vie-plugin-line-squeeze
+	url = https://github.com/zhanggong0564/vie-plugin-line-squeeze.git
+[submodule "plugins/vie-plugin-panel-label"]
+	path = plugins/vie-plugin-panel-label
+	url = https://github.com/zhanggong0564/vie-plugin-panel-label.git
+[submodule "plugins/vie-plugin-plate-screw"]
+	path = plugins/vie-plugin-plate-screw
+	url = https://github.com/zhanggong0564/vie-plugin-plate-screw.git

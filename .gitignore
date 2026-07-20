@@ -51,9 +51,7 @@ dist/
 # 热更新覆盖层：sync-plugin.sh 解包的 .so 包目录，仅本地/服务器使用
 pkg/
 
-# 场景插件单独仓库维护，框架仓库不跟踪 plugins/
-# 各 plugins/vie-plugin-* 为独立 git 仓库，通过 pip install -e 加载
-plugins/
+# 场景插件通过 Git submodule 维护，主仓库只跟踪固定提交指针
 **.pyc
 
 # 部署交付包（含 docker save 导出的 GB 级镜像 tar.gz，不入库）
