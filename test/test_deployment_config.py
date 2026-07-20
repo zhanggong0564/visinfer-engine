@@ -296,7 +296,9 @@ def test_sync_script_pushes_offline_swagger_assets_and_applies_compose():
 
     assert "static/swagger-ui" in script
     assert 'cp "$COMPOSE_FILE"' in script
-    assert 'docker compose -f "$COMPOSE_FILE" up -d --force-recreate' in activate
+    assert "COMPOSE=(docker compose)" in activate
+    assert "COMPOSE=(docker-compose)" in activate
+    assert '"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --force-recreate' in activate
 
 
 def test_panel_label_weight_sync_deletes_excluded_stale_model_files():
