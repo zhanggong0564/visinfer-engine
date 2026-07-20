@@ -85,6 +85,7 @@ esac
 
 CUDA_BASE_IMAGE="${CUDA_BASE_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04}"
 BASE_TAG="${BASE_TAG:-mobile_vision:base}"
+BASE_BUILDER_TAG="${BASE_BUILDER_TAG:-mobile_vision:base-builder}"
 CONDA_ENV="${CONDA_ENV:-mobile_vision}"
 export CONDA_ENV
 
@@ -163,22 +164,44 @@ cp -a .dockerignore Dockerfile.base pyproject.toml setup.py \
 cp -a scripts/release/build_wheels.py "$BASE_CONTEXT/scripts/release/"
 cp -L "$ORT_WHEEL" "$BASE_CONTEXT/$ORT_WHEEL"
 
+DOCKER_BASE_BUILD_ARGS=(
+  --build-arg "CUDA_BASE_IMAGE=${CUDA_BASE_IMAGE}"
+  --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256"
+  --build-arg BASE_CONTRACT_SHA256="$BASE_CONTRACT_SHA256"
+  --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION"
+  -f "$BASE_CONTEXT/Dockerfile.base"
+)
+
 if [ "${SKIP_BASE_BUILD:-0}" != "1" ]; then
-  docker build --build-arg "CUDA_BASE_IMAGE=${CUDA_BASE_IMAGE}" \
-    --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256" \
-    --build-arg BASE_CONTRACT_SHA256="$BASE_CONTRACT_SHA256" \
-    --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION" \
-    -f "$BASE_CONTEXT/Dockerfile.base" -t "$BASE_TAG" "$BASE_CONTEXT"
-elif ! docker image inspect "$BASE_TAG" >/dev/null 2>&1; then
-  echo "SKIP_BASE_BUILD=1 但本机不存在 ${BASE_TAG}" >&2
-  exit 1
-elif [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.base-contract-sha256"}}' "$BASE_TAG")" != "$BASE_CONTRACT_SHA256" ]; then
-  echo "SKIP_BASE_BUILD=1 但 ${BASE_TAG} 基础环境指纹不匹配" >&2
-  exit 1
-elif [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.base-image"}}' "$BASE_TAG")" != "$CUDA_BASE_IMAGE" ]; then
-  echo "SKIP_BASE_BUILD=1 但 ${BASE_TAG} CUDA 基础镜像不匹配" >&2
-  exit 1
+  docker build "${DOCKER_BASE_BUILD_ARGS[@]}" \
+    --target base-builder -t "$BASE_BUILDER_TAG" "$BASE_CONTEXT"
+  docker build "${DOCKER_BASE_BUILD_ARGS[@]}" \
+    -t "$BASE_TAG" "$BASE_CONTEXT"
 fi
+
+validate_base_image() {
+  local image="$1"
+  local expected_role="$2"
+  docker image inspect "$image" >/dev/null 2>&1 || {
+    echo "本机不存在 ${image}" >&2
+    return 1
+  }
+  [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.image-role"}}' "$image")" = "$expected_role" ] || {
+    echo "${image} 镜像角色不匹配，期望 ${expected_role}" >&2
+    return 1
+  }
+  [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.base-contract-sha256"}}' "$image")" = "$BASE_CONTRACT_SHA256" ] || {
+    echo "${image} 基础环境指纹不匹配" >&2
+    return 1
+  }
+  [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.base-image"}}' "$image")" = "$CUDA_BASE_IMAGE" ] || {
+    echo "${image} CUDA 基础镜像不匹配" >&2
+    return 1
+  }
+}
+
+validate_base_image "$BASE_BUILDER_TAG" builder
+validate_base_image "$BASE_TAG" runtime-base
 
 RUNTIME_CONTRACT_SHA256="$(
   {
@@ -191,7 +214,7 @@ stage_runtime_context() {
   local context="$1"
   shift
   mkdir -p "$context/scripts/release" "$context/plugins"
-  cp -a Dockerfile.runtime app.py static "$context/"
+  cp -a .dockerignore Dockerfile.runtime app.py static "$context/"
   cp -a scripts/release/build_wheels.py "$context/scripts/release/"
   local plugin_name plugin_source plugin_target
   for plugin_name in "$@"; do
@@ -226,6 +249,7 @@ if [ "$TARGET" = "panel-label" ] || [ "$TARGET" = "all" ]; then
   PANEL_PLUGIN_VERSIONS="panel_label=$(project_version plugins/vie-plugin-panel-label/pyproject.toml)"
   docker build -f "$PANEL_CONTEXT/Dockerfile.runtime" \
     --build-arg "BASE_IMAGE=${BASE_TAG}" \
+    --build-arg "BUILDER_IMAGE=${BASE_BUILDER_TAG}" \
     --build-arg PLUGINS="panel-label" \
     --build-arg PLUGIN_NAMES="panel_label" \
     --build-arg PLUGIN_VERSIONS="$PANEL_PLUGIN_VERSIONS" \
@@ -252,6 +276,7 @@ if [ "$TARGET" = "scenes" ] || [ "$TARGET" = "all" ]; then
   done
   docker build -f "$SCENES_CONTEXT/Dockerfile.runtime" \
     --build-arg "BASE_IMAGE=${BASE_TAG}" \
+    --build-arg "BUILDER_IMAGE=${BASE_BUILDER_TAG}" \
     --build-arg PLUGINS="${SCENES_PLUGINS[*]}" \
     --build-arg PLUGIN_NAMES="dc_fuse,indicator_light,lap_surf,line_squeeze,plate_screw" \
     --build-arg PLUGIN_VERSIONS="$SCENES_PLUGIN_VERSIONS" \

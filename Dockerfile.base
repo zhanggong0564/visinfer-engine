@@ -1,7 +1,7 @@
-# VIE shared project environment: CUDA, Python dependencies, build tools and framework.
+# VIE shared project environment: CUDA, Python runtime, dependencies and framework.
 ARG CUDA_BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
-FROM ${CUDA_BASE_IMAGE} AS environment
+FROM ${CUDA_BASE_IMAGE} AS system-runtime
 ARG CUDA_BASE_IMAGE
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -18,10 +18,6 @@ RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g; s@//security.ubuntu
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         python3.10 \
-        python3.10-venv \
-        python3.10-dev \
-        python3-pip \
-        build-essential \
         libglib2.0-0 \
         libgl1 \
         libgomp1 \
@@ -32,19 +28,39 @@ RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g; s@//security.ubuntu
     && echo "${TZ}" > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
+FROM system-runtime AS base-builder
+ARG CUDA_BASE_IMAGE
+ARG REQUIREMENTS_SHA256=unknown
+ARG BASE_CONTRACT_SHA256=unknown
+ARG FRAMEWORK_VERSION=unknown
+LABEL io.vie.image-role="builder" \
+      io.vie.base-image="${CUDA_BASE_IMAGE}" \
+      io.vie.python-abi="cp310" \
+      io.vie.requirements-sha256="${REQUIREMENTS_SHA256}" \
+      io.vie.base-contract-sha256="${BASE_CONTRACT_SHA256}" \
+      io.vie.framework-version="${FRAMEWORK_VERSION}" \
+      io.vie.plugins=""
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.10-venv \
+        python3.10-dev \
+        python3-pip \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN python3.10 -m venv /opt/venv
 
 COPY requirements.txt /tmp/requirements.txt
 COPY requirements.scenes.txt /tmp/requirements.scenes.txt
 COPY whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl /tmp/
-RUN pip install --upgrade setuptools wheel "Cython>=3" \
+RUN pip install --upgrade pip setuptools wheel "Cython>=3" \
     && pip install /tmp/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl --no-deps \
     && pip install -r /tmp/requirements.txt \
     && pip install -r /tmp/requirements.scenes.txt \
     && pip install /tmp/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl --no-deps --force-reinstall \
     && rm -f /tmp/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
 
-FROM environment AS framework-builder
 WORKDIR /build
 COPY pyproject.toml setup.py ./
 COPY services/ ./services/
@@ -53,23 +69,26 @@ COPY routers/ ./routers/
 COPY utils/ ./utils/
 COPY config/ ./config/
 COPY scripts/release/build_wheels.py ./scripts/release/build_wheels.py
-RUN python scripts/release/build_wheels.py --no-isolation --framework-only
+RUN python scripts/release/build_wheels.py --no-isolation --framework-only \
+    && pip install --no-deps /build/dist/vie_framework-*.whl
 
-FROM environment AS base
+FROM base-builder AS runtime-venv
+RUN pip uninstall -y Cython
+
+FROM system-runtime AS base
 ARG REQUIREMENTS_SHA256=unknown
 ARG BASE_CONTRACT_SHA256=unknown
 ARG FRAMEWORK_VERSION=unknown
-LABEL io.vie.base-image="${CUDA_BASE_IMAGE}" \
+LABEL io.vie.image-role="runtime-base" \
+      io.vie.base-image="${CUDA_BASE_IMAGE}" \
       io.vie.python-abi="cp310" \
       io.vie.requirements-sha256="${REQUIREMENTS_SHA256}" \
       io.vie.base-contract-sha256="${BASE_CONTRACT_SHA256}" \
       io.vie.framework-version="${FRAMEWORK_VERSION}" \
       io.vie.plugins=""
 
-COPY --from=framework-builder /build/dist/vie_framework-*.whl /tmp/
-RUN pip install --no-deps /tmp/vie_framework-*.whl \
-    && rm -f /tmp/vie_framework-*.whl \
-    && groupadd --system --gid 1000 appuser \
+COPY --from=runtime-venv /opt/venv /opt/venv
+RUN groupadd --system --gid 1000 appuser \
     && useradd --system --uid 1000 --gid appuser --create-home --home-dir /home/appuser appuser \
     && mkdir -p /app/workspace/logs /app/workspace/data /app/workspace/pkg /app/workspace/weights \
     && chown -R appuser:appuser /app

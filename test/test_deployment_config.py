@@ -96,7 +96,7 @@ def test_base_bakes_framework_and_runtime_only_adds_scene_plugins():
 
     assert "--framework-only" in base
     assert "vie_framework-*.whl" in base
-    assert "FROM ${BASE_IMAGE} AS plugin-builder" in runtime
+    assert "FROM ${BUILDER_IMAGE} AS plugin-builder" in runtime
     assert "FROM ${BASE_IMAGE} AS runtime" in runtime
     assert "--plugins-only" in runtime
     assert "COPY plugins/" in runtime
@@ -109,9 +109,30 @@ def test_base_bakes_framework_and_runtime_only_adds_scene_plugins():
     assert not Path("Dockerfile.scenes").exists()
 
 
+def test_runtime_base_excludes_build_tool_layers():
+    base = Path("Dockerfile.base").read_text(encoding="utf-8")
+
+    assert "FROM ${CUDA_BASE_IMAGE} AS system-runtime" in base
+    assert "FROM system-runtime AS base-builder" in base
+    assert "FROM base-builder AS runtime-venv" in base
+    assert "FROM system-runtime AS base" in base
+    assert "COPY --from=runtime-venv /opt/venv /opt/venv" in base
+    assert 'pip install --upgrade pip setuptools wheel "Cython>=3"' in base
+    assert "pip uninstall -y Cython" in base
+    assert 'io.vie.image-role="builder"' in base
+    assert 'io.vie.image-role="runtime-base"' in base
+
+    runtime_section = base.split("\nFROM system-runtime AS base\n", 1)[1]
+    assert "build-essential" not in runtime_section
+    assert "python3.10-dev" not in runtime_section
+    assert "onnxruntime_gpu-" not in runtime_section
+    assert "vie_framework-*.whl" not in runtime_section
+
+
 def test_scene_runtime_publishes_sync_compatibility_labels():
     dockerfile = Path("Dockerfile.runtime").read_text(encoding="utf-8")
 
+    assert 'io.vie.image-role="scene-runtime"' in dockerfile
     assert "io.vie.python-abi" in dockerfile
     assert "io.vie.requirements-sha256" in dockerfile
     assert "io.vie.base-contract-sha256" in dockerfile
@@ -388,6 +409,23 @@ def test_offline_build_stages_symlinked_wheel_inside_docker_context():
     assert '-f "$BASE_CONTEXT/Dockerfile.base"' in script
     assert '-f "$PANEL_CONTEXT/Dockerfile.runtime"' in script
     assert '-f "$SCENES_CONTEXT/Dockerfile.runtime"' in script
+    assert 'cp -a .dockerignore Dockerfile.runtime app.py static "$context/"' in script
+
+
+def test_release_builds_and_validates_separate_builder_image():
+    release = Path("scripts/release/build_docker_release.sh").read_text(
+        encoding="utf-8"
+    )
+    runtime = Path("Dockerfile.runtime").read_text(encoding="utf-8")
+
+    assert 'BASE_BUILDER_TAG="${BASE_BUILDER_TAG:-mobile_vision:base-builder}"' in release
+    assert "--target base-builder" in release
+    assert 'validate_base_image "$BASE_BUILDER_TAG" builder' in release
+    assert 'validate_base_image "$BASE_TAG" runtime-base' in release
+    assert '--build-arg "BUILDER_IMAGE=${BASE_BUILDER_TAG}"' in release
+    assert "ARG BUILDER_IMAGE=mobile_vision:base-builder" in runtime
+    assert 'docker save "${IMAGES[@]}"' in release
+    assert 'IMAGES+=("$BASE_BUILDER_TAG")' not in release
 
 
 def test_base_image_installs_opencv_system_libraries_once():

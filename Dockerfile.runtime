@@ -1,7 +1,8 @@
 # VIE scene runtime: add selected scene plugins to the shared project environment.
 ARG BASE_IMAGE=mobile_vision:base
+ARG BUILDER_IMAGE=mobile_vision:base-builder
 
-FROM ${BASE_IMAGE} AS plugin-builder
+FROM ${BUILDER_IMAGE} AS plugin-builder
 ARG PLUGINS
 WORKDIR /build
 COPY scripts/release/build_wheels.py ./scripts/release/build_wheels.py
@@ -19,7 +20,8 @@ ARG RUNTIME_CONTRACT_SHA256=unknown
 ARG FRAMEWORK_VERSION=unknown
 ARG PLUGIN_NAMES=unknown
 ARG PLUGIN_VERSIONS=unknown
-LABEL org.opencontainers.image.version="${RELEASE_VERSION}" \
+LABEL io.vie.image-role="scene-runtime" \
+      org.opencontainers.image.version="${RELEASE_VERSION}" \
       io.vie.base-image="${BASE_IMAGE}" \
       io.vie.python-abi="cp310" \
       io.vie.requirements-sha256="${REQUIREMENTS_SHA256}" \
