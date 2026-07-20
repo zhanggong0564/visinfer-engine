@@ -70,6 +70,7 @@ scripts/release/*
 !scripts/release/build_docker_release.sh
 !scripts/release/build_wheels.py
 !scripts/release/collect_weight_paths.py
+!scripts/release/compute_base_contract.sh
 !scripts/release/deploy_offline.sh
 !scripts/release/export_line_squeeze_onnx.sh
 !scripts/release/pack.py
