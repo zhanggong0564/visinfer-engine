@@ -14,7 +14,9 @@
 
 ## 1. 构建前置条件
 
-构建机需要 Docker、Conda `mobile_vision` 环境和下列本地资产：
+构建机需要 Docker、Docker Compose、Conda `mobile_vision` 环境和下列本地资产。
+部署、热更新和回滚脚本优先使用 `docker compose`，也兼容独立的
+`docker-compose` 命令：
 
 ```text
 whl/onnxruntime_gpu-1.20.1-...whl
