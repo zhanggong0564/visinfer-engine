@@ -2,7 +2,8 @@
 
 生产部署采用“首次离线镜像 + 后续原子覆盖层更新”：
 
-- `mobile_vision:base`：所有场景共用，包含 CUDA 12.4、Python 3.10、全部项目依赖、编译环境和 framework。
+- `mobile_vision:base-builder`：仅在构建机使用，包含插件编译工具链、全部项目依赖和 framework，不进入离线交付包。
+- `mobile_vision:base`：所有场景共用的运行基础，包含 CUDA 12.4、Python 3.10、全部项目依赖和 framework，不包含编译工具链。
 - `mobile_vision:panel-label-<版本>`：从 base 继承，只增加 panel_label 插件、`app.py` 和静态资源。
 - `mobile_vision:scenes-<版本>`：从 base 继承，只增加其余五个场景插件、`app.py` 和静态资源。
 - `panel-label/current/`：panel_label 插件和对应权重。
@@ -72,13 +73,14 @@ RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service sce
 `dist/docker-release-2.1.3/`。该目录只有一份公共 `image.tar.gz`，
 其中包含 panel-label/scenes 两个镜像引用，共享 base layer 只出现一次；
 两个服务的基础 overlay 只携带权重和热更新挂载文件，不重复打包 framework 或插件。
-已有完整基础合同指纹匹配的
-`mobile_vision:base` 时可设置
-`SKIP_BASE_BUILD=1` 跳过基础镜像构建。
+已有完整基础合同指纹匹配的 `mobile_vision:base-builder` 和
+`mobile_vision:base` 时，可设置 `SKIP_BASE_BUILD=1` 跳过两个基础镜像的构建。
+builder 只留在构建机供场景插件和热更新 wheel 编译使用，不会写入
+`image.tar.gz`。
 
 脚本默认使用 `mobile_vision` Conda 环境；需要使用其他已准备好构建依赖的环境时，
 可通过 `CONDA_ENV=<环境名>` 覆盖。环境中没有 Cython 时，插件 wheel 优先使用
-`mobile_vision:base` 构建；该镜像也不存在时再使用隔离构建。
+`mobile_vision:base-builder` 构建；该镜像也不存在时再使用隔离构建。
 
 #### 基础镜像源
 
