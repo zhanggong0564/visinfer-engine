@@ -128,6 +128,14 @@ bash deploy_offline.sh \
 
 部署脚本校验 SHA256、加载镜像、创建 `releases/<版本>`、原子设置 `current`，为 `logs/` 和 `data/` 设置 uid 1000 权限，然后等待 readiness。部署账号须有 Docker、目标目录和 `chown` 权限。
 
+指示灯注册参考图位于受控内网地址时，通过环境变量显式允许对应主机名或 IP：
+
+```bash
+export INDICATOR_ALLOWED_HOSTS=172.17.0.1
+```
+
+scenes Compose 会将该值传入容器。未配置时保持空列表，内网地址下载仍会被拒绝。
+
 ## 3. 日常代码与权重更新
 
 panel-label：

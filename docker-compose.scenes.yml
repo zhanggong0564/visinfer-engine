@@ -37,6 +37,7 @@ services:
       - ONNX_REQUIRE_CUDA=true
       - STRICT_STARTUP=true
       - INFERENCE_MAX_CONCURRENCY=1
+      - INDICATOR_ALLOWED_HOSTS=${INDICATOR_ALLOWED_HOSTS:-}
       # 场景白名单：仅注册/预加载这 5 个场景；未列出的（如 panel_label）即便代码在镜像里也不启用。
       # 改部署场景只动这一行（JSON 数组，pydantic-settings 解析为 set）。
       - ENABLED_SCENES=["dc_fuse","indicator_light","lap_surf","line_squeeze","plate_screw"]
