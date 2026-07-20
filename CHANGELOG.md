@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+- **插件仓库按需同步**：六个场景插件改为 Git submodule；普通 clone 只获取框架，
+  使用 `--recurse-submodules` 或后续初始化命令可同步全部插件的固定版本。
 - **离线部署兼容性**：补齐基础镜像合同指纹计算，兼容两种 Docker Compose
   命令，并在宿主机无 `chown` 权限时通过服务镜像设置持久化目录属主；scenes
   部署支持透传指示灯注册图允许主机列表。
