@@ -139,11 +139,13 @@ def test_scenario_registry_type_alias_is_cython_compatible():
     assert "ScenarioType = type[BusinessLogicBase]" not in source
 
 
-def test_baseline_overlay_can_exclude_framework():
+def test_baseline_overlay_can_exclude_image_baked_code():
     script = Path("scripts/release/sync-common.sh").read_text(encoding="utf-8")
 
     assert 'INCLUDE_FRAMEWORK="${INCLUDE_FRAMEWORK:-1}"' in script
+    assert 'INCLUDE_PLUGINS="${INCLUDE_PLUGINS:-1}"' in script
     assert '[ "$pattern" = "vie_framework-*.whl" ]' in script
+    assert '[ "$pattern" != "vie_framework-*.whl" ]' in script
     assert "BUILD_WHEEL_ARGS+=(--plugins-only)" in script
 
 

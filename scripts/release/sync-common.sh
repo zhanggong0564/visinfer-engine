@@ -15,6 +15,7 @@ CONDA_ENV="${CONDA_ENV:-mobile_vision}"
 CONDA_PYTHON=(conda run -n "$CONDA_ENV" python)
 WHEEL_BUILDER_IMAGE="${WHEEL_BUILDER_IMAGE:-mobile_vision:base}"
 INCLUDE_FRAMEWORK="${INCLUDE_FRAMEWORK:-1}"
+INCLUDE_PLUGINS="${INCLUDE_PLUGINS:-1}"
 
 usage() {
   echo "用法: $0 [--local] [--no-build] [--no-weights] [--remote user@host] [--remote-dir /path]"
@@ -38,12 +39,18 @@ if [ "$DO_PUSH" -eq 1 ]; then
   : "${REMOTE_DIR:?请通过 REMOTE_DIR 或 --remote-dir 指定部署目录}"
 fi
 
-if [ "$DO_BUILD" -eq 1 ]; then
+if [ "$DO_BUILD" -eq 1 ] && {
+  [ "$INCLUDE_FRAMEWORK" -eq 1 ] || [ "$INCLUDE_PLUGINS" -eq 1 ]
+}; then
   for pattern in "${WHEEL_PATTERNS[@]}"; do
     find dist -maxdepth 1 -type f -name "$pattern" -delete 2>/dev/null || true
   done
-  BUILD_WHEEL_ARGS=(--plugins "${PLUGINS[@]}")
-  if [ "$INCLUDE_FRAMEWORK" -eq 0 ]; then
+  if [ "$INCLUDE_PLUGINS" -eq 0 ]; then
+    BUILD_WHEEL_ARGS=(--framework-only)
+  else
+    BUILD_WHEEL_ARGS=(--plugins "${PLUGINS[@]}")
+  fi
+  if [ "$INCLUDE_FRAMEWORK" -eq 0 ] && [ "$INCLUDE_PLUGINS" -eq 1 ]; then
     BUILD_WHEEL_ARGS+=(--plugins-only)
   fi
   if "${CONDA_PYTHON[@]}" -c "import Cython" >/dev/null 2>&1; then
@@ -72,6 +79,9 @@ for pattern in "${WHEEL_PATTERNS[@]}"; do
   if [ "$INCLUDE_FRAMEWORK" -eq 0 ] && [ "$pattern" = "vie_framework-*.whl" ]; then
     continue
   fi
+  if [ "$INCLUDE_PLUGINS" -eq 0 ] && [ "$pattern" != "vie_framework-*.whl" ]; then
+    continue
+  fi
   mapfile -t wheels < <(find dist -maxdepth 1 -type f -name "$pattern" -print | sort)
   if [ "${#wheels[@]}" -ne 1 ]; then
     echo "期望且仅允许一个 wheel 匹配 $pattern，实际 ${#wheels[@]} 个" >&2
@@ -80,12 +90,14 @@ for pattern in "${WHEEL_PATTERNS[@]}"; do
   unzip -q "${wheels[0]}" -d "$LOCAL_STAGE/pkg"
 done
 
-for entrypoint in "${EXPECTED_ENTRYPOINTS[@]}"; do
-  if ! rg -l "${entrypoint}" "$LOCAL_STAGE/pkg"/*dist-info/entry_points.txt >/dev/null; then
-    echo "发布包缺少 entry point: $entrypoint" >&2
-    exit 1
-  fi
-done
+if [ "$INCLUDE_PLUGINS" -eq 1 ]; then
+  for entrypoint in "${EXPECTED_ENTRYPOINTS[@]}"; do
+    if ! rg -l "${entrypoint}" "$LOCAL_STAGE/pkg"/*dist-info/entry_points.txt >/dev/null; then
+      echo "发布包缺少 entry point: $entrypoint" >&2
+      exit 1
+    fi
+  done
+fi
 
 cp app.py "$LOCAL_STAGE/app.py"
 cp -R static/swagger-ui "$LOCAL_STAGE/static/"
@@ -99,11 +111,18 @@ fi
 
 REQUIREMENTS_SHA256="$(sha256sum "${RUNTIME_REQUIREMENTS[@]}" | sha256sum | awk '{print $1}')"
 PYTHON_ABI="$("${CONDA_PYTHON[@]}" -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')"
-RUNTIME_CONTRACT_SHA256="$(sha256sum "${RUNTIME_REQUIREMENTS[@]}" Dockerfile.base "$RUNTIME_DOCKERFILE" | sha256sum | awk '{print $1}')"
+BASE_CONTRACT_SHA256="$(bash scripts/release/compute_base_contract.sh)"
+RUNTIME_CONTRACT_SHA256="$(
+  {
+    printf '%s\n' "$BASE_CONTRACT_SHA256"
+    sha256sum "$RUNTIME_DOCKERFILE"
+  } | sha256sum | awk '{print $1}'
+)"
 cat > "$LOCAL_STAGE/release.env" <<EOF
 RELEASE_ID=${RELEASE_ID}
 SERVICE=${SERVICE}
 REQUIREMENTS_SHA256=${REQUIREMENTS_SHA256}
+BASE_CONTRACT_SHA256=${BASE_CONTRACT_SHA256}
 PYTHON_ABI=${PYTHON_ABI}
 RUNTIME_CONTRACT_SHA256=${RUNTIME_CONTRACT_SHA256}
 EOF

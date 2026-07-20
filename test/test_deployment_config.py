@@ -69,10 +69,10 @@ def test_container_healthchecks_use_readiness_endpoint():
         assert "http://127.0.0.1:3001/health/ready" in content
 
 
-def test_panel_label_compose_uses_common_runtime_and_versioned_overlay():
+def test_panel_label_compose_uses_scene_runtime_and_versioned_overlay():
     compose = Path("docker-compose.panel-label.yml").read_text(encoding="utf-8")
 
-    assert "image: ${VIE_RUNTIME_IMAGE:-mobile_vision:runtime}" in compose
+    assert "image: ${PANEL_LABEL_IMAGE:-mobile_vision:panel-label}" in compose
     assert "build:" not in compose
     assert 'ENABLED_SCENES=["panel_label"]' in compose
     assert "STRICT_STARTUP=true" in compose
@@ -81,10 +81,10 @@ def test_panel_label_compose_uses_common_runtime_and_versioned_overlay():
         assert f"./current/{mount}:/app/workspace/{mount}:ro" in compose
 
 
-def test_scenes_compose_uses_common_runtime_and_versioned_overlay():
+def test_scenes_compose_uses_scene_runtime_and_versioned_overlay():
     compose = Path("docker-compose.scenes.yml").read_text(encoding="utf-8")
 
-    assert "image: ${VIE_RUNTIME_IMAGE:-mobile_vision:runtime}" in compose
+    assert "image: ${SCENES_IMAGE:-mobile_vision:scenes}" in compose
     assert "build:" not in compose
     for mount in ("pkg", "weights", "app.py", "static"):
         assert f"./current/{mount}:/app/workspace/{mount}:ro" in compose
