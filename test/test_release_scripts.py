@@ -99,14 +99,15 @@ def test_rollback_script_swaps_previous_and_validates_readiness():
     assert "/health/ready" in script
 
 
-def test_offline_release_script_exports_one_common_runtime_and_service_overlays():
+def test_offline_release_script_exports_scene_images_in_one_archive():
     script = Path("scripts/release/build_docker_release.sh").read_text(
         encoding="utf-8"
     )
 
     assert "RELEASE_VERSION" in script
     assert "Dockerfile.runtime" in script
-    assert "mobile_vision:runtime-" in script
+    assert "mobile_vision:panel-label-" in script
+    assert "mobile_vision:scenes-" in script
     assert "Dockerfile.panel-label" not in script
     assert "Dockerfile.scenes" not in script
     assert "sha256sum" in script
@@ -124,8 +125,9 @@ def test_offline_release_script_exports_one_common_runtime_and_service_overlays(
     assert "--service panel|scenes|all" in script
     assert 'OUTPUT_SUFFIX="-panel-label"' in script
     assert 'OUTPUT_SUFFIX="-scenes"' in script
-    assert 'INCLUDE_FRAMEWORK=0 RELEASE_ID="baseline-${RELEASE_VERSION}"' in script
-    assert script.count('docker save "$RUNTIME_IMAGE"') == 1
+    assert "INCLUDE_FRAMEWORK=0 INCLUDE_PLUGINS=0" in script
+    assert 'docker save "${IMAGES[@]}"' in script
+    assert script.count("docker save") == 1
     assert '> "$OUT/image.tar.gz"' in script
     assert '"$SERVICE/image.tar.gz"' not in script
 
@@ -181,7 +183,7 @@ def test_release_scripts_use_configurable_mobile_vision_environment():
     assert "使用隔离构建" in sync_script
 
 
-def test_services_share_runtime_contract_and_offline_image():
+def test_services_share_base_contract_and_offline_archive():
     panel_sync = Path("scripts/release/sync-plugin.sh").read_text(encoding="utf-8")
     scenes_sync = Path("scripts/release/sync-plugin-scenes.sh").read_text(
         encoding="utf-8"
@@ -192,5 +194,11 @@ def test_services_share_runtime_contract_and_offline_image():
         assert 'RUNTIME_DOCKERFILE="Dockerfile.runtime"' in script
         assert "RUNTIME_REQUIREMENTS=(requirements.txt requirements.scenes.txt)" in script
 
+    release = Path("scripts/release/build_docker_release.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "compute_base_contract.sh" in release
+    assert "io.vie.base-contract-sha256" in release
+    assert 'docker save "${IMAGES[@]}"' in release
     assert "gunzip -c image.tar.gz | docker load" in deploy
     assert 'gunzip -c "$SERVICE/image.tar.gz"' not in deploy

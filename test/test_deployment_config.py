@@ -48,13 +48,12 @@ def test_onnx_runtime_gpu_image_matches_ort_120_cuda_requirements():
         "swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/"
         "cuda:12.4.1-cudnn-runtime-ubuntu22.04"
     )
-    for dockerfile_name in (
-        "Dockerfile.base",
-        "Dockerfile.runtime",
-    ):
-        dockerfile = Path(dockerfile_name).read_text(encoding="utf-8")
-        assert f"ARG BASE_IMAGE={expected_base}" in dockerfile
-        assert 'io.vie.base-image="${BASE_IMAGE}"' in dockerfile
+    base = Path("Dockerfile.base").read_text(encoding="utf-8")
+    runtime = Path("Dockerfile.runtime").read_text(encoding="utf-8")
+    assert f"ARG CUDA_BASE_IMAGE={expected_base}" in base
+    assert 'io.vie.base-image="${CUDA_BASE_IMAGE}"' in base
+    assert "ARG BASE_IMAGE=mobile_vision:base" in runtime
+    assert 'io.vie.base-image="${BASE_IMAGE}"' in runtime
 
     requirements = Path("requirements.txt").read_text(encoding="utf-8")
     assert "onnxruntime-gpu==1.20.1" in requirements
@@ -91,24 +90,34 @@ def test_scenes_compose_uses_common_runtime_and_versioned_overlay():
         assert f"./current/{mount}:/app/workspace/{mount}:ro" in compose
 
 
-def test_common_runtime_bakes_framework_without_plugins():
+def test_base_bakes_framework_and_runtime_only_adds_scene_plugins():
+    base = Path("Dockerfile.base").read_text(encoding="utf-8")
     runtime = Path("Dockerfile.runtime").read_text(encoding="utf-8")
 
-    assert "--framework-only" in runtime
-    assert "COPY plugins/" not in runtime
-    assert "vie_plugin_" not in runtime
+    assert "--framework-only" in base
+    assert "vie_framework-*.whl" in base
+    assert "FROM ${BASE_IMAGE} AS plugin-builder" in runtime
+    assert "FROM ${BASE_IMAGE} AS runtime" in runtime
+    assert "--plugins-only" in runtime
+    assert "COPY plugins/" in runtime
+    assert "vie_plugin_*.whl" in runtime
+    assert "apt-get" not in runtime
+    assert "requirements.txt" not in runtime
+    assert "COPY --from=builder /opt/venv" not in runtime
+    assert "chown -R appuser:appuser /app /opt/venv" not in runtime
     assert not Path("Dockerfile.panel-label").exists()
     assert not Path("Dockerfile.scenes").exists()
 
 
-def test_common_runtime_publishes_sync_compatibility_labels():
+def test_scene_runtime_publishes_sync_compatibility_labels():
     dockerfile = Path("Dockerfile.runtime").read_text(encoding="utf-8")
 
     assert "io.vie.python-abi" in dockerfile
     assert "io.vie.requirements-sha256" in dockerfile
+    assert "io.vie.base-contract-sha256" in dockerfile
     assert "io.vie.runtime-contract-sha256" in dockerfile
     assert "io.vie.framework-version" in dockerfile
-    assert 'io.vie.plugins=""' in dockerfile
+    assert 'io.vie.plugins="${PLUGIN_NAMES}"' in dockerfile
 
 
 def test_deploy_panel_label_compose_uses_service_image_and_versioned_overlay():
@@ -297,6 +306,7 @@ def test_runtime_requirements_use_onnx_without_paddle():
     for requirement in requirements:
         by_name.setdefault(requirement.name.lower(), []).append(requirement)
 
+    assert str(by_name["opencv-python-headless"][0].specifier) == "==4.11.0.86"
     assert len(by_name["onnxruntime-gpu"]) == 1
     assert str(by_name["onnxruntime-gpu"][0].specifier) == "==1.20.1"
     assert "onnxruntime" not in by_name
@@ -373,15 +383,16 @@ def test_offline_build_stages_symlinked_wheel_inside_docker_context():
         encoding="utf-8"
     )
 
-    assert 'BUILD_CONTEXT="$(mktemp -d ' in script
-    assert 'cp -L "$ORT_WHEEL" "$BUILD_CONTEXT/$ORT_WHEEL"' in script
-    assert '-f "$BUILD_CONTEXT/Dockerfile.base"' in script
-    assert '-f "$BUILD_CONTEXT/Dockerfile.runtime"' in script
-    assert '"$BUILD_CONTEXT"' in script
+    assert 'BUILD_ROOT="$(mktemp -d ' in script
+    assert 'cp -L "$ORT_WHEEL" "$BASE_CONTEXT/$ORT_WHEEL"' in script
+    assert '-f "$BASE_CONTEXT/Dockerfile.base"' in script
+    assert '-f "$PANEL_CONTEXT/Dockerfile.runtime"' in script
+    assert '-f "$SCENES_CONTEXT/Dockerfile.runtime"' in script
 
 
-def test_runtime_image_installs_opencv_system_libraries():
-    dockerfile = Path("Dockerfile.runtime").read_text(encoding="utf-8").lower()
+def test_base_image_installs_opencv_system_libraries_once():
+    dockerfile = Path("Dockerfile.base").read_text(encoding="utf-8").lower()
+    runtime = Path("Dockerfile.runtime").read_text(encoding="utf-8").lower()
     apt_install = re.search(
         r"apt-get install -y --no-install-recommends(?P<packages>.*?)&&",
         dockerfile,
@@ -397,3 +408,4 @@ def test_runtime_image_installs_opencv_system_libraries():
         )
     )
     assert {"libgl1", "libgomp1"}.issubset(packages)
+    assert "apt-get install" not in runtime

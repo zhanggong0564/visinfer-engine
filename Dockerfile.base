@@ -1,37 +1,19 @@
-# =========================================================
-# VisInfer Engine (VIE) - 共享基础镜像（builder 环境）
-#
-# 这一层是所有服务共用的构建环境：cuda 系统库 + 构建工具链
-# + requirements.txt/requirements.scenes.txt 全部依赖 + Cython。
-# 它最慢最重（CUDA 运行库 + onnxruntime-gpu + Python 依赖），但在所有
-# 场景间字节级一致，故抽出来只构建一次，各场景镜像 `FROM mobile_vision:base` 复用，
-# 把「改代码/换场景」的镜像构建从几十分钟降到几分钟（只剩 Cython 编译插件 .so）。
-#
-# 何时需要重建本镜像：仅当 requirements*.txt / onnxruntime 等【依赖】变化时。
-#   业务代码（框架 + 插件）不进 base，留在各场景镜像 builder 阶段快速编译。
-#
-# 构建：bash scripts/release/build_base.sh
-# 本地 ORT wheel 通过标准 build context 复制，兼容 legacy builder 与 BuildKit。
-#
-# 依赖说明：
-#   - onnxruntime-gpu 1.20.1 (CUDA 12.x/cuDNN 9.x)：由 whl/ 本地 wheel 安装
-# =========================================================
+# VIE shared project environment: CUDA, Python dependencies, build tools and framework.
+ARG CUDA_BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
-ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
-
-FROM ${BASE_IMAGE} AS base
-ARG BASE_IMAGE
-ARG REQUIREMENTS_SHA256=unknown
-LABEL io.vie.base-image="${BASE_IMAGE}" \
-      io.vie.requirements-sha256="${REQUIREMENTS_SHA256}"
+FROM ${CUDA_BASE_IMAGE} AS environment
+ARG CUDA_BASE_IMAGE
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
     PIP_TRUSTED_HOST=mirrors.aliyun.com \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PATH=/opt/venv/bin:$PATH \
+    TZ=Asia/Shanghai \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
 
-# 切换 apt 源为阿里云 + 安装 Python 3.10 与构建工具
 RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g; s@//security.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -40,29 +22,56 @@ RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g; s@//security.ubuntu
         python3.10-dev \
         python3-pip \
         build-essential \
+        libglib2.0-0 \
+        libgl1 \
         libgomp1 \
+        libssl3 \
+        curl \
+        tzdata \
+    && ln -fs /usr/share/zoneinfo/${TZ} /etc/localtime \
+    && echo "${TZ}" > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
-# 在 /opt/venv 创建独立 venv，所有依赖装到这里，便于各场景镜像多阶段复制
 RUN python3.10 -m venv /opt/venv
-ENV PATH=/opt/venv/bin:$PATH
 
-# 复制依赖清单与部署提供的 CUDA 12.x ONNX Runtime wheel
 COPY requirements.txt /tmp/requirements.txt
 COPY requirements.scenes.txt /tmp/requirements.scenes.txt
 COPY whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl /tmp/
-
-# 安装顺序说明：
-#  1. 先用 --no-deps 安装部署提供的 onnxruntime-gpu 1.20.1 本地 wheel，避免从索引重复下载
-#  2. 安装公共及 scenes 专属依赖（ChromaDB 会拉取 CPU onnxruntime）
-#  3. 最后重新安装 GPU wheel，确保实际导入文件来自 GPU distribution
-# 不强升 pip：基础镜像自带 pip 已足够，强升会解析到最新版而镜像源对未同步新文件返回 403。
-RUN pip install --upgrade setuptools wheel \
+RUN pip install --upgrade setuptools wheel "Cython>=3" \
     && pip install /tmp/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl --no-deps \
     && pip install -r /tmp/requirements.txt \
     && pip install -r /tmp/requirements.scenes.txt \
-    && pip install /tmp/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl \
-        --no-deps --force-reinstall
+    && pip install /tmp/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl --no-deps --force-reinstall \
+    && rm -f /tmp/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
 
-# 业务模块经 Cython 编译为 .so（各场景镜像 builder 阶段执行 build_wheels.py），编译器随 venv 备好
-RUN pip install "Cython>=3"
+FROM environment AS framework-builder
+WORKDIR /build
+COPY pyproject.toml setup.py ./
+COPY services/ ./services/
+COPY schemas/ ./schemas/
+COPY routers/ ./routers/
+COPY utils/ ./utils/
+COPY config/ ./config/
+COPY scripts/release/build_wheels.py ./scripts/release/build_wheels.py
+RUN python scripts/release/build_wheels.py --no-isolation --framework-only
+
+FROM environment AS base
+ARG REQUIREMENTS_SHA256=unknown
+ARG BASE_CONTRACT_SHA256=unknown
+ARG FRAMEWORK_VERSION=unknown
+LABEL io.vie.base-image="${CUDA_BASE_IMAGE}" \
+      io.vie.python-abi="cp310" \
+      io.vie.requirements-sha256="${REQUIREMENTS_SHA256}" \
+      io.vie.base-contract-sha256="${BASE_CONTRACT_SHA256}" \
+      io.vie.framework-version="${FRAMEWORK_VERSION}" \
+      io.vie.plugins=""
+
+COPY --from=framework-builder /build/dist/vie_framework-*.whl /tmp/
+RUN pip install --no-deps /tmp/vie_framework-*.whl \
+    && rm -f /tmp/vie_framework-*.whl \
+    && groupadd --system --gid 1000 appuser \
+    && useradd --system --uid 1000 --gid appuser --create-home --home-dir /home/appuser appuser \
+    && mkdir -p /app/workspace/logs /app/workspace/data /app/workspace/pkg /app/workspace/weights \
+    && chown -R appuser:appuser /app
+
+WORKDIR /app/workspace

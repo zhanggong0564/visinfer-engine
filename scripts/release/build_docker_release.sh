@@ -83,7 +83,8 @@ case "$TARGET" in
     ;;
 esac
 
-BASE_IMAGE="${BASE_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04}"
+CUDA_BASE_IMAGE="${CUDA_BASE_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04}"
+BASE_TAG="${BASE_TAG:-mobile_vision:base}"
 CONDA_ENV="${CONDA_ENV:-mobile_vision}"
 export CONDA_ENV
 
@@ -143,85 +144,149 @@ test -n "$CUDA_SMOKE_MODEL" || {
 }
 
 REQUIREMENTS_SHA256="$(sha256sum requirements.txt requirements.scenes.txt | sha256sum | awk '{print $1}')"
+BASE_CONTRACT_SHA256="$(CUDA_BASE_IMAGE="$CUDA_BASE_IMAGE" bash scripts/release/compute_base_contract.sh)"
 FRAMEWORK_VERSION="$(project_version pyproject.toml)"
 OUT="${OUTPUT_DIR:-dist/docker-release-${RELEASE_VERSION}${OUTPUT_SUFFIX}}"
 test ! -e "$OUT" || { echo "输出目录已存在: $OUT" >&2; exit 1; }
 
-BUILD_CONTEXT="$(mktemp -d "${TMPDIR:-/tmp}/vie-docker-release.XXXXXX")"
+BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/vie-docker-release.XXXXXX")"
 cleanup() {
-  rm -rf -- "$BUILD_CONTEXT"
+  rm -rf -- "$BUILD_ROOT"
 }
 trap cleanup EXIT
 
-mkdir -p "$BUILD_CONTEXT/scripts/release" "$BUILD_CONTEXT/whl"
-cp -a .dockerignore Dockerfile.base Dockerfile.runtime \
-  pyproject.toml setup.py requirements.txt requirements.scenes.txt app.py \
-  services schemas routers utils config static \
-  "$BUILD_CONTEXT/"
-cp -a scripts/release/build_wheels.py "$BUILD_CONTEXT/scripts/release/"
-# whl/ may be a symlink to storage outside the repository. Docker does not
-# follow links outside its build context, so stage the wheel as a regular file.
-cp -L "$ORT_WHEEL" "$BUILD_CONTEXT/$ORT_WHEEL"
+BASE_CONTEXT="$BUILD_ROOT/base"
+mkdir -p "$BASE_CONTEXT/scripts/release" "$BASE_CONTEXT/whl"
+cp -a .dockerignore Dockerfile.base pyproject.toml setup.py \
+  requirements.txt requirements.scenes.txt services schemas routers utils config \
+  "$BASE_CONTEXT/"
+cp -a scripts/release/build_wheels.py "$BASE_CONTEXT/scripts/release/"
+cp -L "$ORT_WHEEL" "$BASE_CONTEXT/$ORT_WHEEL"
 
 if [ "${SKIP_BASE_BUILD:-0}" != "1" ]; then
-  docker build --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+  docker build --build-arg "CUDA_BASE_IMAGE=${CUDA_BASE_IMAGE}" \
     --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256" \
-    -f "$BUILD_CONTEXT/Dockerfile.base" -t mobile_vision:base "$BUILD_CONTEXT"
-elif ! docker image inspect mobile_vision:base >/dev/null 2>&1; then
-  echo "SKIP_BASE_BUILD=1 但本机不存在 mobile_vision:base" >&2
+    --build-arg BASE_CONTRACT_SHA256="$BASE_CONTRACT_SHA256" \
+    --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION" \
+    -f "$BASE_CONTEXT/Dockerfile.base" -t "$BASE_TAG" "$BASE_CONTEXT"
+elif ! docker image inspect "$BASE_TAG" >/dev/null 2>&1; then
+  echo "SKIP_BASE_BUILD=1 但本机不存在 ${BASE_TAG}" >&2
   exit 1
-elif [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.requirements-sha256"}}' mobile_vision:base)" != "$REQUIREMENTS_SHA256" ]; then
-  echo "SKIP_BASE_BUILD=1 但 mobile_vision:base 依赖指纹不匹配" >&2
+elif [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.base-contract-sha256"}}' "$BASE_TAG")" != "$BASE_CONTRACT_SHA256" ]; then
+  echo "SKIP_BASE_BUILD=1 但 ${BASE_TAG} 基础环境指纹不匹配" >&2
   exit 1
-elif [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.base-image"}}' mobile_vision:base)" != "$BASE_IMAGE" ]; then
-  echo "SKIP_BASE_BUILD=1 但 mobile_vision:base 基础镜像不匹配" >&2
+elif [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.base-image"}}' "$BASE_TAG")" != "$CUDA_BASE_IMAGE" ]; then
+  echo "SKIP_BASE_BUILD=1 但 ${BASE_TAG} CUDA 基础镜像不匹配" >&2
   exit 1
 fi
 
-RUNTIME_CONTRACT_SHA256="$(sha256sum requirements.txt requirements.scenes.txt Dockerfile.base Dockerfile.runtime | sha256sum | awk '{print $1}')"
-RUNTIME_IMAGE="mobile_vision:runtime-${RELEASE_VERSION}"
-docker build -f "$BUILD_CONTEXT/Dockerfile.runtime" \
-  --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
-  --build-arg RELEASE_VERSION="$RELEASE_VERSION" \
-  --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256" \
-  --build-arg RUNTIME_CONTRACT_SHA256="$RUNTIME_CONTRACT_SHA256" \
-  --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION" \
-  -t "$RUNTIME_IMAGE" "$BUILD_CONTEXT"
-docker run --rm --entrypoint python3.10 "$RUNTIME_IMAGE" \
-  -c "import chromadb, importlib.metadata as m, onnxruntime as ort; from services.scenario_registry import scenario_registry; expected={'panel_label','dc_fuse','indicator_light','lap_surf','line_squeeze','plate_screw'}; actual={e.name for e in m.entry_points(group='vie.plugins')}; assert expected.isdisjoint(actual), actual; assert 'CUDAExecutionProvider' in ort.get_available_providers(), ort.get_available_providers()"
-docker run --rm --gpus all --entrypoint python3.10 \
-  --volume "$ROOT/weights:/app/workspace/weights:ro" \
-  --env "CUDA_SMOKE_MODEL=/app/workspace/weights/$CUDA_SMOKE_MODEL" \
-  "$RUNTIME_IMAGE" \
-  -c "import os, onnxruntime as ort; session=ort.InferenceSession(os.environ['CUDA_SMOKE_MODEL'], providers=['CUDAExecutionProvider']); assert session.get_providers()[0] == 'CUDAExecutionProvider', session.get_providers()"
+RUNTIME_CONTRACT_SHA256="$(
+  {
+    printf '%s\n' "$BASE_CONTRACT_SHA256"
+    sha256sum Dockerfile.runtime
+  } | sha256sum | awk '{print $1}'
+)"
+
+stage_runtime_context() {
+  local context="$1"
+  shift
+  mkdir -p "$context/scripts/release" "$context/plugins"
+  cp -a Dockerfile.runtime app.py static "$context/"
+  cp -a scripts/release/build_wheels.py "$context/scripts/release/"
+  local plugin_name plugin_source plugin_target
+  for plugin_name in "$@"; do
+    plugin_source="plugins/vie-plugin-${plugin_name}"
+    plugin_target="$context/plugins/vie-plugin-${plugin_name}"
+    mkdir -p "$plugin_target"
+    cp -a "$plugin_source/pyproject.toml" "$plugin_source/setup.py" "$plugin_target/"
+    find "$plugin_source" -maxdepth 1 -type d -name 'vie_plugin_*' \
+      -exec cp -a {} "$plugin_target/" \;
+  done
+}
+
+validate_runtime_image() {
+  local image="$1"
+  local expected_plugins="$2"
+  docker run --rm --entrypoint python3.10 \
+    --env "EXPECTED_VIE_PLUGINS=${expected_plugins}" \
+    "$image" \
+    -c "import importlib.metadata as m, os, onnxruntime as ort; from services.scenario_registry import scenario_registry; expected=set(os.environ['EXPECTED_VIE_PLUGINS'].split(',')); entry_points=list(m.entry_points(group='vie.plugins')); actual={entry_point.name for entry_point in entry_points}; assert actual == expected, (actual, expected); [entry_point.load() for entry_point in entry_points]; assert 'CUDAExecutionProvider' in ort.get_available_providers(), ort.get_available_providers()"
+  docker run --rm --gpus all --entrypoint python3.10 \
+    --volume "$ROOT/weights:/app/workspace/weights:ro" \
+    --env "CUDA_SMOKE_MODEL=/app/workspace/weights/$CUDA_SMOKE_MODEL" \
+    "$image" \
+    -c "import os, onnxruntime as ort; session=ort.InferenceSession(os.environ['CUDA_SMOKE_MODEL'], providers=['CUDAExecutionProvider']); assert session.get_providers()[0] == 'CUDAExecutionProvider', session.get_providers()"
+}
+
+IMAGES=()
+if [ "$TARGET" = "panel-label" ] || [ "$TARGET" = "all" ]; then
+  PANEL_CONTEXT="$BUILD_ROOT/panel-label"
+  stage_runtime_context "$PANEL_CONTEXT" panel-label
+  PANEL_IMAGE="mobile_vision:panel-label-${RELEASE_VERSION}"
+  PANEL_PLUGIN_VERSIONS="panel_label=$(project_version plugins/vie-plugin-panel-label/pyproject.toml)"
+  docker build -f "$PANEL_CONTEXT/Dockerfile.runtime" \
+    --build-arg "BASE_IMAGE=${BASE_TAG}" \
+    --build-arg PLUGINS="panel-label" \
+    --build-arg PLUGIN_NAMES="panel_label" \
+    --build-arg PLUGIN_VERSIONS="$PANEL_PLUGIN_VERSIONS" \
+    --build-arg RELEASE_VERSION="$RELEASE_VERSION" \
+    --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256" \
+    --build-arg BASE_CONTRACT_SHA256="$BASE_CONTRACT_SHA256" \
+    --build-arg RUNTIME_CONTRACT_SHA256="$RUNTIME_CONTRACT_SHA256" \
+    --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION" \
+    -t "$PANEL_IMAGE" "$PANEL_CONTEXT"
+  validate_runtime_image "$PANEL_IMAGE" "panel_label"
+  IMAGES+=("$PANEL_IMAGE")
+fi
+
+if [ "$TARGET" = "scenes" ] || [ "$TARGET" = "all" ]; then
+  SCENES_PLUGINS=(dc-fuse indicator-light lap-surf line-squeeze plate-screw)
+  SCENES_CONTEXT="$BUILD_ROOT/scenes"
+  stage_runtime_context "$SCENES_CONTEXT" "${SCENES_PLUGINS[@]}"
+  SCENES_IMAGE="mobile_vision:scenes-${RELEASE_VERSION}"
+  SCENES_PLUGIN_VERSIONS=""
+  for plugin_name in "${SCENES_PLUGINS[@]}"; do
+    plugin_version="$(project_version "plugins/vie-plugin-${plugin_name}/pyproject.toml")"
+    plugin_label="${plugin_name//-/_}=${plugin_version}"
+    SCENES_PLUGIN_VERSIONS="${SCENES_PLUGIN_VERSIONS:+${SCENES_PLUGIN_VERSIONS},}${plugin_label}"
+  done
+  docker build -f "$SCENES_CONTEXT/Dockerfile.runtime" \
+    --build-arg "BASE_IMAGE=${BASE_TAG}" \
+    --build-arg PLUGINS="${SCENES_PLUGINS[*]}" \
+    --build-arg PLUGIN_NAMES="dc_fuse,indicator_light,lap_surf,line_squeeze,plate_screw" \
+    --build-arg PLUGIN_VERSIONS="$SCENES_PLUGIN_VERSIONS" \
+    --build-arg RELEASE_VERSION="$RELEASE_VERSION" \
+    --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256" \
+    --build-arg BASE_CONTRACT_SHA256="$BASE_CONTRACT_SHA256" \
+    --build-arg RUNTIME_CONTRACT_SHA256="$RUNTIME_CONTRACT_SHA256" \
+    --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION" \
+    -t "$SCENES_IMAGE" "$SCENES_CONTEXT"
+  validate_runtime_image "$SCENES_IMAGE" \
+    "dc_fuse,indicator_light,lap_surf,line_squeeze,plate_screw"
+  IMAGES+=("$SCENES_IMAGE")
+fi
 
 mkdir -p "$OUT"
-docker save "$RUNTIME_IMAGE" | gzip -1 > "$OUT/image.tar.gz"
+docker save "${IMAGES[@]}" | gzip -1 > "$OUT/image.tar.gz"
 
 for service in "${SERVICES[@]}"; do
   if [ "$service" = "panel-label" ]; then
+    IMAGE="$PANEL_IMAGE"
+    IMAGE_VAR="PANEL_LABEL_IMAGE"
     COMPOSE_FILE="docker-compose.panel-label.yml"
     HEALTH_URL="http://127.0.0.1:3001/health/ready"
     SYNC_SCRIPT="scripts/release/sync-plugin.sh"
-    EXPECTED_PLUGINS=(panel_label)
   else
+    IMAGE="$SCENES_IMAGE"
+    IMAGE_VAR="SCENES_IMAGE"
     COMPOSE_FILE="docker-compose.scenes.yml"
     HEALTH_URL="http://127.0.0.1:3005/health/ready"
     SYNC_SCRIPT="scripts/release/sync-plugin-scenes.sh"
-    EXPECTED_PLUGINS=(dc_fuse indicator_light lap_surf line_squeeze plate_screw)
   fi
 
-  INCLUDE_FRAMEWORK=0 RELEASE_ID="baseline-${RELEASE_VERSION}" \
+  INCLUDE_FRAMEWORK=0 INCLUDE_PLUGINS=0 RELEASE_ID="baseline-${RELEASE_VERSION}" \
     bash "$SYNC_SCRIPT" --local
   LOCAL_STAGE=".release-staging/$service/baseline-${RELEASE_VERSION}"
-  EXPECTED_PLUGIN_NAMES="$(IFS=,; echo "${EXPECTED_PLUGINS[*]}")"
-  docker run --rm --entrypoint python3.10 \
-    --volume "$ROOT/$LOCAL_STAGE/pkg:/app/workspace/pkg:ro" \
-    --volume "$ROOT/$LOCAL_STAGE/weights:/app/workspace/weights:ro" \
-    --env PYTHONPATH=/app/workspace/pkg \
-    --env "EXPECTED_VIE_PLUGINS=$EXPECTED_PLUGIN_NAMES" \
-    "$RUNTIME_IMAGE" \
-    -c "import importlib.metadata as m, os; expected=set(os.environ['EXPECTED_VIE_PLUGINS'].split(',')); entry_points=list(m.entry_points(group='vie.plugins')); actual={entry_point.name for entry_point in entry_points}; assert actual == expected, (actual, expected); [entry_point.load() for entry_point in entry_points]"
   mkdir -p "$OUT/$service"
   tar -czf "$OUT/$service/overlay.tar.gz" \
     -C "$LOCAL_STAGE" \
@@ -229,7 +294,7 @@ for service in "${SERVICES[@]}"; do
   cp "$COMPOSE_FILE" "$OUT/$service/$COMPOSE_FILE"
   cat > "$OUT/$service/release.env" <<EOF
 RELEASE_VERSION=${RELEASE_VERSION}
-VIE_RUNTIME_IMAGE=${RUNTIME_IMAGE}
+${IMAGE_VAR}=${IMAGE}
 COMPOSE_FILE=${COMPOSE_FILE}
 HEALTH_URL=${HEALTH_URL}
 EOF
