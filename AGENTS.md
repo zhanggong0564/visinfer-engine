@@ -2,7 +2,7 @@
 
 ## 项目结构与模块组织
 
-本项目是基于 FastAPI 的工业视觉推理服务。`app.py` 是本地入口；框架代码位于 `services/`、`routers/`、`schemas/`、`config/` 和 `utils/`。场景实现放在 `plugins/vie-plugin-*`，通过 `vie.plugins` entry point 自动发现。每个插件目录都是独立 Git 仓库，插件代码、测试、版本号和 `CHANGELOG.md` 只在对应插件仓库维护；主仓库不跟踪插件文件。通用推理能力应下沉到 `services/base/`，场景专属的业务逻辑、配置和模型接口应留在对应插件中。
+本项目是基于 FastAPI 的工业视觉推理服务。`app.py` 是本地入口；框架代码位于 `services/`、`routers/`、`schemas/`、`config/` 和 `utils/`。场景实现放在 `plugins/vie-plugin-*`，通过 `vie.plugins` entry point 自动发现。每个插件目录都是通过 Git submodule 引用的独立 Git 仓库，插件代码、测试、版本号和 `CHANGELOG.md` 只在对应插件仓库维护；主仓库只跟踪插件的固定提交指针，不跟踪插件源码。通用推理能力应下沉到 `services/base/`，场景专属的业务逻辑、配置和模型接口应留在对应插件中。
 
 框架测试位于 `test/`，插件测试位于各插件的 `tests/`。模型存放在 `weights/<scene>/`，发布脚本位于 `scripts/release/`，OCR 数据工具位于 `scripts/data/`。不要提交 `build/`、`dist/`、`pkg/`、日志或本地输出产物。
 
@@ -11,11 +11,16 @@
 所有 Python 命令使用 `mobile_vision` Conda 环境：
 
 ```bash
+git clone https://github.com/zhanggong0564/visinfer-engine.git
+git clone --recurse-submodules https://github.com/zhanggong0564/visinfer-engine.git
+git submodule update --init --recursive
 conda run -n mobile_vision python app.py
 conda run -n mobile_vision python -m pytest test/ -v
 conda run -n mobile_vision python -m pytest plugins/vie-plugin-panel-label/tests/ -v
 conda run -n mobile_vision python scripts/release/build_wheels.py --no-isolation
 ```
+
+普通 `git clone` 只获取框架；需要场景插件时使用 `--recurse-submodules`，或在已有克隆中执行 `git submodule update --init --recursive`。
 
 服务默认监听 `0.0.0.0:3001`。修改插件时必须同时运行框架测试和对应插件测试。场景容器使用 `docker compose -f docker-compose.scenes.yml up -d` 启动，非明确重建镜像时不要添加 `--build`。运行时镜像必须保留 `libgl1`，否则 PaddleOCR 传递安装的 OpenCV 可能因缺少 `libGL.so.1` 而启动失败。
 
@@ -41,7 +46,7 @@ conda run -n mobile_vision python scripts/release/build_wheels.py --no-isolation
 
 ## 智能体协作约定
 
-所有沟通使用中文；保留用户已有改动，不擅自清理工作区。执行 Python 脚本、测试和构建时始终使用 `mobile_vision` 环境。修改完后根据实际改动需要更新变更记录：框架、构建、发布脚本或部署配置改动更新根目录 `CHANGELOG.md`；插件改动进入对应 `plugins/vie-plugin-*/CHANGELOG.md`，不得用根仓库记录替代插件记录。修改插件时须在插件目录单独检查 `git status`、`git diff` 和提交范围；修改框架与插件时分别在对应 Git 仓库提交，禁止跨仓库暂存或提交。.superpowers 技能的文档不要提交到git里面直接保存到本地
+所有沟通使用中文；保留用户已有改动，不擅自清理工作区。执行 Python 脚本、测试和构建时始终使用 `mobile_vision` 环境。修改完后根据实际改动需要更新变更记录：框架、构建、发布脚本或部署配置改动更新根目录 `CHANGELOG.md`；插件改动进入对应 `plugins/vie-plugin-*/CHANGELOG.md`，不得用根仓库记录替代插件记录。修改插件时须在插件目录单独检查 `git status`、`git diff` 和提交范围；修改框架与插件时分别在对应 Git 仓库提交，禁止跨仓库暂存或提交。插件提交推送后，在主仓库单独更新并提交对应 submodule 指针。.superpowers 技能的文档不要提交到git里面直接保存到本地
 
 所有测试必须直接在 Codex 沙箱外执行，不得先在沙箱内试跑。调用单元测试、集成测试、异步/线程池/SQLite 测试、模型运行时测试或 GPU 测试时，应在首次执行命令时申请沙箱外权限；测试失败以沙箱外结果为准，不得使用沙箱内的卡顿或异常作为项目代码结论。
 
