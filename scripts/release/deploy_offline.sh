@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+select_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+  elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE=(docker-compose)
+  else
+    echo "未找到 Docker Compose（docker compose 或 docker-compose）" >&2
+    exit 1
+  fi
+}
+
 BUNDLE=""
 SERVICE=""
 DEPLOY_DIR=""
@@ -21,6 +32,7 @@ done
 : "${SERVICE:?必须指定 --service}"
 : "${DEPLOY_DIR:?必须指定 --deploy-dir}"
 case "$SERVICE" in panel-label|scenes) ;; *) echo "无效服务: $SERVICE" >&2; exit 2 ;; esac
+select_compose
 
 BUNDLE="$(cd "$BUNDLE" && pwd)"
 cd "$BUNDLE"
@@ -39,11 +51,11 @@ if [ -L current ]; then
 fi
 ln -sfn "releases/$RELEASE_VERSION" current.next
 mv -Tf current.next current
-docker compose -f "$COMPOSE_FILE" config --quiet
-docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" config --quiet
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --force-recreate
 for _ in $(seq 1 60); do
   curl -fsS "$HEALTH_URL" >/dev/null && exit 0
   sleep 5
 done
-docker compose -f "$COMPOSE_FILE" logs --tail=200 >&2 || true
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" logs --tail=200 >&2 || true
 exit 1
