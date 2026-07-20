@@ -22,8 +22,21 @@ done
 
 ssh "$REMOTE" bash -s -- "$REMOTE_DIR" "$SERVICE" <<'REMOTE_SCRIPT'
 set -euo pipefail
+
+select_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+  elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE=(docker-compose)
+  else
+    echo "未找到 Docker Compose（docker compose 或 docker-compose）" >&2
+    exit 1
+  fi
+}
+
 ROOT="$1"
 SERVICE="$2"
+select_compose
 cd "$ROOT"
 test -L current
 test -L previous
@@ -50,7 +63,7 @@ mv -Tf current.rollback current
 ln -sfn "$CURRENT_TARGET" previous.rollback
 mv -Tf previous.rollback previous
 cp "$(readlink -f current)/$COMPOSE_FILE" "$ROOT/$COMPOSE_FILE"
-docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --force-recreate
 for _ in $(seq 1 60); do
   curl -fsS "$HEALTH_URL" >/dev/null && exit 0
   sleep 5
@@ -61,6 +74,6 @@ mv -Tf current.restore current
 ln -sfn "$PREVIOUS_TARGET" previous.restore
 mv -Tf previous.restore previous
 cp "$(readlink -f current)/$COMPOSE_FILE" "$ROOT/$COMPOSE_FILE"
-docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --force-recreate
 exit 1
 REMOTE_SCRIPT
