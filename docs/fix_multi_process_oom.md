@@ -33,7 +33,7 @@ ONNX Runtime CUDA provider 默认配置导致"**显卡越大越容易 OOM**":
 
 ### 改动文件
 
-1. **`services/base/inference_runner.py`**
+1. **`services/inference/backends/onnx_runtime.py`**
    - 新增 `_cuda_provider_options()`:构造 CUDA 显存/算法策略选项
    - 新增 `_with_cuda_options()`:将裸字符串 provider 转为 `(name, options)` 元组
    - 修改 `__init__`:统一注入 CUDA 选项
@@ -120,7 +120,7 @@ ORT_CUDA_MEM_LIMIT_GB=16 conda run -n padocr python demo/parallel_eval.py --conc
 
 - 修复提交:待提交
 - 原始报告:[demo/parallel_eval_report.md](../demo/parallel_eval_report.md)
-- 错误日志:[demo/logs/1017KM1_1.log](../demo/logs/1017KM1_1.log)
+- 错误日志：原始本地运行产物已按项目清理策略移除。
 - 验证脚本:[verify_cuda_options.py](../verify_cuda_options.py)
 
 ---
