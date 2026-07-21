@@ -94,6 +94,7 @@ scripts/release/*
 !docs/
 docs/*
 !docs/deploy.md
+!docs/fix_multi_process_oom.md
 
 # Superpowers 隔离开发工作区
 .worktrees/
