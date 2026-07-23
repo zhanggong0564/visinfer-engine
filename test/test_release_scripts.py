@@ -99,6 +99,12 @@ def test_rollback_script_swaps_previous_and_validates_readiness():
     assert "/health/ready" in script
 
 
+def test_remote_activation_ignores_blank_weight_paths():
+    script = Path("scripts/release/remote_activate.sh").read_text(encoding="utf-8")
+
+    assert '[ -n "$weight" ] || continue' in script
+
+
 def test_offline_release_script_exports_scene_images_in_one_archive():
     script = Path("scripts/release/build_docker_release.sh").read_text(
         encoding="utf-8"
