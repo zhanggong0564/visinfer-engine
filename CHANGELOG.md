@@ -3,19 +3,18 @@
 本项目变更记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 规范。
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)：`MAJOR.MINOR.PATCH`，其中 MINOR 随新场景上线递增，PATCH 随 Bug 修复递增。
 
+已发布版本在标题中标注对应的 Git tag；未创建 Git tag 的历史版本会明确说明，
+避免将文档版本号误认为可检出的发布 tag。
+
 ---
 
 ## [Unreleased]
 
-- **本地产物治理**：补充运行日志、评测可视化与 Python 缓存忽略规则，并将
-  指示灯排查文档中的模型及推理后端路径更新为当前目录结构。
-- **插件仓库按需同步**：六个场景插件改为 Git submodule；普通 clone 只获取框架，
-  使用 `--recurse-submodules` 或后续初始化命令可同步全部插件的固定版本。
-- **离线部署兼容性**：补齐基础镜像合同指纹计算，兼容两种 Docker Compose
-  命令，并在宿主机无 `chown` 权限时通过服务镜像设置持久化目录属主；scenes
-  部署支持透传指示灯注册图允许主机列表。
-- **运行镜像瘦身**：拆分本地 `base-builder` 与共享运行 `base`，交付镜像不再携带
-  编译工具链、ONNX Runtime 安装 wheel 和框架构建产物，场景插件仍基于统一环境编译。
+---
+
+## [2.2.0] - 2026-07-23（Git tag: `v2.2.0`）
+
+### 框架架构
 - **检测框排序共享能力**：`services.vision.boxes` 新增按行、行内从左到右排序的
   `sort_boxes`，并返回排序后框及原始索引，供场景插件复用。
 - **服务边界收口**：场景注册改为实例隔离的 `ScenarioRegistry`，插件加载回滚不再
@@ -29,12 +28,17 @@
   命名并强制注入 runner，ONNX CUDA 策略通过显式不可变配置传递。
 - **模型资源生命周期**：统一 runner、模型 pipeline、业务场景和 FastAPI shutdown
   关闭链路，幂等释放模型资源，并在部分初始化失败时回滚已创建的 runner。
-- **场景迁移 TODO**：`dc-fuse`、`indicator-light`、`lap-surf`、`line-squeeze`、
-  `plate-screw` 仍依赖已删除的旧框架入口，本轮不保证兼容。后续需逐插件完成
-  `services.api` → `ScenarioRegistry`/新业务初始化入口、`services.utils` →
-  `services.vision`、`services.base.inference_runner` → `services.inference`，
-  并将 `YoloOnnxInfer` 等旧模型类迁移为 runner 注入模型。完成标准为插件可注册、
-  全量测试通过、服务启动和关闭无资源泄漏；不得用临时兼容层或跳过逻辑掩盖失败。
+
+### 发布与部署
+- **本地产物治理**：补充运行日志、评测可视化与 Python 缓存忽略规则，并将
+  指示灯排查文档中的模型及推理后端路径更新为当前目录结构。
+- **插件仓库按需同步**：六个场景插件改为 Git submodule；普通 clone 只获取框架，
+  使用 `--recurse-submodules` 或后续初始化命令可同步全部插件的固定版本。
+- **离线部署兼容性**：补齐基础镜像合同指纹计算，兼容两种 Docker Compose
+  命令，并在宿主机无 `chown` 权限时通过服务镜像设置持久化目录属主；scenes
+  部署支持透传指示灯注册图允许主机列表。
+- **运行镜像瘦身**：拆分本地 `base-builder` 与共享运行 `base`，交付镜像不再携带
+  编译工具链、ONNX Runtime 安装 wheel 和框架构建产物，场景插件仍基于统一环境编译。
 - **共享 Base 分层**：`Dockerfile.base` 统一承载 CUDA、项目依赖和 framework；`Dockerfile.runtime` 只在 base 上增加所选场景插件，不再重复安装系统与 Python 环境。
 - **按服务构建离线包**：`build_docker_release.sh` 支持通过 `--service panel|scenes` 分别构建和输出服务包，保留 `all` 的兼容用法。
 - **发布环境修复**：Docker 离线构建与覆盖层生成统一默认使用 `mobile_vision` Conda 环境，并兼容 Python 3.10；缺少本地 Cython 时改用基础镜像或隔离构建。
@@ -51,7 +55,17 @@
 - **离线部署**：新增版本镜像、权重覆盖层、SHA256 清单的构建与部署脚本，并移除脚本中的默认生产服务器地址。
 - **ONNX 运行依赖**：显式加入 PyYAML，line-squeeze OCR 改为 ONNX 后 scenes 镜像继续保持无 PaddleOCR/PaddleX。
 
-## [2.1.2] - 2026-07-16
+### 迁移限制
+- **场景迁移 TODO**：`dc-fuse`、`indicator-light`、`lap-surf`、`line-squeeze`、
+  `plate-screw` 仍依赖已删除的旧框架入口，本轮不保证兼容。后续需逐插件完成
+  `services.api` → `ScenarioRegistry`/新业务初始化入口、`services.utils` →
+  `services.vision`、`services.base.inference_runner` → `services.inference`，
+  并将 `YoloOnnxInfer` 等旧模型类迁移为 runner 注入模型。完成标准为插件可注册、
+  全量测试通过、服务启动和关闭无资源泄漏；不得用临时兼容层或跳过逻辑掩盖失败。
+
+---
+
+## [2.1.2] - 2026-07-16 (`v2.1.2`)
 
 - **ONNX 运行时稳定性治理**：GPU 部署强制校验实际 CUDA Provider，禁止 Session
   静默降级为纯 CPU；统一限制完整检测流水线的进程级执行并发，等待请求继续由
@@ -61,12 +75,12 @@
   RGB 缩放、ImageNet 标准化、DETR 输出解码与分割轮廓生成，并保持 `DetectResult`
   契约不变。
 
-## [2.1.1] - 2026-07-14
+## [2.1.1] - 2026-07-14 (`v2.1.1`)
 
 - **ONNX GPU 环境对齐**：统一基础镜像到 CUDA 12.4 + cuDNN 9，与 ONNX Runtime GPU 1.20.1 的官方运行依赖保持一致，修复 CUDA provider 初始化失败。
 - **ONNX runner 诊断能力**：支持指定图执行模式与输出 Runtime profiling trace，便于按模型定位推理性能瓶颈。
 
-## [2.1.0] - 2026-07-13
+## [2.1.0] - 2026-07-13 (`v2.1.0`)
 
 - **统一 ONNX 推理后端**：新增 runner 协议与 ONNX Runtime 实现，YOLO、通用分类和动态宽度 CTC 识别统一通过 runner 执行
 - **推理依赖收敛**：生产环境移除 PaddleOCR/PaddleX，切换为 ONNX Runtime GPU 依赖；运行时默认优先使用 CUDA 并保留 CPU 回退，严格对齐测试则强制使用 GPU；运行时镜像继续保留 OpenCV 所需的 `libgl1`
@@ -82,7 +96,20 @@
 
 ---
 
-## [2.0.0] - 2026-06-11
+## [2.0.1] - 2026-06-12 (`v2.0.1`)
+
+### 新增
+- **可扩展数据回流**：回流目标路径抽为框架默认钩子，场景可按自身命名规则覆写。
+- **场景白名单**：新增 `ENABLED_SCENES`，单场景部署可跳过未启用场景的注册、预加载和权重检查。
+- **访问日志静默路径**：新增 `ACCESS_LOG_SKIP_PATHS`，默认忽略 `/health` 的正常访问日志。
+- **部署入口覆盖层**：热更新脚本支持下发 `app.py` 覆盖层。
+
+### 修复
+- **健康探针日志**：`/health` 返回 200 时不再写入访问日志，避免探针请求刷屏。
+
+---
+
+## [2.0.0] - 2026-06-11（未创建 Git tag）
 
 > 重大架构升级：框架与场景彻底解耦，主版本号 +1。框架本体（`vie-framework`）仅保留
 > 基类与插件发现机制，不含任何具体场景；既可通过 `entry_points` 装载独立插件包
@@ -108,7 +135,7 @@
 
 ---
 
-## [1.1.9] - 2026-06-10
+## [1.1.9] - 2026-06-10（未创建 Git tag）
 
 ### 新增
 - **数据回流**：回流目录按文件名解析中文场景分目录，型号自动去尾部序号（`TK2-1` → `TK2`）
@@ -128,7 +155,7 @@
 
 ---
 
-## [1.1.8] - 2026-06-03
+## [1.1.8] - 2026-06-03（未创建 Git tag）
 
 ### 新增
 - **panel_label 单场景编排**：新增 `Dockerfile.panel-label` + `docker-compose.panel-label.yml`，支持仅部署线标 OCR 的精简镜像
@@ -144,7 +171,7 @@
 
 ---
 
-## [1.1.7] - 2026-05-29
+## [1.1.7] - 2026-05-29（未创建 Git tag）
 
 ### 新增
 - **panel_label 插件化**：`panel_label` 场景抽离为独立插件包 `vie-plugin-panel-label`，通过 `entry_points` 注册，框架与业务解耦
@@ -155,7 +182,7 @@
 
 ---
 
-## [1.1.6] - 2026-05-26
+## [1.1.6] - 2026-05-26（未创建 Git tag）
 
 ### 新增
 - **异常体系**：新增 `VisionAPIError` 异常类体系与 `ErrorCode` 枚举，全局异常处理器统一返回 `HTTP 200 + CommonResponse`
@@ -180,7 +207,7 @@
 
 ---
 
-## [1.1.5] - 2026-01-31
+## [1.1.5] - 2026-01-31 (`v1.1.5`)
 
 ### 新增
 - 新增铁片螺丝检测场景（`plate_screw`）
@@ -188,7 +215,7 @@
 
 ---
 
-## [1.1.3] - 2026-01-27
+## [1.1.3] - 2026-01-27 (`v1.1.3`)
 
 ### 新增
 - 新增指示灯检测场景（`indicator`）
@@ -196,7 +223,7 @@
 
 ---
 
-## [1.1.1] - 2026-01-27
+## [1.1.1] - 2026-01-27 (`v1.1.1`)
 
 ### 新增
 - 新增直流熔丝检测场景（`dc_fuse`）
@@ -207,7 +234,7 @@
 
 ---
 
-## [初始化] - 2026-01-07
+## [初始化] - 2026-01-07（未创建 Git tag）
 
 - 项目初始化，统一场景开发框架骨架
 - 新增 Dockerfile、日志模块、配置文件基础结构
