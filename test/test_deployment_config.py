@@ -123,6 +123,10 @@ def test_runtime_base_excludes_build_tool_layers():
     assert 'io.vie.image-role="runtime-base"' in base
 
     runtime_section = base.split("\nFROM system-runtime AS base\n", 1)[1]
+    assert "ARG CUDA_BASE_IMAGE" in runtime_section
+    assert runtime_section.index("ARG CUDA_BASE_IMAGE") < runtime_section.index(
+        'io.vie.base-image="${CUDA_BASE_IMAGE}"'
+    )
     assert "build-essential" not in runtime_section
     assert "python3.10-dev" not in runtime_section
     assert "onnxruntime_gpu-" not in runtime_section

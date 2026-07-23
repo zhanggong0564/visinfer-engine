@@ -76,6 +76,7 @@ FROM base-builder AS runtime-venv
 RUN pip uninstall -y Cython
 
 FROM system-runtime AS base
+ARG CUDA_BASE_IMAGE
 ARG REQUIREMENTS_SHA256=unknown
 ARG BASE_CONTRACT_SHA256=unknown
 ARG FRAMEWORK_VERSION=unknown
