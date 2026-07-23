@@ -54,6 +54,7 @@ if [ "$WITH_WEIGHTS" -eq 0 ]; then
   cp -al "$(readlink -f current)/weights/." "$STAGE/weights/"
 fi
 while IFS= read -r weight; do
+  [ -n "$weight" ] || continue
   test -f "$STAGE/weights/$weight" || {
     echo "暂存发布缺少权重: $weight" >&2
     exit 1
