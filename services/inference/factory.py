@@ -9,10 +9,12 @@ from services.inference.status import (
     runtime_status_registry,
 )
 
+
 @dataclass(frozen=True)
 class RunnerSpec:
     scenario: str
     onnx_path: str
+    model_role: str | None = None
 
 
 def create_inference_runner(
@@ -24,5 +26,11 @@ def create_inference_runner(
 
     registry = status_registry or runtime_status_registry
     runner = OnnxRuntimeRunner(spec.onnx_path, onnx_options)
-    registry.register(spec.onnx_path, runner.providers, backend="onnx")
+    registry.register(
+        spec.onnx_path,
+        runner.providers,
+        backend="onnx",
+        scenario=spec.scenario,
+        model_role=spec.model_role,
+    )
     return runner
