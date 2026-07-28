@@ -8,12 +8,16 @@ from pathlib import Path
 WEIGHT_PREFIX = "./weights/"
 
 
-def collect_weight_paths(config_paths: list[Path], weights_root: Path) -> list[Path]:
+def collect_weight_paths(
+    config_paths: list[Path],
+    weights_root: Path,
+) -> list[Path]:
     """Return sorted files below weights_root referenced by Python string literals."""
     root = weights_root.resolve(strict=True)
     referenced: set[Path] = set()
     for config_path in config_paths:
-        tree = ast.parse(config_path.read_text(encoding="utf-8"), filename=str(config_path))
+        source = config_path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(config_path))
         for node in ast.walk(tree):
             value = node.value if isinstance(node, ast.Constant) else None
             if not isinstance(value, str) or not value.startswith(WEIGHT_PREFIX):
