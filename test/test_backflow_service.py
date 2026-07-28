@@ -83,7 +83,16 @@ def test_image_failure_does_not_prevent_record_write(service, monkeypatch):
 
 @pytest.mark.parametrize(
     ("status", "expected"),
-    [(True, "ok"), ("true", "ok"), (" TRUE ", "ok"), (False, "ng"), (None, "ng")],
+    [
+        (True, "ok"),
+        ("true", "ok"),
+        (" TRUE ", "ok"),
+        ("PASS", "ok"),
+        ("FAIL", "ng"),
+        ("REVIEW", "ng"),
+        (False, "ng"),
+        (None, "ng"),
+    ],
 )
 def test_classify_result_only_accepts_explicit_true(status, expected):
     assert BackflowService.classify_result({"status": status}) == expected
@@ -137,3 +146,47 @@ def test_resolve_paths_rejects_invalid_image_extension(service):
         service.resolve_paths(
             "sample.jpg", "2026-07-10T10:00:00.000", "TK2", "ng", ".php"
         )
+
+
+def test_batch_record_uses_prefixed_path_and_association_fields(service):
+    received_at = "2026-07-10T10:00:00.000"
+    pending = service.resolve_paths(
+        "sample.jpg",
+        received_at,
+        "TK2",
+        "pending",
+        ".jpg",
+        batch_id="../batch/01",
+        batch_index=1,
+    )
+    Path(pending["image_path"]).parent.mkdir(parents=True)
+    Path(pending["image_path"]).write_bytes(b"batch-image")
+
+    service.persist_record(
+        original_filename="sample.jpg",
+        raw_json="{}",
+        result_dict={"status": "PASS"},
+        latency_ms=4.0,
+        received_at=received_at,
+        fallback_product_type="TK2",
+        image_extension=".jpg",
+        batch_id="../batch/01",
+        batch_index=1,
+        batch_size=2,
+    )
+
+    final = service.resolve_paths(
+        "sample.jpg",
+        received_at,
+        "TK2",
+        "ok",
+        ".jpg",
+        batch_id="../batch/01",
+        batch_index=1,
+    )
+    assert Path(final["image_path"]).is_relative_to(Path(service.data_dir))
+    assert Path(final["image_path"]).name == "_batch_01__1__sample.jpg"
+    record = json.loads(Path(final["record_path"]).read_text(encoding="utf-8"))
+    assert record["batch_id"] == "_batch_01"
+    assert record["batch_index"] == 1
+    assert record["batch_size"] == 2
