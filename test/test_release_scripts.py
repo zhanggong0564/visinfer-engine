@@ -45,13 +45,25 @@ def test_collect_weight_paths_rejects_missing_assets(tmp_path):
         module.collect_weight_paths([config], root)
 
 
-def test_panel_weight_collection_includes_ocr_metadata():
+def test_panel_weight_collection_includes_ocr_metadata(tmp_path):
     module = _load_weight_collector()
     config = Path(
         "plugins/vie-plugin-panel-label/vie_plugin_panel_label/config.py"
     )
+    weights_root = tmp_path / "weights"
+    expected_files = (
+        "panel_label/v2/rfdetr-seg-nano-v1.1.onnx",
+        "panel_label/v2/textline_ori_lcnet_v2.onnx",
+        "panel_label/v2/textline_ori_lcnet_v2/inference.yml",
+        "panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr.onnx",
+        "panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr/inference.yml",
+    )
+    for relative_path in expected_files:
+        path = weights_root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
 
-    paths = set(module.collect_weight_paths([config], Path("weights")))
+    paths = set(module.collect_weight_paths([config], weights_root))
 
     assert {
         Path("panel_label/v2/textline_ori_lcnet_v2/inference.yml"),
