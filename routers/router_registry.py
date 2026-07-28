@@ -7,18 +7,36 @@
 @Description  :路由注册器，自动发现和注册路由
 '''
 
+import inspect
 import importlib
 import pkgutil
-import inspect
 from collections import Counter
 from dataclasses import dataclass
 from importlib.metadata import entry_points
 from typing import Dict, List, Optional
+
 from fastapi import APIRouter, FastAPI
+
 from config import settings
 from services.scenario_registry import scenario_registry
 from utils.logger import vision_logger
+
 from .base_router import BaseRouter
+
+
+_BUILTIN_MODULE_EXCLUSIONS = {"base_router", "router_registry"}
+_ROUTER_TAGS = {
+    "panel_routers": "线标OCR检测",
+    "plate_routers": "铁片螺丝检测",
+    "dc_fuse_routers": "直流熔丝检测",
+    "indicator_routers": "指示灯检测",
+    "lap_surf_routers": "搭接面检测",
+    "stats_routers": "调用统计",
+    "dc_fuse": "直流熔丝检测",
+    "indicator": "指示灯检测",
+    "lap_surf": "搭接面检测",
+    "plate": "铁片检测",
+}
 
 
 @dataclass(frozen=True)
@@ -57,8 +75,11 @@ class RouterRegistry:
             vision_logger.error(f"导入包 {package_name} 失败: {e}")
             return routers
 
-        for importer, module_name, ispkg in pkgutil.iter_modules(package_path):
-            if module_name in ('router_registry', 'base_router') or "routers" not in module_name:
+        for _, module_name, _ in pkgutil.iter_modules(package_path):
+            if (
+                module_name in _BUILTIN_MODULE_EXCLUSIONS
+                or "routers" not in module_name
+            ):
                 continue
             try:
                 module = importlib.import_module(f"{package_name}.{module_name}")
@@ -79,14 +100,8 @@ class RouterRegistry:
         的模块。单个插件加载失败仅 warning 跳过，不影响其余插件与框架启动。
         """
         routers = []
-        try:
-            try:
-                eps = entry_points(group=group)
-            except TypeError:
-                # 兼容旧版 importlib.metadata：entry_points() 返回 dict
-                eps = entry_points().get(group, [])
-        except Exception as e:
-            vision_logger.warning(f"获取插件入口列表失败: {e}")
+        eps = self._find_entry_points(group)
+        if eps is None:
             return routers
         seen_detector_types = {}
         for ep in eps:
@@ -149,6 +164,17 @@ class RouterRegistry:
             routers.extend(accepted)
         return routers
 
+    @staticmethod
+    def _find_entry_points(group: str):
+        try:
+            try:
+                return entry_points(group=group)
+            except TypeError:
+                return entry_points().get(group, [])
+        except Exception as exc:
+            vision_logger.warning(f"获取插件入口列表失败: {exc}")
+            return None
+
     def _collect_routers_from_module(
         self, module, module_name: str, source: str
     ) -> List[RouteCandidate]:
@@ -162,29 +188,34 @@ class RouterRegistry:
                     RouteCandidate(module_name, attr, config, source)
                 )
                 vision_logger.info(f"发现路由模块 {module_name}，标签为 {config['tags']}")
-            elif isinstance(attr, BaseRouter):
-                # 场景白名单过滤：未启用的场景不注册路由、也不进 base_routers（即不预加载），
-                # 留空表示全部启用。便于单场景部署，避免缺失权重导致启动失败。
-                if not self._scene_enabled(attr.detector_type):
-                    vision_logger.info(
-                        f"跳过未启用场景 {module_name}（detector_type={attr.detector_type}）"
-                    )
-                    continue
-                # 只做路由发现/注册，重型模型加载延后到 preload_all（lifespan）
-                router = attr.get_router()
-                if isinstance(router, APIRouter):
-                    config = self._make_router_config(module_name, getattr(attr, "tag", None))
-                    routers.append(
-                        RouteCandidate(
-                            module_name=module_name,
-                            router=router,
-                            config=config,
-                            source=source,
-                            detector_type=attr.detector_type,
-                            base_router=attr,
-                        )
-                    )
-                    vision_logger.info(f"发现路由模块 {module_name}，标签为 {config['tags']}")
+                continue
+            if not isinstance(attr, BaseRouter):
+                continue
+            if not self._scene_enabled(attr.detector_type):
+                vision_logger.info(
+                    f"跳过未启用场景 {module_name}（detector_type={attr.detector_type}）"
+                )
+                continue
+            router = attr.get_router()
+            if not isinstance(router, APIRouter):
+                continue
+            config = self._make_router_config(
+                module_name,
+                getattr(attr, "tag", None),
+            )
+            routers.append(
+                RouteCandidate(
+                    module_name=module_name,
+                    router=router,
+                    config=config,
+                    source=source,
+                    detector_type=attr.detector_type,
+                    base_router=attr,
+                )
+            )
+            vision_logger.info(
+                f"发现路由模块 {module_name}，标签为 {config['tags']}"
+            )
         return routers
 
     def _dedupe_source(
@@ -256,26 +287,8 @@ class RouterRegistry:
         }
 
     def _get_tag_from_filename(self, filename: str) -> str:
-        """根据文件名生成标签。
-
-        注意：find_routers 传入的是模块名（如 'panel_routers'），故映射表需以实际
-        模块名为键；旧的裸场景名键保留以兼容历史调用。
-        """
-        tag_map = {
-            # 实际模块名（find_routers 传入的就是这个）
-            'panel_routers': '线标OCR检测',
-            'plate_routers': '铁片螺丝检测',
-            'dc_fuse_routers': '直流熔丝检测',
-            'indicator_routers': '指示灯检测',
-            'lap_surf_routers': '搭接面检测',
-            'stats_routers': '调用统计',
-            # 兼容历史裸场景名键
-            'dc_fuse': '直流熔丝检测',
-            'indicator': '指示灯检测',
-            'lap_surf': '搭接面检测',
-            'plate': '铁片检测',
-        }
-        return tag_map.get(filename, filename.replace('_', ' ').title())
+        """根据模块名或历史场景名生成标签。"""
+        return _ROUTER_TAGS.get(filename, filename.replace("_", " ").title())
 
     def preload_all(self) -> None:
         """预加载所有 BaseRouter 的检测器模型。
