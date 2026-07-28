@@ -16,3 +16,6 @@
 [submodule "plugins/vie-plugin-plate-screw"]
 	path = plugins/vie-plugin-plate-screw
 	url = https://github.com/zhanggong0564/vie-plugin-plate-screw.git
+[submodule "plugins/vie-plugin-mvs"]
+	path = plugins/vie-plugin-mvs
+	url = https://github.com/zhanggong0564/vie-plugin-mvs.git
