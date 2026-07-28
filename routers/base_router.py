@@ -41,7 +41,16 @@ DATA_DIR = os.path.abspath(settings.DATA_DIR)
 class BaseRouter(ABC):
     """路由基类，封装所有路由共有的功能"""
 
-    def __init__(self, router_name, api_path, summary, description, detector_type, tag=None):
+    def __init__(
+        self,
+        router_name,
+        api_path,
+        summary,
+        description,
+        detector_type,
+        tag=None,
+        register_default_route=True,
+    ):
         self.router = APIRouter()
         self.router_name = router_name
         self.instance = None
@@ -54,13 +63,14 @@ class BaseRouter(ABC):
         # 让插件无需依赖框架 tag_map 即可声明中文分组名，保持框架对插件零知晓。
         self.tag = tag
 
-        self.router.post(
-            api_path,
-            summary=summary,
-            description=description,
-            response_model=CommonResponse,
-            response_description="统一检测响应",
-        )(self._handle_request)
+        if register_default_route:
+            self.router.post(
+                api_path,
+                summary=summary,
+                description=description,
+                response_model=CommonResponse,
+                response_description="统一检测响应",
+            )(self._handle_request)
 
     def get_detector_singleton(self):
         if self.instance is None:
