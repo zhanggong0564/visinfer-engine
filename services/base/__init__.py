@@ -8,6 +8,7 @@
 '''
 
 from .business_logic_base import BusinessLogicBase
+from .batch_business_logic_base import BatchBusinessLogicBase
 from .vision_infer import BaseVisionInfer
 from .classification_pipeline import (
     BaseClassificationPipeline,
@@ -22,6 +23,7 @@ __all__ = [
     "BaseClassificationPipeline",
     "BaseCtcRecognitionPipeline",
     "BusinessLogicBase",
+    "BatchBusinessLogicBase",
     "ClassificationResult",
     "CtcRecognitionResult",
     "Detector",
