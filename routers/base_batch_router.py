@@ -137,11 +137,7 @@ class BaseBatchRouter(BaseRouter):
                 raise InvalidParamsError(str(exc)) from exc
             latency_ms = (time.time() - started) * 1000
             with timer.stage("result_to_dict"):
-                result_dict = (
-                    result_info
-                    if isinstance(result_info, dict)
-                    else result_info.to_dict()
-                )
+                result_dict = self._result_to_dict(result_info)
             try:
                 with timer.stage("response_build"):
                     response = self.build_batch_response(result_dict)
