@@ -52,39 +52,36 @@ class ResultJudge:
         no_upper_screw = det_info.get("no_upper_crossbeam_screw_9", [])
         no_lower_screw = det_info.get("no_lower_crossbeam_screw_10", [])
         small_screw = det_info.get("small_screw_8", [])
-        res = {
+        results = {
             "screw": True,
             "nut": True,
             "metal_piece": True,
             "upper_screw": True,
             "lower_screw": True,
-            "brass_plate": True,
+            "brass_plate": len(brass_plate) == self.ways,
             "small_screw": True,
         }
         if self.is_detectscrew:
-            if (len(screw) != self.ways * 2) and (len(no_screw) > 0):
-                res["screw"] = False
+            results["screw"] = not (
+                len(screw) != self.ways * 2 and len(no_screw) > 0
+            )
         if self.is_small_screw:
-            if len(small_screw) != self.ways:
-                res["small_screw"] = False
+            results["small_screw"] = len(small_screw) == self.ways
         if self.is_detect_nut:
-            if len(nut) != self.ways * 2:
-                res["nut"] = False
+            results["nut"] = len(nut) == self.ways * 2
         if self.is_detect_metal_piece:
-            if self.metal_piece_num2 == 2:
-                if len(metal_piece) != 2:
-                    res["metal_piece"] = False
-            else:
-                if not (len(metal_piece) == 4 or len(metal_piece) == 6):
-                    res["metal_piece"] = False
+            allowed_counts = {2} if self.metal_piece_num2 == 2 else {4, 6}
+            results["metal_piece"] = len(metal_piece) in allowed_counts
         if self.is_detect_upper_screw:
-            if (len(upper_screw) != 2 or len(lower_screw) != 2) and (
-                len(no_upper_screw) > 0 or len(no_lower_screw) > 0
-            ):
-                res["upper_screw"] = False
-        if len(brass_plate) != self.ways:
-            res["brass_plate"] = False
-        return {k: v for k, v in res.items() if self._is_detection_enabled(k)}
+            results["upper_screw"] = not (
+                (len(upper_screw) != 2 or len(lower_screw) != 2)
+                and (len(no_upper_screw) > 0 or len(no_lower_screw) > 0)
+            )
+        return {
+            key: value
+            for key, value in results.items()
+            if self._is_detection_enabled(key)
+        }
 
     def _is_detection_enabled(self, key: str) -> bool:
         """检查指定检测项是否启用"""
