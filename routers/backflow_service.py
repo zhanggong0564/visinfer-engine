@@ -76,15 +76,10 @@ class BackflowService:
         batch_index: Optional[int] = None,
     ) -> dict[str, str]:
         target = self.target_resolver(original_filename, fallback_product_type)
-        if image_extension is not None:
-            if image_extension not in SAFE_IMAGE_EXTENSIONS:
-                raise ValueError(f"不支持的回流图片扩展名: {image_extension}")
-            extension = image_extension
-        else:
-            safe_name = self.safe_client_filename(original_filename)
-            extension = os.path.splitext(safe_name)[1].lower()
-            if extension not in SAFE_IMAGE_EXTENSIONS:
-                extension = ".jpg"
+        extension = self._resolve_image_extension(
+            original_filename,
+            image_extension,
+        )
 
         scene_dir = self.sanitize_dir_name(target.scene_dir)
         model_name = self.sanitize_dir_name(target.model_dir)
@@ -116,6 +111,23 @@ class BackflowService:
             "image_path": self.safe_path(image_dir, f"{save_stem}{extension}"),
             "record_path": self.safe_path(record_dir, f"{save_stem}.json"),
         }
+
+    @classmethod
+    def _resolve_image_extension(
+        cls,
+        original_filename: str,
+        image_extension: Optional[str],
+    ) -> str:
+        if image_extension is not None:
+            if image_extension not in SAFE_IMAGE_EXTENSIONS:
+                raise ValueError(
+                    f"不支持的回流图片扩展名: {image_extension}"
+                )
+            return image_extension
+
+        safe_name = cls.safe_client_filename(original_filename)
+        extension = os.path.splitext(safe_name)[1].lower()
+        return extension if extension in SAFE_IMAGE_EXTENSIONS else ".jpg"
 
     def persist_record(
         self,
