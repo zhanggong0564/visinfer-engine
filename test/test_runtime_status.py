@@ -28,6 +28,27 @@ def test_runtime_status_keeps_same_named_models_as_separate_entries():
     assert len(registry.public_snapshot()) == 2
 
 
+def test_runtime_status_exposes_optional_scenario_and_role():
+    registry = RuntimeStatusRegistry()
+    registry.register(
+        "/weights/mvs/det/inference.onnx",
+        ["CUDAExecutionProvider"],
+        scenario="mvs",
+        model_role="text_detection",
+    )
+
+    assert registry.public_snapshot() == [
+        {
+            "model": "inference.onnx",
+            "backend": "onnx",
+            "providers": ["CUDAExecutionProvider"],
+            "scenario": "mvs",
+            "role": "text_detection",
+        }
+    ]
+    assert "/weights/" not in str(registry.public_snapshot())
+
+
 def test_runtime_status_clear_removes_registered_models():
     registry = RuntimeStatusRegistry()
     registry.register("/weights/model.onnx", ["CPUExecutionProvider"])
