@@ -34,13 +34,15 @@ def _norm(name: str) -> str:
     return name.lower().removeprefix("vie-plugin-").replace("_", "-")
 
 
-def select_plugins(wanted):
+def select_plugins(wanted: list[str] | None) -> list[Path]:
     """按 --plugins 过滤插件目录；wanted 为空则返回全部。未匹配到则报错退出。"""
     if not wanted:
         return PLUGINS
-    wanted_norm = {_norm(w) for w in wanted}
-    selected = [p for p in PLUGINS if _norm(p.name) in wanted_norm]
-    matched = {_norm(p.name) for p in selected}
+    wanted_norm = {_norm(name) for name in wanted}
+    selected = [
+        plugin for plugin in PLUGINS if _norm(plugin.name) in wanted_norm
+    ]
+    matched = {_norm(plugin.name) for plugin in selected}
     missing = wanted_norm - matched
     if missing:
         available = ", ".join(_norm(p.name) for p in PLUGINS)
@@ -48,7 +50,7 @@ def select_plugins(wanted):
     return selected
 
 
-def clean(project: Path):
+def clean(project: Path) -> None:
     """清理上次构建残留（build/ 与 egg-info，以及包内可能的 .c/.so 残留）。"""
     shutil.rmtree(project / "build", ignore_errors=True)
     for egg in project.glob("*.egg-info"):
@@ -58,28 +60,61 @@ def clean(project: Path):
             stray.unlink()
 
 
-def build_one(project: Path, out: Path, no_isolation: bool):
+def build_one(
+    project: Path,
+    out: Path,
+    no_isolation: bool,
+) -> None:
     clean(project)
-    cmd = [sys.executable, "-m", "pip", "wheel", str(project), "--no-deps", "-w", str(out)]
+    cmd = [
+        sys.executable,
+        "-m",
+        "pip",
+        "wheel",
+        str(project),
+        "--no-deps",
+        "-w",
+        str(out),
+    ]
     if no_isolation:
         cmd.append("--no-build-isolation")
     print(f"\n>>> 构建 {project.name or 'vie-framework'}")
     subprocess.run(cmd, check=True, cwd=str(ROOT))
 
 
-def main():
-    ap = argparse.ArgumentParser(description="构建框架与插件二进制 wheel")
-    ap.add_argument("--out", default="dist", help="wheel 输出目录（默认 dist/）")
-    ap.add_argument("--no-isolation", action="store_true",
-                    help="用当前环境构建（需已装 Cython/setuptools/wheel）")
-    ap.add_argument("--plugins", nargs="*", default=None, metavar="NAME",
-                    help="只构建指定插件（如 panel-label）；不传则构建全部")
-    mode = ap.add_mutually_exclusive_group()
-    mode.add_argument("--framework-only", action="store_true",
-                      help="只构建 vie_framework，跳过所有插件（统一 runtime 镜像用）")
-    mode.add_argument("--plugins-only", action="store_true",
-                      help="只构建 --plugins 指定的插件，跳过 vie_framework")
-    args = ap.parse_args()
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="构建框架与插件二进制 wheel"
+    )
+    parser.add_argument(
+        "--out",
+        default="dist",
+        help="wheel 输出目录（默认 dist/）",
+    )
+    parser.add_argument(
+        "--no-isolation",
+        action="store_true",
+        help="用当前环境构建（需已装 Cython/setuptools/wheel）",
+    )
+    parser.add_argument(
+        "--plugins",
+        nargs="*",
+        default=None,
+        metavar="NAME",
+        help="只构建指定插件（如 panel-label）；不传则构建全部",
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--framework-only",
+        action="store_true",
+        help="只构建 vie_framework，跳过所有插件（统一 runtime 镜像用）",
+    )
+    mode.add_argument(
+        "--plugins-only",
+        action="store_true",
+        help="只构建 --plugins 指定的插件，跳过 vie_framework",
+    )
+    args = parser.parse_args()
 
     if args.framework_only and args.plugins is not None:
         sys.exit("--framework-only 与 --plugins 互斥：前者不构建任何插件")
@@ -93,7 +128,7 @@ def main():
 
     if not args.plugins_only:
         build_one(ROOT, out, args.no_isolation)
-    for plugin in plugins:                          # 选中的场景插件
+    for plugin in plugins:
         build_one(plugin, out, args.no_isolation)
 
     wheels = sorted(out.glob("*.whl"))
