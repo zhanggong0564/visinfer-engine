@@ -59,7 +59,8 @@ class BackflowService:
     def classify_result(result_dict: dict) -> str:
         status = result_dict.get("status")
         if status is True or (
-            isinstance(status, str) and status.strip().lower() == "true"
+            isinstance(status, str)
+            and status.strip().lower() in {"true", "pass"}
         ):
             return "ok"
         return "ng"
@@ -71,6 +72,8 @@ class BackflowService:
         fallback_product_type: Optional[str],
         verdict_dir: str,
         image_extension: Optional[str] = None,
+        batch_id: Optional[str] = None,
+        batch_index: Optional[int] = None,
     ) -> dict[str, str]:
         target = self.target_resolver(original_filename, fallback_product_type)
         if image_extension is not None:
@@ -86,6 +89,14 @@ class BackflowService:
         scene_dir = self.sanitize_dir_name(target.scene_dir)
         model_name = self.sanitize_dir_name(target.model_dir)
         save_stem = self.sanitize_dir_name(target.save_stem)
+        if batch_id:
+            safe_batch_id = self.sanitize_dir_name(batch_id)
+            item_prefix = (
+                f"{safe_batch_id}__{batch_index}"
+                if batch_index is not None
+                else safe_batch_id
+            )
+            save_stem = f"{item_prefix}__{save_stem}"
         model_dir = self.safe_path(
             self.data_dir,
             scene_dir,
@@ -116,6 +127,9 @@ class BackflowService:
         fallback_product_type: Optional[str] = None,
         raw_image_bytes: Optional[bytes] = None,
         image_extension: Optional[str] = None,
+        batch_id: Optional[str] = None,
+        batch_index: Optional[int] = None,
+        batch_size: Optional[int] = None,
     ) -> None:
         """保存原始图片和结果记录，落盘失败不影响请求接口。"""
         try:
@@ -129,6 +143,8 @@ class BackflowService:
                 fallback_product_type,
                 verdict_dir,
                 image_extension=image_extension,
+                batch_id=batch_id,
+                batch_index=batch_index,
             )
             os.makedirs(paths["record_dir"], exist_ok=True)
 
@@ -140,6 +156,8 @@ class BackflowService:
                         fallback_product_type,
                         "pending",
                         image_extension=image_extension,
+                        batch_id=batch_id,
+                        batch_index=batch_index,
                     )
                     if os.path.exists(pending_paths["image_path"]):
                         os.makedirs(paths["image_dir"], exist_ok=True)
@@ -186,6 +204,12 @@ class BackflowService:
                 "latency_ms": latency_ms,
                 "result": result_dict,
             }
+            if batch_id is not None:
+                record["batch_id"] = self.sanitize_dir_name(batch_id)
+            if batch_index is not None:
+                record["batch_index"] = batch_index
+            if batch_size is not None:
+                record["batch_size"] = batch_size
             with open(paths["record_path"], "w", encoding="utf-8") as stream:
                 json.dump(record, stream, ensure_ascii=False, indent=2)
         except Exception as exc:
