@@ -19,7 +19,7 @@ import numpy as np
 from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
 
 from config import settings
-from schemas import CommonResponse, ErrorCode, ERROR_CODE_MESSAGES
+from schemas import CommonResponse
 from schemas.exceptions import InvalidParamsError, InternalError
 from services.scenario_registry import scenario_registry
 from services.call_stats import record_call
@@ -35,8 +35,6 @@ from routers.response_builder import ResponseBuilder
 # 不再基于 __file__ 推算——本模块会被编译成 .so 装进 venv，__file__ 会指向
 # site-packages，导致落盘埋进 venv 且无法挂载持久化。
 DATA_DIR = os.path.abspath(settings.DATA_DIR)
-
-
 
 class BaseRouter(ABC):
     """路由基类，封装所有路由共有的功能"""
@@ -56,9 +54,17 @@ class BaseRouter(ABC):
         self.instance = None
         self.detector_type = detector_type
         self.inference_admission = inference_admission_controller
-        self.backflow_service = BackflowService(self.detector_type, self.resolve_backflow_target, DATA_DIR)
+        self.backflow_service = BackflowService(
+            self.detector_type,
+            self.resolve_backflow_target,
+            DATA_DIR,
+        )
         self.upload_processor = UploadProcessor(settings.MAX_UPLOAD_MB)
-        self.response_builder = ResponseBuilder(settings.VIS_ENABLED, settings.VIS_MAX_SIDE, settings.VIS_JPEG_QUALITY)
+        self.response_builder = ResponseBuilder(
+            settings.VIS_ENABLED,
+            settings.VIS_MAX_SIDE,
+            settings.VIS_JPEG_QUALITY,
+        )
         # 路由自描述的 Swagger 分组标签；为空时由 RouterRegistry 回退到模块名映射。
         # 让插件无需依赖框架 tag_map 即可声明中文分组名，保持框架对插件零知晓。
         self.tag = tag
@@ -108,9 +114,16 @@ class BaseRouter(ABC):
         received_at = datetime.now().isoformat(timespec="milliseconds")
         original_filename = file.filename or "unknown.jpg"
         # json_data 可能很长（含 line_order 等），且防止以后夹带 base64 图撑爆日志，截断预览
-        json_preview = json_data if len(json_data) <= 500 else f"{json_data[:500]}...(共{len(json_data)}字符)"
+        json_preview = (
+            json_data
+            if len(json_data) <= 500
+            else f"{json_data[:500]}...(共{len(json_data)}字符)"
+        )
         try:
-            vision_logger.info(f"接收{self.router_name}请求：图片={original_filename}, json_data={json_preview}")
+            vision_logger.info(
+                f"接收{self.router_name}请求：图片={original_filename}, "
+                f"json_data={json_preview}"
+            )
             with timer.stage("validate_params"):
                 request_params = await self._validate_and_parse_params(json_data)
             vision_logger.info(f"校验参数：{request_params}")
@@ -120,7 +133,15 @@ class BaseRouter(ABC):
                 upload = await self.upload_processor.process(
                     file,
                     original_filename,
-                    pending_path_resolver=lambda extension: self.backflow_service.resolve_paths(original_filename, received_at, fallback_product_type, "pending", extension)["image_path"],
+                    pending_path_resolver=lambda extension: (
+                        self.backflow_service.resolve_paths(
+                            original_filename,
+                            received_at,
+                            fallback_product_type,
+                            "pending",
+                            extension,
+                        )["image_path"]
+                    ),
                     stage_recorder=timer.record,
                 )
             image = upload.image
@@ -165,14 +186,23 @@ class BaseRouter(ABC):
             vision_logger.info("检测耗时：{:.4f}秒", end - start)
             vision_logger.debug("原始检测结果：{}", result_info)
             with timer.stage("result_to_dict"):
-                result_dict = result_info if isinstance(result_info, dict) else result_info.to_dict()
+                result_dict = self._result_to_dict(result_info)
             try:
                 with timer.stage("response_build"):
-                    result = await self.response_builder.build(image, result_dict, inputs, stage_recorder=timer.record)
+                    result = await self.response_builder.build(
+                        image,
+                        result_dict,
+                        inputs,
+                        stage_recorder=timer.record,
+                    )
             except Exception as exc:
                 # 响应封装失败会跳过 FastAPI BackgroundTasks；此处必须同步回流，
                 # 否则"检测成功但 CommonResponse 校验失败"的关键样本会丢失。
-                vision_logger.exception("响应封装失败，执行同步数据回流 filename={}: {}", original_filename, exc)
+                vision_logger.exception(
+                    "响应封装失败，执行同步数据回流 filename={}: {}",
+                    original_filename,
+                    exc,
+                )
                 with timer.stage("persist_response_error_record"):
                     await run_sync(
                         self.backflow_service.persist_record,
@@ -232,6 +262,12 @@ class BaseRouter(ABC):
             return None
         return getattr(model_params, "product_type", None)
 
+    @staticmethod
+    def _result_to_dict(result_info: Any) -> dict:
+        if isinstance(result_info, dict):
+            return result_info
+        return result_info.to_dict()
+
     def get_inputs(self, request_params: Any, image: np.ndarray) -> dict:
         """获取模型输入"""
         raise NotImplementedError("子类必须实现get_inputs方法")
@@ -240,8 +276,7 @@ class BaseRouter(ABC):
         """验证和解析参数"""
         try:
             json_dict = json.loads(json_data)
-            request_params = self.request_schema(json_dict)
-            return request_params
+            return self.request_schema(json_dict)
         except json.JSONDecodeError:
             raise InvalidParamsError("json_data 格式非法，需传入标准 JSON 字符串")
         except ValueError as e:
@@ -273,7 +308,11 @@ class BaseRouter(ABC):
             if fallback_product_type
             else UNKNOWN_MODEL_DIR
         )
-        return BackflowTarget(scene_dir=self.detector_type, model_dir=model_dir, save_stem=stem)
+        return BackflowTarget(
+            scene_dir=self.detector_type,
+            model_dir=model_dir,
+            save_stem=stem,
+        )
 
     def get_router(self):
         return self.router
