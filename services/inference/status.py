@@ -11,6 +11,8 @@ class ModelRuntimeStatus:
     model_path: str
     providers: tuple[str, ...]
     backend: str = "onnx"
+    scenario: str | None = None
+    model_role: str | None = None
 
 
 class RuntimeStatusRegistry:
@@ -23,12 +25,16 @@ class RuntimeStatusRegistry:
         model_path: str,
         providers: Sequence[str],
         backend: str = "onnx",
+        scenario: str | None = None,
+        model_role: str | None = None,
     ) -> None:
         key = str(Path(model_path).resolve())
         status = ModelRuntimeStatus(
             model_path=key,
             providers=tuple(providers),
             backend=backend,
+            scenario=scenario,
+            model_role=model_role,
         )
         with self._lock:
             self._models[key] = status
@@ -38,14 +44,19 @@ class RuntimeStatusRegistry:
             statuses = sorted(
                 self._models.values(), key=lambda item: item.model_path
             )
-        return [
-            {
+        snapshots = []
+        for status in statuses:
+            snapshot = {
                 "model": Path(status.model_path).name,
                 "backend": status.backend,
                 "providers": list(status.providers),
             }
-            for status in statuses
-        ]
+            if status.scenario:
+                snapshot["scenario"] = status.scenario
+            if status.model_role:
+                snapshot["role"] = status.model_role
+            snapshots.append(snapshot)
+        return snapshots
 
     def clear(self) -> None:
         with self._lock:
