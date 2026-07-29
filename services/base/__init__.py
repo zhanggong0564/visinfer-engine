@@ -15,7 +15,12 @@ from .classification_pipeline import (
     ClassificationResult,
 )
 from .ctc_recognition_pipeline import BaseCtcRecognitionPipeline, CtcRecognitionResult
+from .detection import Detection, DetectionResult
 from .detector import Detector
+from .geometry import CoordinateSpace, Point, Polygon, Region, xyxy_region
+from .inspection import InspectionVerdict
+from .ocr import OCRResult, OCRToken
+from .settings import SceneSettings
 
 
 __all__ = [
@@ -26,5 +31,16 @@ __all__ = [
     "BatchBusinessLogicBase",
     "ClassificationResult",
     "CtcRecognitionResult",
+    "CoordinateSpace",
+    "Detection",
+    "DetectionResult",
     "Detector",
+    "InspectionVerdict",
+    "OCRResult",
+    "OCRToken",
+    "Point",
+    "Polygon",
+    "Region",
+    "SceneSettings",
+    "xyxy_region",
 ]
