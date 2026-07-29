@@ -203,10 +203,16 @@ def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, 
             pts = _coords_to_points(coord, new_w, new_h, scale)
             if pts is None or len(pts) < 3:
                 continue
-            is_ng = str(item.get("status", "")).strip().lower() == "false"
+            verdict = str(
+                item.get("verdict", item.get("status", ""))
+            ).strip().upper()
+            is_ng = verdict in {"FALSE", "FAIL"}
+            is_review = verdict == "REVIEW"
             color = _hex_to_bgr(item.get("color"), _YELLOW_BGR if is_ng else _GREEN_BGR)
+            if is_review and not item.get("color"):
+                color = _YELLOW_BGR
             label = item.get("name") or item.get("scene") or ""
-            drawables.append((pts, color, is_ng, label))
+            drawables.append((pts, color, is_ng or is_review, label))
 
         # NG 半透明填充（先在副本填充再整体混合，保证框/文字仍全不透明）
         if any(d[2] for d in drawables):
