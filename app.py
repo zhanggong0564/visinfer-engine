@@ -113,6 +113,7 @@ def _build_error_response(code: ErrorCode, error_msg: str) -> dict:
         "result": {
             "detailList": [],
             "status": "false",
+            "verdict": None,
             "error_msg": error_msg,
             "message": public_message,
         },

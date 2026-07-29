@@ -152,7 +152,14 @@ class TestExceptionHandlers:
         resp = client.get("/raise/invalid_params")
         body = resp.json()
         assert set(body.keys()) == {"code", "message", "result"}
-        assert set(body["result"].keys()) == {"detailList", "status", "error_msg", "message"}
+        assert set(body["result"].keys()) == {
+            "detailList",
+            "status",
+            "verdict",
+            "error_msg",
+            "message",
+        }
+        assert body["result"]["verdict"] is None
 
 
 class TestBaseRouterExceptionTranslation:

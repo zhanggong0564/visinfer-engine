@@ -72,6 +72,7 @@ class TestDetectionItem:
                              accuracy=0.8, name="dc_1")
         d = item.to_dict()
         assert d["status"] == "true"
+        assert d["verdict"] == "PASS"
         assert d["scene"] == "dc"
         assert d["coordinate"] == [1, 2, 3, 4]
         assert d["accuracy"] == 0.8
@@ -83,6 +84,7 @@ class TestDetectionItem:
                              accuracy=0.0, name="fail")
         d = item.to_dict()
         assert d["status"] == "false"
+        assert d["verdict"] == "FAIL"
         assert d["color"] == "#FFFF00"
 
     def test_from_dict(self):
@@ -115,6 +117,7 @@ class TestMoMResult:
         r = MoMResult(detailList=[item], status=True, message="检测成功")
         d = r.to_dict()
         assert d["status"] == "true"
+        assert d["verdict"] == "PASS"
         assert len(d["detailList"]) == 1
         assert d["detailList"][0]["status"] == "true"
 

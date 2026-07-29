@@ -8,7 +8,9 @@
 '''
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Any, List, Literal
+from typing import Any, List, Literal, Optional
+
+from .inspection import InspectionVerdict
 
 
 class DetectionItemResponse(BaseModel):
@@ -18,7 +20,11 @@ class DetectionItemResponse(BaseModel):
 
     status: Literal["true", "false"] = Field(
         default="false",
-        description="单项检测状态字符串：true=异常/命中，false=正常/未命中",
+        description="兼容状态字符串：true=通过，false=不通过",
+    )
+    verdict: InspectionVerdict | None = Field(
+        default=None,
+        description="统一检测结论；新调用方应优先使用该字段",
     )
     scene: str = Field(default="", description="检测类别或业务场景标识")
     coordinate: List[float] = Field(default_factory=list, description="检测框/轮廓坐标")
@@ -55,6 +61,37 @@ class ExampleImageItem(BaseModel):
     FilePath: str = Field(..., description="示例图片访问路径")
 
 
+class VisualReferenceParams(BaseModel):
+    guide_line: Optional[List[GuideLineItem]] = Field(
+        default_factory=list,
+        description="参考线图片列表",
+    )
+    example_images: Optional[List[ExampleImageItem]] = Field(
+        default_factory=list,
+        description="示例图片列表",
+    )
+
+
+class AICameraModel(BaseModel):
+    """Shared external AICameraModel record."""
+
+    Id: str
+    SN: str
+    ProductName: str
+    Version: int
+    AIProductTypeName: str
+    AIProductTypeValue: str
+    ModelFile: str
+    Remark: str | None = None
+    CreateBy: str | None = None
+    CreateTime: str | None = None
+    UpdateBy: str | None = None
+    UpdateTime: str | None = None
+    AIParameterName: str | None = None
+    AIParameterValue: str | None = None
+    DictionaryCode: str | None = None
+
+
 # class DetailListItem(BaseModel):
 #     """result中detailList的单个元素模型(精准匹配示例）"""
 
@@ -68,7 +105,14 @@ class ResultResponse(BaseModel):
     """顶层返回的result对象模型"""
 
     detailList: List[DetectionItemResponse] = Field(..., description="检测详情列表")
-    status: Literal["true", "false"] = Field(..., description="整体检测状态（false=正常，true=异常）")
+    status: Literal["true", "false"] = Field(
+        ...,
+        description="兼容整体状态：true=通过，false=不通过",
+    )
+    verdict: InspectionVerdict | None = Field(
+        default=None,
+        description="统一检测结论；执行错误时为空",
+    )
     error_msg: str = Field(..., description="错误信息（无错误则为空字符串）")
     message: str = Field(..., description="检测结果描述（如“检测成功”）")
     vis_image: str = Field(

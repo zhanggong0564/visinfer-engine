@@ -7,10 +7,17 @@
 @Description  :
 '''
 
-from .common import CommonResponse, DetectionItemResponse, EmptyRequest
+from .common import (
+    AICameraModel,
+    CommonResponse,
+    DetectionItemResponse,
+    EmptyRequest,
+    VisualReferenceParams,
+)
 from .data_base import *
 from .inference_context import InferenceContext, PreprocMeta
 from .error_codes import ErrorCode, ERROR_CODE_MESSAGES
+from .inspection import InspectionVerdict
 from .exceptions import (
     VisionAPIError,
     InvalidParamsError,
@@ -21,8 +28,10 @@ from .exceptions import (
 )
 
 __all__ = [
-    "CommonResponse", "DetectionItemResponse", "EmptyRequest", "DetectResult", "DetectionItem",
+    "AICameraModel", "CommonResponse", "DetectionItemResponse", "EmptyRequest",
+    "VisualReferenceParams", "DetectResult", "DetectionItem",
     "ErrorCode", "ERROR_CODE_MESSAGES",
+    "InspectionVerdict",
     "VisionAPIError", "InvalidParamsError", "InvalidImageError",
     "ProductNotRegisteredError", "ModelInferenceError", "InternalError",
     "InferenceContext", "PreprocMeta",

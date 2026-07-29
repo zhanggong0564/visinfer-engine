@@ -14,6 +14,8 @@ from enum import Enum
 from typing import List, Optional
 import cv2
 
+from .inspection import InspectionVerdict
+
 # 可视化绘制常量（统一颜色/线宽，避免散落魔法值）
 _DRAW_COLOR = (0, 255, 0)
 _BLEND_ALPHA = 0.7  # 检测框图层与掩膜图层的混合权重
@@ -114,9 +116,14 @@ class DetectionItem:
     name: str = ""
     color: str = "#20ff4f"  # true #20ff4f false 颜色=#F74E5A
 
+    @property
+    def verdict(self) -> InspectionVerdict:
+        return InspectionVerdict.PASS if self.status else InspectionVerdict.FAIL
+
     def to_dict(self):
         return {
             "status": 'true' if self.status else 'false',
+            "verdict": self.verdict.value,
             "scene": self.scene,
             "coordinate": self.coordinate,
             "accuracy": self.accuracy,
@@ -126,6 +133,8 @@ class DetectionItem:
 
     @classmethod
     def from_dict(cls, data: dict):
+        data = dict(data)
+        data.pop("verdict", None)
         return cls(**data)
 
 
@@ -136,10 +145,15 @@ class MoMResult:
     error_msg: str = ""
     message: str = ""
 
+    @property
+    def verdict(self) -> InspectionVerdict:
+        return InspectionVerdict.PASS if self.status else InspectionVerdict.FAIL
+
     def to_dict(self):
         return {
             "detailList": [item.to_dict() for item in self.detailList],
             "status": 'true' if self.status else 'false',
+            "verdict": self.verdict.value,
             "error_msg": self.error_msg,
             "message": self.message,
         }
@@ -148,6 +162,7 @@ class MoMResult:
     def from_dict(cls, data: dict):
         # 不就地 pop 入参：复制后再拆，避免破坏调用方持有的原 dict
         data = dict(data)
+        data.pop("verdict", None)
         detailList = [DetectionItem.from_dict(item) for item in data.pop("detailList")]
         return cls(detailList=detailList, **data)
 
