@@ -89,13 +89,19 @@ def test_image_failure_does_not_prevent_record_write(service, monkeypatch):
         (" TRUE ", "ok"),
         ("PASS", "ok"),
         ("FAIL", "ng"),
-        ("REVIEW", "ng"),
+        ("REVIEW", "review"),
         (False, "ng"),
         (None, "ng"),
     ],
 )
 def test_classify_result_only_accepts_explicit_true(status, expected):
     assert BackflowService.classify_result({"status": status}) == expected
+
+
+def test_classify_result_prefers_common_verdict():
+    assert BackflowService.classify_result(
+        {"status": "true", "verdict": "REVIEW"}
+    ) == "review"
 
 
 def test_error_record_keeps_pending_image_and_error_verdict(service):

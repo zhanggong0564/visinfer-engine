@@ -8,6 +8,7 @@ from typing import Callable, Optional
 
 from config import settings
 from routers.upload_persistence import write_bytes_atomically
+from schemas.inspection import InspectionVerdict
 from utils import vision_logger
 
 
@@ -57,12 +58,13 @@ class BackflowService:
 
     @staticmethod
     def classify_result(result_dict: dict) -> str:
-        status = result_dict.get("status")
-        if status is True or (
-            isinstance(status, str)
-            and status.strip().lower() in {"true", "pass"}
-        ):
+        verdict = InspectionVerdict.from_value(
+            result_dict.get("verdict", result_dict.get("status"))
+        )
+        if verdict is InspectionVerdict.PASS:
             return "ok"
+        if verdict is InspectionVerdict.REVIEW:
+            return "review"
         return "ng"
 
     def resolve_paths(

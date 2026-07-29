@@ -103,7 +103,7 @@ def test_batch_router_preserves_order_and_records_once(monkeypatch):
 
 @pytest.mark.parametrize(
     ("status", "verdict"),
-    [("FAIL", "ng"), ("REVIEW", "ng")],
+    [("FAIL", "ng"), ("REVIEW", "review")],
 )
 def test_batch_router_classifies_non_pass_results(monkeypatch, status, verdict):
     router, _, _, stats = _prepare(monkeypatch, status=status)
