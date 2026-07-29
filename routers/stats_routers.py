@@ -49,6 +49,7 @@ def _build_response(stats: dict) -> dict:
                 "summary": str(day_row["total"]),
                 "ok": str(day_row["ok"]),
                 "ng": str(day_row["ng"]),
+                "review": str(day_row["review"]),
                 "error": str(day_row["error"]),
             })
     return {"sysKey": _SYS_KEY, "sysName": _SYS_NAME, "info": info}

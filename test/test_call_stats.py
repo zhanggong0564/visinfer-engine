@@ -46,10 +46,28 @@ class TestCallStatsRecorder:
         assert result["total"] == 4
         scene = result["scenes"]["panel_label"]
         assert scene["total"] == 4
-        assert scene["verdicts"] == {"ok": 3, "ng": 1, "error": 0}
+        assert scene["verdicts"] == {
+            "ok": 3,
+            "ng": 1,
+            "review": 0,
+            "error": 0,
+        }
         assert scene["daily"] == [
-            {"date": "2026-06-10", "ok": 3, "ng": 1, "error": 0, "total": 4}
+            {
+                "date": "2026-06-10",
+                "ok": 3,
+                "ng": 1,
+                "review": 0,
+                "error": 0,
+                "total": 4,
+            }
         ]
+
+    def test_record_review_separately(self, recorder):
+        recorder.record("mvs", "review", day="2026-06-10")
+        scene = recorder.query()["scenes"]["mvs"]
+        assert scene["verdicts"]["review"] == 1
+        assert scene["daily"][0]["review"] == 1
 
     def test_record_default_day_is_today(self, recorder):
         """不传 day 时按服务器本地日期入账。"""

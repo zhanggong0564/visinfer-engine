@@ -29,7 +29,7 @@ INSERT INTO api_call_stats (scene, date, verdict, count) VALUES (?, ?, ?, 1)
 ON CONFLICT(scene, date, verdict) DO UPDATE SET count = count + 1
 """
 
-_VERDICTS = ("ok", "ng", "error")
+_VERDICTS = ("ok", "ng", "review", "error")
 
 
 class CallStatsRecorder:
@@ -110,7 +110,16 @@ class CallStatsRecorder:
             )
             daily = scene_stats["daily"]
             if not daily or daily[-1]["date"] != day:
-                daily.append({"date": day, "ok": 0, "ng": 0, "error": 0, "total": 0})
+                daily.append(
+                    {
+                        "date": day,
+                        "ok": 0,
+                        "ng": 0,
+                        "review": 0,
+                        "error": 0,
+                        "total": 0,
+                    }
+                )
             day_row = daily[-1]
             day_row[verdict] += count
             day_row["total"] += count
