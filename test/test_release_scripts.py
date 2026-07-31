@@ -139,8 +139,9 @@ def test_sync_scripts_use_atomic_versioned_releases(script_name):
     assert "previous" in script
     assert "io.vie.requirements-sha256" in script
     assert "io.vie.python-abi" in script
-    assert "io.vie.runtime-contract-sha256" in script
+    assert "io.vie.environment-contract-sha256" in script
     assert "--no-weights" in script
+    assert "--allow-legacy-image" in script
     assert "--force-recreate" in script
     assert "/health/ready" in script
     assert "rollback" in script.lower()
@@ -158,6 +159,84 @@ def test_no_weights_skips_local_weight_collection():
 
     assert script.index(weight_guard) < script.index(collector)
     assert empty_manifest in script
+
+
+def test_legacy_image_requires_explicit_compatibility_flag():
+    script = Path("scripts/release/remote_activate.sh").read_text(encoding="utf-8")
+
+    assert 'ALLOW_LEGACY_IMAGE="${12}"' in script
+    assert 'if [ "$ALLOW_LEGACY_IMAGE" -ne 1 ]' in script
+    assert "旧镜像缺少环境契约标签" in script
+    assert "IMAGE_REQUIREMENTS_SHA" in script
+    assert "IMAGE_PYTHON_ABI" in script
+
+
+@pytest.mark.parametrize(
+    ("image_requirements", "image_abi", "allow_legacy", "expected_error"),
+    [
+        ("requirements-sha", "cp310", "0", "旧镜像缺少环境契约标签"),
+        ("different", "cp310", "1", "依赖指纹不一致"),
+        ("requirements-sha", "cp311", "1", "Python ABI 不一致"),
+    ],
+)
+def test_legacy_image_requires_opt_in_and_matching_runtime(
+    tmp_path,
+    image_requirements,
+    image_abi,
+    allow_legacy,
+    expected_error,
+):
+    root = tmp_path / "deploy"
+    stage = root / "releases/release-1.staging"
+    (stage / "pkg").mkdir(parents=True)
+    (stage / "app.py").touch()
+    (stage / "docker-compose.panel-label.yml").touch()
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker = bin_dir / "docker"
+    docker.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [ \"$1 $2\" = \"compose version\" ]; then exit 0; fi\n"
+        "case \"$*\" in\n"
+        "  *Config.Image*) echo legacy-image ;;\n"
+        "  *requirements-sha256*) echo \"$TEST_IMAGE_REQUIREMENTS\" ;;\n"
+        "  *python-abi*) echo \"$TEST_IMAGE_ABI\" ;;\n"
+        "  *environment-contract-sha256*) echo '<no value>' ;;\n"
+        "  *) exit 1 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    docker.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env["TEST_IMAGE_REQUIREMENTS"] = image_requirements
+    env["TEST_IMAGE_ABI"] = image_abi
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/release/remote_activate.sh",
+            str(root),
+            "release-1",
+            "docker-compose.panel-label.yml",
+            "mobile-vision-panel-label",
+            "http://127.0.0.1:3001/health/ready",
+            "requirements-sha",
+            "cp310",
+            "runtime-sha",
+            "0",
+            "panel_label",
+            "environment-sha",
+            allow_legacy,
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode != 0
+    assert expected_error in result.stderr
 
 
 def test_rollback_script_swaps_previous_and_validates_readiness():
