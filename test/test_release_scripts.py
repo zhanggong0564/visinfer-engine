@@ -149,6 +149,17 @@ def test_sync_scripts_use_atomic_versioned_releases(script_name):
     assert "REMOTE_DIR:-/" not in script
 
 
+def test_no_weights_skips_local_weight_collection():
+    script = Path("scripts/release/sync-common.sh").read_text(encoding="utf-8")
+
+    weight_guard = 'if [ "$DO_WEIGHTS" -eq 1 ]; then'
+    collector = 'scripts/release/collect_weight_paths.py'
+    empty_manifest = ': > "$LOCAL_STAGE/weight-paths.txt"'
+
+    assert script.index(weight_guard) < script.index(collector)
+    assert empty_manifest in script
+
+
 def test_rollback_script_swaps_previous_and_validates_readiness():
     script = Path("scripts/release/rollback-plugin.sh").read_text(encoding="utf-8")
 
