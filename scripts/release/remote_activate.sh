@@ -20,9 +20,12 @@ CONTAINER_NAME="$4"
 HEALTH_URL="$5"
 EXPECTED_REQUIREMENTS_SHA="$6"
 EXPECTED_PYTHON_ABI="$7"
-EXPECTED_RUNTIME_CONTRACT_SHA="$8"
+# 保留旧参数位置，便于现有调用方平滑升级；热更新安全判断改用环境契约。
+LEGACY_RUNTIME_CONTRACT_SHA="$8"
 WITH_WEIGHTS="$9"
 EXPECTED_ENTRYPOINTS="${10}"
+EXPECTED_ENVIRONMENT_CONTRACT_SHA="${11}"
+ALLOW_LEGACY_IMAGE="${12}"
 STAGE="${ROOT}/releases/${RELEASE_ID}.staging"
 FINAL="${ROOT}/releases/${RELEASE_ID}"
 select_compose
@@ -35,7 +38,7 @@ test -f "$STAGE/$COMPOSE_FILE"
 IMAGE_REF="$(docker inspect --format '{{.Config.Image}}' "$CONTAINER_NAME")"
 IMAGE_REQUIREMENTS_SHA="$(docker image inspect --format '{{index .Config.Labels "io.vie.requirements-sha256"}}' "$IMAGE_REF")"
 IMAGE_PYTHON_ABI="$(docker image inspect --format '{{index .Config.Labels "io.vie.python-abi"}}' "$IMAGE_REF")"
-IMAGE_RUNTIME_CONTRACT_SHA="$(docker image inspect --format '{{index .Config.Labels "io.vie.runtime-contract-sha256"}}' "$IMAGE_REF")"
+IMAGE_ENVIRONMENT_CONTRACT_SHA="$(docker image inspect --format '{{index .Config.Labels "io.vie.environment-contract-sha256"}}' "$IMAGE_REF")"
 if [ "$IMAGE_REQUIREMENTS_SHA" != "$EXPECTED_REQUIREMENTS_SHA" ]; then
   echo "依赖指纹不一致，必须重新构建镜像" >&2
   exit 1
@@ -44,8 +47,17 @@ if [ "$IMAGE_PYTHON_ABI" != "$EXPECTED_PYTHON_ABI" ]; then
   echo "Python ABI 不一致，必须重新构建镜像" >&2
   exit 1
 fi
-if [ "$IMAGE_RUNTIME_CONTRACT_SHA" != "$EXPECTED_RUNTIME_CONTRACT_SHA" ]; then
-  echo "系统运行时契约不一致，必须重新构建镜像" >&2
+if [ "$IMAGE_ENVIRONMENT_CONTRACT_SHA" = "<no value>" ]; then
+  IMAGE_ENVIRONMENT_CONTRACT_SHA=""
+fi
+if [ -z "$IMAGE_ENVIRONMENT_CONTRACT_SHA" ]; then
+  if [ "$ALLOW_LEGACY_IMAGE" -ne 1 ]; then
+    echo "旧镜像缺少环境契约标签，请重建镜像或显式使用 --allow-legacy-image" >&2
+    exit 1
+  fi
+  echo "警告: 旧镜像缺少环境契约标签，已通过 requirements 与 Python ABI 兼容校验" >&2
+elif [ "$IMAGE_ENVIRONMENT_CONTRACT_SHA" != "$EXPECTED_ENVIRONMENT_CONTRACT_SHA" ]; then
+  echo "镜像环境契约不一致，必须重新构建镜像" >&2
   exit 1
 fi
 

@@ -8,6 +8,7 @@ cd "$ROOT"
 DO_BUILD=1
 DO_PUSH=1
 DO_WEIGHTS=1
+ALLOW_LEGACY_IMAGE=0
 REMOTE="${REMOTE:-}"
 REMOTE_DIR="${REMOTE_DIR:-}"
 RELEASE_ID="${RELEASE_ID:-$(date +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)}"
@@ -18,7 +19,7 @@ INCLUDE_FRAMEWORK="${INCLUDE_FRAMEWORK:-1}"
 INCLUDE_PLUGINS="${INCLUDE_PLUGINS:-1}"
 
 usage() {
-  echo "用法: $0 [--local] [--no-build] [--no-weights] [--remote user@host] [--remote-dir /path]"
+  echo "用法: $0 [--local] [--no-build] [--no-weights] [--allow-legacy-image] [--remote user@host] [--remote-dir /path]"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -26,6 +27,7 @@ while [ "$#" -gt 0 ]; do
     --local) DO_PUSH=0 ;;
     --no-build) DO_BUILD=0 ;;
     --no-weights) DO_WEIGHTS=0 ;;
+    --allow-legacy-image) ALLOW_LEGACY_IMAGE=1 ;;
     --remote) shift; REMOTE="${1:?--remote 缺少值}" ;;
     --remote-dir) shift; REMOTE_DIR="${1:?--remote-dir 缺少值}" ;;
     -h|--help) usage; exit 0 ;;
@@ -114,6 +116,7 @@ fi
 REQUIREMENTS_SHA256="$(sha256sum "${RUNTIME_REQUIREMENTS[@]}" | sha256sum | awk '{print $1}')"
 PYTHON_ABI="$("${CONDA_PYTHON[@]}" -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')"
 BASE_CONTRACT_SHA256="$(bash scripts/release/compute_base_contract.sh)"
+ENVIRONMENT_CONTRACT_SHA256="$(bash scripts/release/compute_environment_contract.sh)"
 RUNTIME_CONTRACT_SHA256="$(
   {
     printf '%s\n' "$BASE_CONTRACT_SHA256"
@@ -127,6 +130,7 @@ REQUIREMENTS_SHA256=${REQUIREMENTS_SHA256}
 BASE_CONTRACT_SHA256=${BASE_CONTRACT_SHA256}
 PYTHON_ABI=${PYTHON_ABI}
 RUNTIME_CONTRACT_SHA256=${RUNTIME_CONTRACT_SHA256}
+ENVIRONMENT_CONTRACT_SHA256=${ENVIRONMENT_CONTRACT_SHA256}
 EOF
 
 # 保持 --local 的旧行为：pkg/ 仍得到本次完整覆盖层。
@@ -146,6 +150,7 @@ ssh "$REMOTE" bash -s -- \
   "$HEALTH_URL" "$REQUIREMENTS_SHA256" "$PYTHON_ABI" \
   "$RUNTIME_CONTRACT_SHA256" "$DO_WEIGHTS" \
   "$(IFS=,; echo "${EXPECTED_ENTRYPOINTS[*]}")" \
+  "$ENVIRONMENT_CONTRACT_SHA256" "$ALLOW_LEGACY_IMAGE" \
   < scripts/release/remote_activate.sh
 
 echo "发布完成: ${SERVICE} ${RELEASE_ID}"
