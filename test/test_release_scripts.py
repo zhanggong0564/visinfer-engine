@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import subprocess
 from pathlib import Path
 
@@ -11,6 +12,54 @@ def _load_weight_collector():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _environment_contract(root: Path) -> str:
+    env = os.environ.copy()
+    env["VIE_CONTRACT_ROOT"] = str(root)
+    result = subprocess.run(
+        ["bash", "scripts/release/compute_environment_contract.sh"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return result.stdout.strip()
+
+
+def _write_environment_contract_fixture(root: Path) -> None:
+    (root / "whl").mkdir(parents=True)
+    (root / "Dockerfile.base").write_text("base-v1\n", encoding="utf-8")
+    (root / "Dockerfile.runtime").write_text("runtime-v1\n", encoding="utf-8")
+    (root / "requirements.txt").write_text("fastapi==1\n", encoding="utf-8")
+    (root / "requirements.scenes.txt").write_text("numpy==1\n", encoding="utf-8")
+    ort_wheel = root / (
+        "whl/onnxruntime_gpu-1.20.1-cp310-cp310-"
+        "manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+    )
+    ort_wheel.write_bytes(b"ort-wheel")
+
+
+def test_environment_contract_ignores_framework_source_changes(tmp_path):
+    _write_environment_contract_fixture(tmp_path)
+    before = _environment_contract(tmp_path)
+
+    source = tmp_path / "services/example.py"
+    source.parent.mkdir()
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+
+    assert _environment_contract(tmp_path) == before
+
+
+@pytest.mark.parametrize("changed_file", ["requirements.txt", "Dockerfile.runtime"])
+def test_environment_contract_tracks_runtime_inputs(tmp_path, changed_file):
+    _write_environment_contract_fixture(tmp_path)
+    before = _environment_contract(tmp_path)
+
+    path = tmp_path / changed_file
+    path.write_text(path.read_text(encoding="utf-8") + "changed\n", encoding="utf-8")
+
+    assert _environment_contract(tmp_path) != before
 
 
 def test_collect_weight_paths_reads_config_literals_and_expands_directories(tmp_path):
