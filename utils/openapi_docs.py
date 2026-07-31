@@ -44,7 +44,7 @@ JSON_DATA_EXAMPLES_BY_PATH = {
             }],
             "product_type": "S1S2",
             "rule": "front",
-            "line_order": "S2-14,S2-13,S1-13,S1-14",
+            "line_order": "S2-14,S2-13,S1-13,S1-14;S1-14,S1-13,S2-13,S2-14",
             "guideline_coordinates": "0.154,0.114666666666667,0.771,0.76",
         },
         "AICameraModel": [{
