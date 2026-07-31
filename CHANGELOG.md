@@ -10,6 +10,17 @@
 
 ## [Unreleased]
 
+## [2.2.3] - 2026-07-31（未创建 Git tag）
+
+### 修复
+
+- **框架代码热更新**：新增只覆盖 CUDA、Python 依赖、ONNX Runtime wheel、
+  Dockerfile 和系统环境的镜像环境契约，框架及插件源码变化不再被误判为必须重建镜像。
+- **无权重代码发布**：`--no-weights` 不再检查、收集或上传本地模型，远端 release
+  直接复用当前权重；模型路径与新代码不兼容时仍由 readiness 检测并自动回滚。
+- **旧镜像兼容保护**：缺少环境契约标签的历史镜像必须显式使用
+  `--allow-legacy-image`，且 requirements 指纹与 Python ABI 仍须完全一致。
+
 ### 新增
 
 - 线标场景支持通过 `line_order` 分号分隔多组候选顺序，任一候选匹配即可通过；
