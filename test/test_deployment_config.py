@@ -243,7 +243,10 @@ def test_openapi_documents_panel_label_json_data_example_from_real_request_log()
     assert example["sn"] == "A2670608545"
     assert example["modelParams"]["product_type"] == "S1S2"
     assert example["modelParams"]["rule"] == "front"
-    assert example["modelParams"]["line_order"] == "S2-14,S2-13,S1-13,S1-14"
+    assert (
+        example["modelParams"]["line_order"]
+        == "S2-14,S2-13,S1-13,S1-14;S1-14,S1-13,S2-13,S2-14"
+    )
     assert example["modelParams"]["guideline_coordinates"] == "0.154,0.114666666666667,0.771,0.76"
     assert example["modelParams"]["guide_line"][0]["FileName"] == "5、直流侧开关S1S2.png"
     assert example["modelParams"]["example_images"][0]["FileName"] == "屏幕截图 2026-04-22 145231.png"
