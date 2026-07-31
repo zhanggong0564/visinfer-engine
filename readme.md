@@ -351,14 +351,20 @@ uvicorn app:app --host 0.0.0.0 --port 3001 --workers 4
 
 ### 热更新部署（免重打镜像）
 
-环境不变、只更新业务代码或模型权重时，无需重打整镜像：
+环境不变、只更新框架、插件、`app.py`、静态代码或模型权重时，无需重打整镜像：
 
 ```bash
 bash scripts/release/sync-plugin.sh   # 编译 .so + 增量同步权重到服务器 + 重启容器
 bash scripts/release/sync-plugin-scenes.sh
+
+# 只发布代码并复用服务器 current 中的权重
+bash scripts/release/sync-plugin.sh --no-weights
 ```
 
-更新先上传到版本化暂存目录，校验后原子切换；readiness 失败会自动回滚。
+更新先上传到版本化暂存目录，校验后原子切换；readiness 失败会自动回滚。首次对缺少
+环境契约标签的历史镜像做热更新时需显式添加 `--allow-legacy-image`，脚本仍会严格校验
+requirements 指纹和 Python ABI。依赖、CUDA、ONNX Runtime wheel、Dockerfile 或系统环境
+变化时必须重新构建镜像。
 详细步骤见 [Docker 部署指南](docs/deploy.md)。
 
 ---
