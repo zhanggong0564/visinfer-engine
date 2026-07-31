@@ -103,10 +103,12 @@ cp app.py "$LOCAL_STAGE/app.py"
 cp -R static/swagger-ui "$LOCAL_STAGE/static/"
 cp "$COMPOSE_FILE" "$LOCAL_STAGE/$COMPOSE_FILE"
 
-"${CONDA_PYTHON[@]}" scripts/release/collect_weight_paths.py \
-  --root weights "${CONFIGS[@]}" > "$LOCAL_STAGE/weight-paths.txt"
 if [ "$DO_WEIGHTS" -eq 1 ]; then
+  "${CONDA_PYTHON[@]}" scripts/release/collect_weight_paths.py \
+    --root weights "${CONFIGS[@]}" > "$LOCAL_STAGE/weight-paths.txt"
   rsync -a --files-from="$LOCAL_STAGE/weight-paths.txt" weights/ "$LOCAL_STAGE/weights/"
+else
+  : > "$LOCAL_STAGE/weight-paths.txt"
 fi
 
 REQUIREMENTS_SHA256="$(sha256sum "${RUNTIME_REQUIREMENTS[@]}" | sha256sum | awk '{print $1}')"
