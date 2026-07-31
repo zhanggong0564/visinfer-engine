@@ -279,6 +279,8 @@ def test_offline_release_script_exports_scene_images_in_one_archive():
     assert "EXPECTED_VIE_PLUGINS" in script
     assert "entry_point.load()" in script
     assert "requirements.scenes.txt" in script
+    assert "compute_environment_contract.sh" in script
+    assert "ENVIRONMENT_CONTRACT_SHA256" in script
     assert "--service panel|scenes|all" in script
     assert 'OUTPUT_SUFFIX="-panel-label"' in script
     assert 'OUTPUT_SUFFIX="-scenes"' in script
