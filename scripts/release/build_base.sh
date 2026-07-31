@@ -6,8 +6,8 @@
 # base = CUDA 运行库 + 全部 pip 依赖 + framework，不包含编译工具链。
 # 场景插件使用 base-builder 编译，panel-label/scenes runtime 继承 base。
 #
-# 何时重建：CUDA 底座、requirements、ONNX Runtime 或 framework 变化时。
-#   场景插件变化不需要重建 base，只重建对应 runtime。
+# 何时重建：CUDA 底座、requirements、ONNX Runtime、Dockerfile 或系统环境变化时。
+#   framework 和场景插件代码可通过覆盖层热更新；完整镜像发布仍会烘焙当前代码。
 #
 # 用法（仓库根目录）：
 #   bash scripts/release/build_base.sh
@@ -36,6 +36,7 @@ test "$(sha256sum "$ORT_WHEEL" | awk '{print $1}')" = "$ORT_WHEEL_SHA256" || {
 }
 REQUIREMENTS_SHA256="$(sha256sum requirements.txt requirements.scenes.txt | sha256sum | awk '{print $1}')"
 BASE_CONTRACT_SHA256="$(CUDA_BASE_IMAGE="$CUDA_BASE_IMAGE" bash scripts/release/compute_base_contract.sh)"
+ENVIRONMENT_CONTRACT_SHA256="$(CUDA_BASE_IMAGE="$CUDA_BASE_IMAGE" bash scripts/release/compute_environment_contract.sh)"
 FRAMEWORK_VERSION="$(conda run -n "$CONDA_ENV" python -c \
   'from setuptools.config.pyprojecttoml import read_configuration; print(read_configuration("pyproject.toml", expand=False)["project"]["version"])')"
 
@@ -56,6 +57,7 @@ DOCKER_BUILD_ARGS=(
   --build-arg "CUDA_BASE_IMAGE=${CUDA_BASE_IMAGE}"
   --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256"
   --build-arg BASE_CONTRACT_SHA256="$BASE_CONTRACT_SHA256"
+  --build-arg ENVIRONMENT_CONTRACT_SHA256="$ENVIRONMENT_CONTRACT_SHA256"
   --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION"
   -f "$BUILD_CONTEXT/Dockerfile.base"
 )
