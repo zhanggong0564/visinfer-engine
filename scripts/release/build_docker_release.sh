@@ -146,6 +146,7 @@ test -n "$CUDA_SMOKE_MODEL" || {
 
 REQUIREMENTS_SHA256="$(sha256sum requirements.txt requirements.scenes.txt | sha256sum | awk '{print $1}')"
 BASE_CONTRACT_SHA256="$(CUDA_BASE_IMAGE="$CUDA_BASE_IMAGE" bash scripts/release/compute_base_contract.sh)"
+ENVIRONMENT_CONTRACT_SHA256="$(CUDA_BASE_IMAGE="$CUDA_BASE_IMAGE" bash scripts/release/compute_environment_contract.sh)"
 FRAMEWORK_VERSION="$(project_version pyproject.toml)"
 OUT="${OUTPUT_DIR:-dist/docker-release-${RELEASE_VERSION}${OUTPUT_SUFFIX}}"
 test ! -e "$OUT" || { echo "输出目录已存在: $OUT" >&2; exit 1; }
@@ -168,6 +169,7 @@ DOCKER_BASE_BUILD_ARGS=(
   --build-arg "CUDA_BASE_IMAGE=${CUDA_BASE_IMAGE}"
   --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256"
   --build-arg BASE_CONTRACT_SHA256="$BASE_CONTRACT_SHA256"
+  --build-arg ENVIRONMENT_CONTRACT_SHA256="$ENVIRONMENT_CONTRACT_SHA256"
   --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION"
   -f "$BASE_CONTEXT/Dockerfile.base"
 )
@@ -192,6 +194,10 @@ validate_base_image() {
   }
   [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.base-contract-sha256"}}' "$image")" = "$BASE_CONTRACT_SHA256" ] || {
     echo "${image} 基础环境指纹不匹配" >&2
+    return 1
+  }
+  [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.environment-contract-sha256"}}' "$image")" = "$ENVIRONMENT_CONTRACT_SHA256" ] || {
+    echo "${image} 镜像环境契约不匹配" >&2
     return 1
   }
   [ "$(docker image inspect --format '{{index .Config.Labels "io.vie.base-image"}}' "$image")" = "$CUDA_BASE_IMAGE" ] || {
@@ -257,6 +263,7 @@ if [ "$TARGET" = "panel-label" ] || [ "$TARGET" = "all" ]; then
     --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256" \
     --build-arg BASE_CONTRACT_SHA256="$BASE_CONTRACT_SHA256" \
     --build-arg RUNTIME_CONTRACT_SHA256="$RUNTIME_CONTRACT_SHA256" \
+    --build-arg ENVIRONMENT_CONTRACT_SHA256="$ENVIRONMENT_CONTRACT_SHA256" \
     --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION" \
     -t "$PANEL_IMAGE" "$PANEL_CONTEXT"
   validate_runtime_image "$PANEL_IMAGE" "panel_label"
@@ -284,6 +291,7 @@ if [ "$TARGET" = "scenes" ] || [ "$TARGET" = "all" ]; then
     --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256" \
     --build-arg BASE_CONTRACT_SHA256="$BASE_CONTRACT_SHA256" \
     --build-arg RUNTIME_CONTRACT_SHA256="$RUNTIME_CONTRACT_SHA256" \
+    --build-arg ENVIRONMENT_CONTRACT_SHA256="$ENVIRONMENT_CONTRACT_SHA256" \
     --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION" \
     -t "$SCENES_IMAGE" "$SCENES_CONTEXT"
   validate_runtime_image "$SCENES_IMAGE" \
