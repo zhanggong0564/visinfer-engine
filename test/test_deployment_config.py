@@ -121,6 +121,7 @@ def test_runtime_base_excludes_build_tool_layers():
     assert "pip uninstall -y Cython" in base
     assert 'io.vie.image-role="builder"' in base
     assert 'io.vie.image-role="runtime-base"' in base
+    assert base.count("io.vie.environment-contract-sha256") == 2
 
     runtime_section = base.split("\nFROM system-runtime AS base\n", 1)[1]
     assert "ARG CUDA_BASE_IMAGE" in runtime_section
@@ -141,6 +142,7 @@ def test_scene_runtime_publishes_sync_compatibility_labels():
     assert "io.vie.requirements-sha256" in dockerfile
     assert "io.vie.base-contract-sha256" in dockerfile
     assert "io.vie.runtime-contract-sha256" in dockerfile
+    assert "io.vie.environment-contract-sha256" in dockerfile
     assert "io.vie.framework-version" in dockerfile
     assert 'io.vie.plugins="${PLUGIN_NAMES}"' in dockerfile
 
