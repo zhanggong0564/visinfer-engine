@@ -161,22 +161,30 @@ bash scripts/release/sync-plugin-scenes.sh \
 兼容选项：
 
 ```bash
---local       # 只构建本地 release 和 pkg，不连接服务器
---no-build    # 使用 dist/ 中唯一匹配的现有 wheel
---no-weights  # 复用远端 current 的权重快照
+--local               # 只构建本地 release 和 pkg，不连接服务器
+--no-build            # 使用 dist/ 中唯一匹配的现有 wheel
+--no-weights          # 不检查或上传本地模型，复用远端 current 的权重快照
+--allow-legacy-image  # 允许缺少环境契约标签的旧镜像，仅首次兼容时显式使用
 ```
 
 每次 sync 会生成 `YYYYMMDDHHMMSS-<git短哈希>`：
 
 1. 在 `CONDA_ENV` 指定的环境（默认 `mobile_vision`）构建完整 framework + 服务插件 wheel；
-2. 从插件配置解析并验证权重；
+2. 默认从插件配置解析并验证权重；使用 `--no-weights` 时完全跳过本地权重处理；
 3. 上传到 `releases/<release-id>.staging`；
-4. 校验镜像依赖指纹、entry points 和权重完整性；
+4. 校验镜像环境契约、requirements 指纹、Python ABI、entry points 和权重完整性；
 5. 将原 `current` 记录为 `previous`，原子激活新版本；
 6. 重建容器并等待 `/health/ready`；
 7. 失败时自动恢复旧 `current`。
 
-如果 `requirements.txt`、Python ABI 或系统依赖发生变化，镜像标签校验会拒绝 sync，此时必须重新走首次镜像交付流程。
+镜像环境契约只包含 CUDA 基础镜像、Python requirements、ONNX Runtime wheel、
+Dockerfile 和系统环境。框架、插件、`app.py` 与静态代码不属于镜像环境，可直接热更新。
+上述环境输入或 Python ABI 发生变化时，镜像标签校验会拒绝 sync，此时必须重新走首次
+镜像交付流程。
+
+2.2.2 及更早镜像没有 `io.vie.environment-contract-sha256` 标签，首次热更新需添加
+`--allow-legacy-image`。该选项只允许通过 requirements 指纹和 Python ABI 验证的旧镜像，
+不会放宽依赖兼容性检查；新构建镜像带有环境契约标签后不再需要该选项。
 
 ## 4. 显式回滚
 
