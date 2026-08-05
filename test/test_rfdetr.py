@@ -8,14 +8,14 @@ import warnings
 from schemas.inference_context import PreprocMeta
 
 
-def _model(confidence=0.5):
+def _model(confidence=0.5, task="seg"):
     from services.rfdetr import RFDetrInfer
 
     model = RFDetrInfer.__new__(RFDetrInfer)
     model._input_model_shape = [1, 3, 2, 2]
     model.nc = 2
     model.confThreshold = confidence
-    model.task = "seg"
+    model.task = task
     model.id2name = {0: "line", 1: "QFU"}
     return model
 
@@ -51,6 +51,11 @@ def _outputs():
     return [dets, labels, masks]
 
 
+def _det_outputs():
+    dets, labels, _ = _outputs()
+    return [dets, labels]
+
+
 def test_preprocess_converts_bgr_to_normalized_rgb_nchw():
     model = _model()
     image = np.array([[[0, 0, 255]]], dtype=np.uint8)
@@ -82,6 +87,71 @@ def test_post_process_filters_background_and_keeps_mask_alignment(monkeypatch):
     )
     assert len(result.masks) == len(result.mask_polygons) == 1
     assert result.masks[0].shape == (10, 20)
+
+
+def test_detection_post_process_filters_and_restores_boxes_without_masks():
+    model = _model(task="det")
+
+    result = model.post_process(_det_outputs(), _meta())
+
+    np.testing.assert_allclose(result.boxes, [[5.0, 2.5, 15.0, 7.5]])
+    assert result.scores == pytest.approx([1.0 / (1.0 + np.exp(-2.0))])
+    assert result.class_ids == [0]
+    assert result.class_names == ["line"]
+    assert result.masks == []
+    assert result.mask_polygons == []
+
+
+def test_detection_post_process_can_return_empty_result():
+    model = _model(confidence=0.99, task="det")
+
+    result = model.post_process(_det_outputs(), _meta())
+
+    assert result.boxes == []
+    assert result.scores == []
+    assert result.class_ids == []
+
+
+@pytest.mark.parametrize(
+    ("outputs", "message"),
+    [
+        ([np.zeros((1, 2, 4), np.float32)], "expects 2 outputs"),
+        (
+            [
+                np.zeros((1, 2, 5), np.float32),
+                np.zeros((1, 2, 2), np.float32),
+            ],
+            "output shapes",
+        ),
+        (
+            [
+                np.zeros((1, 2, 4), np.float32),
+                np.zeros((1, 3, 2), np.float32),
+            ],
+            "output shapes",
+        ),
+        (
+            [
+                np.zeros((1, 2, 4), np.float32),
+                np.zeros((1, 2, 1), np.float32),
+            ],
+            "output shapes",
+        ),
+        (
+            [
+                np.full((1, 2, 4), np.nan, np.float32),
+                np.zeros((1, 2, 2), np.float32),
+            ],
+            "finite",
+        ),
+    ],
+)
+def test_detection_post_process_rejects_invalid_outputs(outputs, message):
+    model = _model(task="det")
+    model.nc = 2
+
+    with pytest.raises(ValueError, match=message):
+        model.post_process(outputs, _meta())
 
 
 def test_post_process_polygons_only_skips_full_masks_and_preserves_polygon():
