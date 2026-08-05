@@ -1,4 +1,4 @@
-"""RF-DETR 分割模型推理适配器。"""
+"""RF-DETR 检测与分割模型推理适配器。"""
 
 from typing import Literal
 
@@ -34,6 +34,8 @@ class RFDetrInfer(BaseVisionInfer):
         )
         self.nc = nc
         self.task = task
+        if task not in ("det", "seg"):
+            raise ValueError("task must be 'det' or 'seg'")
         if mask_output not in ("full", "polygons_only"):
             raise ValueError("mask_output must be 'full' or 'polygons_only'")
         self.mask_output = mask_output
@@ -53,14 +55,18 @@ class RFDetrInfer(BaseVisionInfer):
         return tensor, meta
 
     def post_process(self, outputs, meta):
-        """解码 RF-DETR boxes、类别 logits 与分割 mask logits。"""
+        """解码 RF-DETR boxes、类别 logits 与可选分割 mask logits。"""
         mask_output = getattr(self, "mask_output", "full")
         if mask_output not in ("full", "polygons_only"):
             raise ValueError("mask_output must be 'full' or 'polygons_only'")
-        if len(outputs) != 3:
-            raise ValueError(f"RF-DETR expects 3 outputs, got {len(outputs)}")
+        expected_outputs = 2 if self.task == "det" else 3
+        if len(outputs) != expected_outputs:
+            raise ValueError(
+                f"RF-DETR {self.task} expects {expected_outputs} outputs, "
+                f"got {len(outputs)}"
+            )
 
-        dets, labels, mask_logits = outputs
+        dets, labels = outputs[:2]
         if (
             dets.ndim != 3
             or dets.shape[0] != 1
@@ -68,13 +74,17 @@ class RFDetrInfer(BaseVisionInfer):
             or labels.ndim != 3
             or labels.shape[:2] != dets.shape[:2]
             or labels.shape[2] < self.nc
-            or mask_logits.ndim != 4
-            or mask_logits.shape[:2] != dets.shape[:2]
         ):
             raise ValueError(
-                "RF-DETR output shapes must be dets=[1,N,4], labels=[1,N,C], "
-                "masks=[1,N,H,W]"
+                "RF-DETR output shapes must be dets=[1,N,4] and "
+                "labels=[1,N,C]"
             )
+        if not np.issubdtype(dets.dtype, np.floating) or not np.issubdtype(
+            labels.dtype, np.floating
+        ):
+            raise ValueError("RF-DETR outputs must use floating-point dtypes")
+        if not np.isfinite(dets).all() or not np.isfinite(labels).all():
+            raise ValueError("RF-DETR outputs must contain only finite values")
 
         foreground_logits = np.clip(labels[0, :, :self.nc], -88.0, 88.0)
         foreground_scores = 1.0 / (1.0 + np.exp(-foreground_logits))
@@ -86,9 +96,31 @@ class RFDetrInfer(BaseVisionInfer):
         selected_boxes = dets[0, keep]
         selected_scores = scores[keep]
         selected_class_ids = class_ids[keep]
-        selected_masks = mask_logits[0, keep]
 
         boxes = self._restore_boxes(selected_boxes, source_w, source_h)
+        if self.task == "det":
+            return DetectResult(
+                boxes=boxes.tolist(),
+                scores=selected_scores.astype(float).tolist(),
+                class_ids=selected_class_ids.astype(int).tolist(),
+                class_names=[
+                    self.id2name[int(class_id)]
+                    for class_id in selected_class_ids
+                ],
+                ori_img=meta.ori_img,
+            )
+
+        mask_logits = outputs[2]
+        if (
+            mask_logits.ndim != 4
+            or mask_logits.shape[:2] != dets.shape[:2]
+            or not np.issubdtype(mask_logits.dtype, np.floating)
+            or not np.isfinite(mask_logits).all()
+        ):
+            raise ValueError(
+                "RF-DETR masks must have shape [1,N,H,W] with finite floats"
+            )
+        selected_masks = mask_logits[0, keep]
         valid_boxes = []
         valid_scores = []
         valid_class_ids = []
