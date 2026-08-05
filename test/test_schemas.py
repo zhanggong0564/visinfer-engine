@@ -170,6 +170,7 @@ class TestIndicatorLightEmbedding:
         assert e.embeddings == []
         assert e.boxes == []
         assert e.scores == []
+        assert e.image_shape is None
 
 
 class TestMessageType:
