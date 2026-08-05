@@ -91,6 +91,7 @@ class IndicatorLightEmbedding:
     embeddings: List[List[float]] = field(default_factory=list)
     boxes: List[List[float]] = field(default_factory=list)
     scores: List[float] = field(default_factory=list)
+    image_shape: Optional[tuple[int, int]] = None
 
 
 @dataclass
