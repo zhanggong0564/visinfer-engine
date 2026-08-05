@@ -81,7 +81,7 @@ ORT_CUDA_MEM_LIMIT_GB=16 conda run -n padocr python demo/parallel_eval.py --conc
 
 ### 3. 实际模型加载验证
 ```
-✓ 模型: weights/indicator_light/det_yolo_v2.onnx
+✓ 模型: weights/indicator_light/rfdetr-small.onnx
 ✓ Session provider options 包含:
   - cudnn_conv_algo_search: 'HEURISTIC'
   - arena_extend_strategy: 'kSameAsRequested'
