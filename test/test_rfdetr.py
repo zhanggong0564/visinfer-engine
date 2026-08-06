@@ -1,5 +1,7 @@
 """RF-DETR ONNX 推理器单元测试。"""
 
+from types import SimpleNamespace
+
 import cv2
 import numpy as np
 import pytest
@@ -218,6 +220,66 @@ def test_preprocess_rejects_non_bgr_image():
 
     with pytest.raises(ValueError, match="BGR"):
         model.preprocess(np.zeros((2, 2), dtype=np.uint8))
+
+
+@pytest.mark.parametrize("mask_threshold", [0.0, 1.0, -0.1, 1.1])
+def test_rejects_invalid_mask_threshold(mask_threshold):
+    from services.rfdetr import RFDetrInfer
+
+    with pytest.raises(ValueError, match="mask_threshold"):
+        RFDetrInfer(
+            nc=2,
+            runner=object(),
+            mask_threshold=mask_threshold,
+        )
+
+
+def test_mask_probability_threshold_is_converted_to_logit():
+    from services.rfdetr import RFDetrInfer
+
+    runner = SimpleNamespace(
+        input_infos=[SimpleNamespace(name="input", shape=(1, 3, 2, 2))],
+        output_infos=[],
+        providers=[],
+    )
+
+    model = RFDetrInfer(nc=2, runner=runner, mask_threshold=0.7)
+
+    assert model.mask_threshold == 0.7
+    assert model.mask_logit_threshold == pytest.approx(np.log(0.7 / 0.3))
+
+
+def test_mask_logit_threshold_applies_to_full_and_local_paths(monkeypatch):
+    captured_masks = []
+    monkeypatch.setattr(
+        "services.rfdetr.masks2segments_with_boxes",
+        lambda mask, box: captured_masks.append(mask.copy()) or [
+            np.array([[0, 0], [1, 0], [1, 1]], dtype=np.float32)
+        ],
+    )
+    raw_mask = np.array([[0.5, 1.0]], dtype=np.float32)
+    threshold = float(np.log(0.7 / 0.3))
+
+    from services.rfdetr import RFDetrInfer
+
+    RFDetrInfer._full_mask_polygon(raw_mask, (0, 0, 2, 1), 2, 1, threshold)
+    monkeypatch.setattr(
+        RFDetrInfer,
+        "_resize_mask_roi",
+        lambda *args: raw_mask,
+    )
+    RFDetrInfer._polygon_from_box_mask(
+        raw_mask,
+        (0, 0, 2, 1),
+        2,
+        1,
+        threshold,
+    )
+
+    expected = np.array([[0, 255]], dtype=np.uint8)
+    assert len(captured_masks) == 2
+    np.testing.assert_array_equal(captured_masks[0], expected)
+    np.testing.assert_array_equal(captured_masks[1], expected)
 
 
 def test_post_process_clips_extreme_logits_before_sigmoid(monkeypatch):
