@@ -34,6 +34,37 @@ def test_resolve_paths_keeps_output_under_data_dir(service, tmp_path):
     assert ".." not in Path(paths["image_path"]).parts
 
 
+def test_resolve_paths_supports_model_subdirectory(tmp_path):
+    service = BackflowService(
+        detector_type="indicator_light",
+        data_dir=str(tmp_path),
+        target_resolver=lambda *_: BackflowTarget(
+            scene_dir="indicator_light",
+            model_dir="A0SW2163",
+            model_subdir="2",
+            save_stem="sample",
+        ),
+    )
+
+    paths = service.resolve_paths(
+        "sample.jpg",
+        "2026-08-06T10:00:00.000",
+        None,
+        "ng",
+        ".jpg",
+    )
+
+    assert Path(paths["image_path"]).parts[-6:] == (
+        "2026-08-06",
+        "A0SW2163",
+        "2",
+        "ng",
+        "images",
+        "sample.jpg",
+    )
+    assert paths["model_dir"] == str(Path("A0SW2163") / "2")
+
+
 def test_persist_record_moves_pending_image_and_writes_json(service):
     pending = service.resolve_paths(
         "sample.jpg", "2026-07-10T10:00:00.000", "TK2", "pending", ".jpg"
