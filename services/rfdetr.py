@@ -27,7 +27,10 @@ class RFDetrInfer(BaseVisionInfer):
         confThreshold=0.5,
         task="seg",
         mask_output: Literal["full", "polygons_only"] = "full",
+        mask_threshold: float = 0.5,
     ):
+        if not 0.0 < mask_threshold < 1.0:
+            raise ValueError("mask_threshold must be between 0 and 1")
         super().__init__(
             runner,
             confThreshold=confThreshold,
@@ -39,6 +42,10 @@ class RFDetrInfer(BaseVisionInfer):
         if mask_output not in ("full", "polygons_only"):
             raise ValueError("mask_output must be 'full' or 'polygons_only'")
         self.mask_output = mask_output
+        self.mask_threshold = mask_threshold
+        self.mask_logit_threshold = float(
+            np.log(mask_threshold / (1.0 - mask_threshold))
+        )
 
     def preprocess(self, im):
         """将 BGR 图像缩放、归一化为 RF-DETR 所需的 RGB NCHW 张量。"""
@@ -121,6 +128,7 @@ class RFDetrInfer(BaseVisionInfer):
                 "RF-DETR masks must have shape [1,N,H,W] with finite floats"
             )
         selected_masks = mask_logits[0, keep]
+        mask_logit_threshold = getattr(self, "mask_logit_threshold", 0.0)
         valid_boxes = []
         valid_scores = []
         valid_class_ids = []
@@ -132,16 +140,28 @@ class RFDetrInfer(BaseVisionInfer):
             binary_mask = None
             if mask_output == "polygons_only":
                 segments = self._polygon_from_box_mask(
-                    raw_mask, box, source_w, source_h
+                    raw_mask,
+                    box,
+                    source_w,
+                    source_h,
+                    mask_logit_threshold,
                 )
             else:
                 segments, binary_mask = self._full_mask_polygon(
-                    raw_mask, box, source_w, source_h
+                    raw_mask,
+                    box,
+                    source_w,
+                    source_h,
+                    mask_logit_threshold,
                 )
             if not segments and mask_output == "polygons_only":
                 self._warn_mask_fallback_once()
                 segments, _ = self._full_mask_polygon(
-                    raw_mask, box, source_w, source_h
+                    raw_mask,
+                    box,
+                    source_w,
+                    source_h,
+                    mask_logit_threshold,
                 )
             if not segments:
                 continue
@@ -163,11 +183,17 @@ class RFDetrInfer(BaseVisionInfer):
         )
 
     @staticmethod
-    def _full_mask_polygon(raw_mask, box, source_w, source_h):
+    def _full_mask_polygon(
+        raw_mask,
+        box,
+        source_w,
+        source_h,
+        mask_logit_threshold=0.0,
+    ):
         mask = cv2.resize(
             raw_mask, (source_w, source_h), interpolation=cv2.INTER_LINEAR
         )
-        binary_mask = (mask > 0.0).astype(np.uint8) * 255
+        binary_mask = (mask > mask_logit_threshold).astype(np.uint8) * 255
         return masks2segments_with_boxes(binary_mask, box), binary_mask
 
     def _warn_mask_fallback_once(self):
@@ -179,7 +205,13 @@ class RFDetrInfer(BaseVisionInfer):
         )
 
     @staticmethod
-    def _polygon_from_box_mask(raw_mask, box, source_w, source_h):
+    def _polygon_from_box_mask(
+        raw_mask,
+        box,
+        source_w,
+        source_h,
+        mask_logit_threshold=0.0,
+    ):
         x1, y1, x2, y2 = map(int, box)
         x1 = max(0, min(source_w, x1))
         x2 = max(0, min(source_w, x2))
@@ -191,7 +223,9 @@ class RFDetrInfer(BaseVisionInfer):
         mask_roi = RFDetrInfer._resize_mask_roi(
             raw_mask, (x1, y1, x2, y2), source_w, source_h
         )
-        binary_roi = (mask_roi > 0.0).astype(np.uint8) * 255
+        binary_roi = (
+            mask_roi > mask_logit_threshold
+        ).astype(np.uint8) * 255
         segments = masks2segments_with_boxes(
             binary_roi, (0, 0, x2 - x1, y2 - y1)
         )
