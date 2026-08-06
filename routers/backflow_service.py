@@ -22,6 +22,7 @@ class BackflowTarget:
     scene_dir: str
     model_dir: str
     save_stem: str
+    model_subdir: Optional[str] = None
 
 
 TargetResolver = Callable[[str, Optional[str]], BackflowTarget]
@@ -85,6 +86,11 @@ class BackflowService:
 
         scene_dir = self.sanitize_dir_name(target.scene_dir)
         model_name = self.sanitize_dir_name(target.model_dir)
+        model_subdir = (
+            self.sanitize_dir_name(target.model_subdir)
+            if target.model_subdir
+            else None
+        )
         save_stem = self.sanitize_dir_name(target.save_stem)
         if batch_id:
             safe_batch_id = self.sanitize_dir_name(batch_id)
@@ -94,18 +100,18 @@ class BackflowService:
                 else safe_batch_id
             )
             save_stem = f"{item_prefix}__{save_stem}"
-        model_dir = self.safe_path(
-            self.data_dir,
-            scene_dir,
-            received_at[:10],
-            model_name,
-            verdict_dir,
-        )
+        model_parts = [scene_dir, received_at[:10], model_name]
+        if model_subdir is not None:
+            model_parts.append(model_subdir)
+        model_dir = self.safe_path(self.data_dir, *model_parts, verdict_dir)
         image_dir = self.safe_path(model_dir, "images")
         record_dir = self.safe_path(model_dir, "records")
         return {
             "scene_dir": scene_dir,
-            "model_dir": model_name,
+            "model_dir": os.path.join(
+                model_name,
+                *([model_subdir] if model_subdir is not None else []),
+            ),
             "save_stem": save_stem,
             "verdict_dir": verdict_dir,
             "image_dir": image_dir,
