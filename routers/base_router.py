@@ -237,7 +237,7 @@ class BaseRouter(ABC):
                     run_sync,
                     record_call,
                     self.detector_type,
-                    self.backflow_service.classify_result(result_dict),
+                    self.backflow_service.classify_stats_result(result_dict),
                 )
             return result
         finally:
