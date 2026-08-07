@@ -1,4 +1,5 @@
 **.pyc
+.coverage
 **.log
 **/*.json
 **/*.jpg
@@ -74,6 +75,11 @@ data/
 scripts
 !scripts/
 scripts/*
+!scripts/production/
+scripts/production/*
+!scripts/production/verify_scenes_service.py
+!scripts/production/indicator-case.example.json
+!scripts/production/evaluate_indicator_dataset.py
 !scripts/release/
 scripts/release/*
 !scripts/release/build_base.sh
