@@ -1,0 +1,24 @@
+{
+  "image": "sample.jpg",
+  "request": {
+    "modelParams": {
+      "type": "2"
+    },
+    "type": "A0SW2124",
+    "product": "请替换为真实产品名称",
+    "sn": "请替换为真实序列号",
+    "AICameraModel": [
+      {
+        "Id": "请替换为真实注册记录ID",
+        "SN": "请替换",
+        "ProductName": "A0SW2124",
+        "Version": 2,
+        "AIProductTypeName": "风电检验组",
+        "AIProductTypeValue": "风电检验组",
+        "ModelFile": "http://注册图服务器/ProblemRecord/reference.jpg",
+        "CreateTime": "2026-06-22T14:53:58",
+        "UpdateTime": "2026-06-22T14:53:58"
+      }
+    ]
+  }
+}
