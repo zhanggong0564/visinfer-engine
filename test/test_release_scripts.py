@@ -83,6 +83,27 @@ def test_collect_weight_paths_reads_config_literals_and_expands_directories(tmp_
     ]
 
 
+def test_collect_weight_paths_accepts_mvs_style_relative_paths(tmp_path):
+    module = _load_weight_collector()
+    root = tmp_path / "weights"
+    model = root / "mvs/model_v1"
+    model.mkdir(parents=True)
+    (model / "inference.onnx").touch()
+    (model / "inference.yml").touch()
+    config = tmp_path / "model_config.py"
+    config.write_text(
+        'relative_path="weights/mvs/model_v1"\n',
+        encoding="utf-8",
+    )
+
+    paths = module.collect_weight_paths([config], root)
+
+    assert paths == [
+        Path("mvs/model_v1/inference.onnx"),
+        Path("mvs/model_v1/inference.yml"),
+    ]
+
+
 def test_collect_weight_paths_rejects_missing_assets(tmp_path):
     module = _load_weight_collector()
     root = tmp_path / "weights"
@@ -289,6 +310,17 @@ def test_offline_release_script_exports_scene_images_in_one_archive():
     assert script.count("docker save") == 1
     assert '> "$OUT/image.tar.gz"' in script
     assert '"$SERVICE/image.tar.gz"' not in script
+    assert 'PANEL_PLUGINS=(panel-label mvs)' in script
+    assert 'PLUGIN_NAMES="panel_label,mvs"' in script
+
+
+def test_panel_hot_update_includes_mvs_plugin_and_weights():
+    script = Path("scripts/release/sync-plugin.sh").read_text(encoding="utf-8")
+
+    assert "PLUGINS=(panel-label mvs)" in script
+    assert '"vie_plugin_mvs-*.whl"' in script
+    assert "vie-plugin-mvs/vie_plugin_mvs/model_config.py" in script
+    assert "EXPECTED_ENTRYPOINTS=(panel_label mvs)" in script
 
 
 def test_scenario_registry_type_alias_is_cython_compatible():
@@ -324,7 +356,7 @@ def test_offline_release_script_help_lists_service_split():
     )
 
     assert "--service panel|scenes|all" in result.stdout
-    assert "只构建 panel-label 服务" in result.stdout
+    assert "构建 panel-label + MVS 合并服务" in result.stdout
     assert "只构建 scenes 服务" in result.stdout
 
 
