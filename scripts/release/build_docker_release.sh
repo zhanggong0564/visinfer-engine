@@ -9,7 +9,7 @@ usage() {
 用法: RELEASE_VERSION=2.1.3 build_docker_release.sh [--service panel|scenes|all]
      build_docker_release.sh [panel|scenes|all] 2.1.3
 
---service panel  只构建 panel-label 服务
+--service panel  构建 panel-label + MVS 合并服务
 --service scenes 只构建 scenes 服务
 --service all    构建两个服务（默认，兼容旧用法）
 EOF
@@ -108,6 +108,7 @@ test "$(sha256sum "$ORT_WHEEL" | awk '{print $1}')" = "$ORT_WHEEL_SHA256" || {
 
 PANEL_CONFIGS=(
   plugins/vie-plugin-panel-label/vie_plugin_panel_label/config.py
+  plugins/vie-plugin-mvs/vie_plugin_mvs/model_config.py
 )
 SCENES_CONFIGS=(
   plugins/vie-plugin-dc-fuse/vie_plugin_dc_fuse/config.py
@@ -250,14 +251,20 @@ validate_runtime_image() {
 IMAGES=()
 if [ "$TARGET" = "panel-label" ] || [ "$TARGET" = "all" ]; then
   PANEL_CONTEXT="$BUILD_ROOT/panel-label"
-  stage_runtime_context "$PANEL_CONTEXT" panel-label
+  PANEL_PLUGINS=(panel-label mvs)
+  stage_runtime_context "$PANEL_CONTEXT" "${PANEL_PLUGINS[@]}"
   PANEL_IMAGE="mobile_vision:panel-label-${RELEASE_VERSION}"
-  PANEL_PLUGIN_VERSIONS="panel_label=$(project_version plugins/vie-plugin-panel-label/pyproject.toml)"
+  PANEL_PLUGIN_VERSIONS=""
+  for plugin_name in "${PANEL_PLUGINS[@]}"; do
+    plugin_version="$(project_version "plugins/vie-plugin-${plugin_name}/pyproject.toml")"
+    plugin_label="${plugin_name//-/_}=${plugin_version}"
+    PANEL_PLUGIN_VERSIONS="${PANEL_PLUGIN_VERSIONS:+${PANEL_PLUGIN_VERSIONS},}${plugin_label}"
+  done
   docker build -f "$PANEL_CONTEXT/Dockerfile.runtime" \
     --build-arg "BASE_IMAGE=${BASE_TAG}" \
     --build-arg "BUILDER_IMAGE=${BASE_BUILDER_TAG}" \
-    --build-arg PLUGINS="panel-label" \
-    --build-arg PLUGIN_NAMES="panel_label" \
+    --build-arg PLUGINS="${PANEL_PLUGINS[*]}" \
+    --build-arg PLUGIN_NAMES="panel_label,mvs" \
     --build-arg PLUGIN_VERSIONS="$PANEL_PLUGIN_VERSIONS" \
     --build-arg RELEASE_VERSION="$RELEASE_VERSION" \
     --build-arg REQUIREMENTS_SHA256="$REQUIREMENTS_SHA256" \
@@ -266,7 +273,7 @@ if [ "$TARGET" = "panel-label" ] || [ "$TARGET" = "all" ]; then
     --build-arg ENVIRONMENT_CONTRACT_SHA256="$ENVIRONMENT_CONTRACT_SHA256" \
     --build-arg FRAMEWORK_VERSION="$FRAMEWORK_VERSION" \
     -t "$PANEL_IMAGE" "$PANEL_CONTEXT"
-  validate_runtime_image "$PANEL_IMAGE" "panel_label"
+  validate_runtime_image "$PANEL_IMAGE" "panel_label,mvs"
   IMAGES+=("$PANEL_IMAGE")
 fi
 
