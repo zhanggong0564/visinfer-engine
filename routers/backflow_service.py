@@ -68,6 +68,11 @@ class BackflowService:
             return "review"
         return "ng"
 
+    @staticmethod
+    def classify_stats_result(result_dict: dict) -> str:
+        """Map custom backflow categories to the standard stats verdicts."""
+        return BackflowService.classify_result(result_dict)
+
     def resolve_paths(
         self,
         original_filename: str,
