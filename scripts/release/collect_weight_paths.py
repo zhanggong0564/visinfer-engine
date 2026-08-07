@@ -5,7 +5,7 @@ import ast
 from pathlib import Path
 
 
-WEIGHT_PREFIX = "./weights/"
+WEIGHT_PREFIXES = ("./weights/", "weights/")
 
 
 def collect_weight_paths(
@@ -20,9 +20,15 @@ def collect_weight_paths(
         tree = ast.parse(source, filename=str(config_path))
         for node in ast.walk(tree):
             value = node.value if isinstance(node, ast.Constant) else None
-            if not isinstance(value, str) or not value.startswith(WEIGHT_PREFIX):
+            if not isinstance(value, str):
                 continue
-            relative = Path(value[len(WEIGHT_PREFIX):])
+            prefix = next(
+                (item for item in WEIGHT_PREFIXES if value.startswith(item)),
+                None,
+            )
+            if prefix is None:
+                continue
+            relative = Path(value[len(prefix):])
             target = (root / relative).resolve(strict=False)
             if target != root and root not in target.parents:
                 raise ValueError(f"weight path escapes root: {value}")
@@ -37,7 +43,7 @@ def collect_weight_paths(
             elif target.is_file():
                 referenced.add(target.relative_to(root))
     if not referenced:
-        raise ValueError("no ./weights references found in plugin configs")
+        raise ValueError("no weights references found in plugin configs")
     return sorted(referenced, key=lambda path: path.as_posix())
 
 
