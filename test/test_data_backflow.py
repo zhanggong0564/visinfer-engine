@@ -18,9 +18,22 @@ python_multipart.__version__ = "0.0.20"
 sys.modules.setdefault("python_multipart", python_multipart)
 
 from routers.base_router import BaseRouter
+from routers.backflow_service import BackflowService
 from routers.upload_processor import DecodedUpload
 from routers.upload_persistence import write_bytes_atomically
 from schemas.exceptions import ProductNotRegisteredError
+
+
+def test_stats_classification_ignores_custom_backflow_directory():
+    class CustomBackflowService(BackflowService):
+        @staticmethod
+        def classify_result(result_dict):
+            return "unmatch"
+
+    result = {"status": "false", "backflow_category": "unmatch"}
+
+    assert CustomBackflowService.classify_result(result) == "unmatch"
+    assert CustomBackflowService.classify_stats_result(result) == "ng"
 
 
 def _image_bytes(extension):
