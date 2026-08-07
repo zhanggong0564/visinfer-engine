@@ -74,7 +74,7 @@ def test_panel_label_compose_uses_scene_runtime_and_versioned_overlay():
 
     assert "image: ${PANEL_LABEL_IMAGE:-mobile_vision:panel-label}" in compose
     assert "build:" not in compose
-    assert 'ENABLED_SCENES=["panel_label"]' in compose
+    assert 'ENABLED_SCENES=["panel_label","mvs"]' in compose
     assert "STRICT_STARTUP=true" in compose
     assert "http://127.0.0.1:3001/health/ready" in compose
     for mount in ("pkg", "weights", "app.py", "static"):
@@ -156,7 +156,7 @@ def test_deploy_panel_label_compose_uses_service_image_and_versioned_overlay():
 
     assert "image: ${PANEL_LABEL_IMAGE:-mobile_vision:panel-label}" in compose
     assert "build:" not in compose
-    assert 'ENABLED_SCENES=["panel_label"]' in compose
+    assert 'ENABLED_SCENES=["panel_label","mvs"]' in compose
     assert "STRICT_STARTUP=true" in compose
     assert "http://127.0.0.1:3001/health/ready" in compose
     for mount in ("pkg", "weights", "app.py", "static"):
