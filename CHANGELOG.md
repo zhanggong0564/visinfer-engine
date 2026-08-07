@@ -10,6 +10,8 @@
 
 ## [Unreleased]
 
+- 增加指示灯生产服务黑盒验证工具，覆盖健康状态、OpenAPI、CUDA 模型契约、`type`/`register` 兼容性及同型号注册图切换。
+
 ### 框架架构
 
 - RF-DETR 分割后处理支持配置 mask 概率阈值，并在 logit 空间完成二值化。
