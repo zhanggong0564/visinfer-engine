@@ -1,11 +1,11 @@
 # =========================================================
-# VisInfer Engine (VIE) - 精简编排：仅 panel_label（线标 OCR）场景
+# VisInfer Engine (VIE) - panel_label（线标 OCR）+ MVS 合并服务
 #
 # 启动：        docker compose -f docker-compose.panel-label.yml up -d
 # 查看日志：    docker compose -f docker-compose.panel-label.yml logs -f
 # 停止：        docker compose -f docker-compose.panel-label.yml down
 #
-# panel runtime 基于公共 base，只增加 panel_label 场景插件；
+# panel runtime 基于公共 base，同时增加 panel_label 和 mvs 插件；
 # current/ 用于后续代码与权重热更新。
 # =========================================================
 
@@ -32,7 +32,7 @@ services:
       - ONNX_REQUIRE_CUDA=true
       - STRICT_STARTUP=true
       - INFERENCE_MAX_CONCURRENCY=1
-      - ENABLED_SCENES=["panel_label"]
+      - ENABLED_SCENES=["panel_label","mvs"]
       # current/pkg 非空时覆盖镜像内置场景插件。
       - PYTHONPATH=/app/workspace/pkg
 
