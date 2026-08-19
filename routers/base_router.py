@@ -146,7 +146,11 @@ class BaseRouter(ABC):
                 )
             image = upload.image
             with timer.stage("build_inputs"):
-                inputs = self.get_inputs(request_params, image)
+                inputs = self.prepare_inputs(
+                    request_params,
+                    image,
+                    original_filename,
+                )
                 if inspect.isawaitable(inputs):
                     inputs = await inputs
             with timer.stage("get_detector"):
@@ -271,6 +275,15 @@ class BaseRouter(ABC):
     def get_inputs(self, request_params: Any, image: np.ndarray) -> dict:
         """获取模型输入"""
         raise NotImplementedError("子类必须实现get_inputs方法")
+
+    def prepare_inputs(
+        self,
+        request_params: Any,
+        image: np.ndarray,
+        original_filename: str,
+    ) -> Any:
+        """构建检测输入；需要原始文件名的场景可重写此钩子。"""
+        return self.get_inputs(request_params, image)
 
     async def _validate_and_parse_params(self, json_data: str) -> Any:
         """验证和解析参数"""
