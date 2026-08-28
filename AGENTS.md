@@ -8,17 +8,25 @@
 
 ## 构建、测试与开发命令
 
-所有 Python 命令使用 `mobile_vision` Conda 环境：
+本地 Python 开发使用 uv 管理的 Python 3.10 环境；发布脚本内部仍使用
+`mobile_vision` Conda 环境：
 
 ```bash
 git clone https://github.com/zhanggong0564/visinfer-engine.git
 git clone --recurse-submodules https://github.com/zhanggong0564/visinfer-engine.git
 git submodule update --init --recursive
-conda run -n mobile_vision python app.py
-conda run -n mobile_vision python -m pytest test/ -v
-conda run -n mobile_vision python -m pytest plugins/vie-plugin-panel-label/tests/ -v
-conda run -n mobile_vision python scripts/release/build_wheels.py --no-isolation
+uv sync --locked
+uv run --locked python app.py
+uv pip install -e plugins/vie-plugin-panel-label --no-deps
+uv run --no-sync python -m pytest test/ -v
+uv run --no-sync python -m pytest plugins/vie-plugin-panel-label/tests/ -v
+uv run --locked python scripts/release/build_wheels.py --no-isolation
 ```
+
+完整场景环境使用 `uv sync --locked --group scenes`。插件是独立 Git submodule，
+不加入 uv workspace；本地 editable 安装插件后使用 `uv run --no-sync`，避免
+精确同步移除未声明的插件包。框架测试包含 panel-label 路由契约，
+因此完整运行 `test/` 前也需先安装该插件。
 
 普通 `git clone` 只获取框架；需要场景插件时使用 `--recurse-submodules`，或在已有克隆中执行 `git submodule update --init --recursive`。
 
@@ -60,9 +68,9 @@ OCR 中间结果统一使用框架 `OCRToken`。文字区域必须通过带有�
 
 ## 智能体协作约定
 
-所有沟通使用中文；保留用户已有改动，不擅自清理工作区。执行 Python 脚本、测试和构建时始终使用 `mobile_vision` 环境。修改完后根据实际改动需要更新变更记录：框架、构建、发布脚本或部署配置改动更新根目录 `CHANGELOG.md`；插件改动进入对应 `plugins/vie-plugin-*/CHANGELOG.md`，不得用根仓库记录替代插件记录。修改插件时须在插件目录单独检查 `git status`、`git diff` 和提交范围；修改框架与插件时分别在对应 Git 仓库提交，禁止跨仓库暂存或提交。插件提交推送后，在主仓库单独更新并提交对应 submodule 指针。.superpowers 技能的文档不要提交到git里面直接保存到本地
+所有沟通使用中文；保留用户已有改动，不擅自清理工作区。本地 Python 脚本、测试和构建使用 uv 环境；发布脚本内部继续使用 `mobile_vision` Conda 环境。修改完后根据实际改动需要更新变更记录：框架、构建、发布脚本或部署配置改动更新根目录 `CHANGELOG.md`；插件改动进入对应 `plugins/vie-plugin-*/CHANGELOG.md`，不得用根仓库记录替代插件记录。修改插件时须在插件目录单独检查 `git status`、`git diff` 和提交范围；修改框架与插件时分别在对应 Git 仓库提交，禁止跨仓库暂存或提交。插件提交推送后，在主仓库单独更新并提交对应 submodule 指针。.superpowers 技能的文档不要提交到git里面直接保存到本地
 
-所有测试必须直接在 Codex 沙箱外执行，不得先在沙箱内试跑。调用单元测试、集成测试、异步/线程池/SQLite 测试、模型运行时测试或 GPU 测试时，应在首次执行命令时申请沙箱外权限；测试失败以沙箱外结果为准，不得使用沙箱内的卡顿或异常作为项目代码结论。
+所有测试必须直接在 Codex 沙箱外执行，不得先在沙箱内试跑。调用单元测试、集成测试、异步/线程池/SQLite 测试、模型运行时测试或 GPU 测试时，应在首次执行命令时申请沙箱外权限；测试失败以沙箱外结果为准，不得使用沙箱内的卡顿或异常作为项目代码结论。Python 测试命令使用 uv 环境执行。
 
 # cc-connect Integration
 
