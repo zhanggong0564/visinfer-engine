@@ -50,6 +50,7 @@ output/
 # Python 与测试缓存
 __pycache__/
 .pytest_cache/
+.venv/
 
 # Python 包构建产物（editable 安装生成）
 *.egg-info/
