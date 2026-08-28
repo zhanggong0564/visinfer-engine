@@ -122,7 +122,7 @@ def test_panel_weight_collection_includes_ocr_metadata(tmp_path):
     )
     weights_root = tmp_path / "weights"
     expected_files = (
-        "panel_label/v2/rfdetr-seg-nano_v1.2.onnx",
+        "panel_label/v2/rfdetr-seg-nano_v1.3.onnx",
         "panel_label/v2/textline_ori_lcnet_v2.onnx",
         "panel_label/v2/textline_ori_lcnet_v2/inference.yml",
         "panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr.onnx",
