@@ -7,8 +7,34 @@ name = "vie-framework"
 version = "2.2.3"
 description = "VisInfer Engine 框架本体（services/schemas/routers/utils/config，仅基类与插件发现机制，不含具体场景）"
 requires-python = ">=3.10"
-# 运行期第三方依赖（fastapi/onnxruntime/loguru 等）由 requirements.txt 统一安装，
-# 此处不重复声明以免双份版本维护；插件 wheel 通过 name "vie-framework" 依赖本包。
+# 运行期第三方依赖由 uv dependency groups 和 requirements 发布合同管理；
+# 框架 wheel 不传递安装整套运行环境。
 dependencies = []
+
+[dependency-groups]
+runtime = [
+    "fastapi==0.128.0",
+    "loguru==0.7.3",
+    "numpy==1.26.4",
+    "onnxruntime-gpu==1.20.2",
+    "opencv-python-headless==4.11.0.86",
+    "pydantic-settings==2.14.2",
+    "python-multipart==0.0.32",
+    "PyYAML==6.0.3",
+    "uvicorn==0.51.0",
+]
+scenes = ["chromadb==1.5.9"]
+dev = [
+    "Cython==3.2.8",
+    "httpx==0.28.1",
+    "pytest==9.1.1",
+    "requests==2.34.2",
+    "setuptools==83.0.0",
+    "wheel==0.47.0",
+]
+
+[tool.uv]
+required-version = ">=0.12,<0.13"
+default-groups = ["runtime", "dev"]
 
 # 包发现与 cython 编译在 setup.py 中处理（ext_modules + build_py 覆盖）。
