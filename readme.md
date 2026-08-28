@@ -119,22 +119,48 @@ mobile_vision/
 
 ### 1. 环境准备
 
-- Python 3.10+
-- pip 22.0+
+- [uv 0.12.x](https://docs.astral.sh/uv/)
+- Python 3.10（由 `.python-version` 固定）
 
 ### 2. 安装依赖
 
 ```bash
-pip install -r requirements.txt
+uv sync --locked
+```
+
+需要运行完整场景环境时，额外安装 `scenes` 依赖组：
+
+```bash
+uv sync --locked --group scenes
+```
+
+`requirements.txt` 和 `requirements.scenes.txt` 仍作为 Docker 发布合同保留；
+本地开发以 `pyproject.toml` 和 `uv.lock` 为准。CUDA、cuDNN、`libgl1` 等
+非 Python 依赖仍由宿主机或 Docker 镜像提供。本地 uv 环境使用可公开解析的
+`onnxruntime-gpu==1.20.2`；Docker 发布继续使用已验证的本地 `1.20.1` wheel。
+
+插件保持独立 submodule 和发布边界，不加入 uv workspace。本地调试插件时：
+
+```bash
+uv pip install -e plugins/vie-plugin-panel-label --no-deps
+uv run --no-sync python -m pytest plugins/vie-plugin-panel-label/tests/ -v
 ```
 
 ### 3. 启动服务
 
 ```bash
-python app.py
+uv run --locked python app.py
 ```
 
 服务将在 `http://0.0.0.0:3001` 启动。
+
+运行不依赖场景插件的命令时可使用 `uv run --locked`。完整框架测试包含
+panel-label 路由契约，需先安装该插件：
+
+```bash
+uv pip install -e plugins/vie-plugin-panel-label --no-deps
+uv run --no-sync python -m pytest test/ -v
+```
 
 ### 4. 访问 API 文档
 
