@@ -10,6 +10,8 @@
 
 ## [Unreleased]
 
+- 本地开发环境改用 uv 管理 Python 3.10、依赖组和锁文件；Docker 发布链路
+  继续保留 requirements 合同及定制 ONNX Runtime wheel 安装逻辑。
 - 增加指示灯生产服务黑盒验证工具，覆盖健康状态、OpenAPI、CUDA 模型契约、`type`/`register` 兼容性及同型号注册图切换。
 - 增加指示灯目录数据批量评测工具，按型号与 Version 使用独立注册图并保存失败响应和可视化。
 - panel-label 生产服务同时装载 MVS 插件，两个场景共用 3001 端口；镜像构建、
