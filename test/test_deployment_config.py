@@ -322,6 +322,24 @@ def test_framework_wheel_keeps_third_party_dependencies_external():
     assert "dependencies = []" in framework
 
 
+def test_uv_development_environment_contract():
+    framework = Path("pyproject.toml").read_text(encoding="utf-8")
+
+    assert 'required-version = ">=0.12,<0.13"' in framework
+    assert 'default-groups = ["runtime", "dev"]' in framework
+    assert '"onnxruntime-gpu==1.20.2"' in framework
+    assert 'scenes = ["chromadb==1.5.9"]' in framework
+    assert Path(".python-version").read_text(encoding="utf-8").strip() == "3.10"
+
+
+def test_uv_does_not_change_production_onnx_runtime_contract():
+    requirements = Path("requirements.txt").read_text(encoding="utf-8")
+    dockerfile = Path("Dockerfile.base").read_text(encoding="utf-8")
+
+    assert "onnxruntime-gpu==1.20.1" in requirements
+    assert "onnxruntime_gpu-1.20.1-cp310-cp310" in dockerfile
+
+
 def test_framework_package_version_includes_yolo_pipeline():
     framework = Path("pyproject.toml").read_text(encoding="utf-8")
 
