@@ -10,6 +10,8 @@ from config import settings
 from routers.upload_persistence import write_bytes_atomically
 from schemas.inspection import InspectionVerdict
 from utils import vision_logger
+from utils.log_context import current_log_context
+from utils.request_logging import log_json
 
 
 DATA_DIR = os.path.abspath(settings.DATA_DIR)
@@ -157,6 +159,9 @@ class BackflowService:
         batch_size: Optional[int] = None,
     ) -> None:
         """保存原始图片和结果记录，落盘失败不影响请求接口。"""
+        context = current_log_context()
+        image_status = "missing"
+        paths = {}
         try:
             is_error_record = isinstance(result_dict, dict) and "error" in result_dict
             verdict_dir = (
@@ -190,27 +195,30 @@ class BackflowService:
                             pending_paths["image_path"],
                             paths["image_path"],
                         )
-                        vision_logger.info(
-                            "数据回流图片移动完成 src={} dst={}",
-                            pending_paths["image_path"],
-                            paths["image_path"],
-                        )
+                        image_status = "moved"
                     elif raw_image_bytes is not None:
                         write_bytes_atomically(raw_image_bytes, paths["image_path"])
+                        image_status = "written"
                     else:
                         vision_logger.warning(
                             "数据回流缺少 pending 原图且无原始字节 filename={}",
                             original_filename,
+                            event="backflow.image_missing",
                         )
                 elif raw_image_bytes is not None and not os.path.exists(
                     paths["image_path"]
                 ):
                     write_bytes_atomically(raw_image_bytes, paths["image_path"])
+                    image_status = "written"
+                elif os.path.exists(paths["image_path"]):
+                    image_status = "existing"
             except Exception as exc:
+                image_status = "failed"
                 vision_logger.warning(
                     "数据回流图片落盘失败 filename={}: {}",
                     original_filename,
                     exc,
+                    event="backflow.image_failed",
                 )
 
             try:
@@ -228,7 +236,10 @@ class BackflowService:
                 "request_params": request_params,
                 "latency_ms": latency_ms,
                 "result": result_dict,
+                "image_persist_status": image_status,
             }
+            if context is not None:
+                record["request_id"] = context.request_id
             if batch_id is not None:
                 record["batch_id"] = self.sanitize_dir_name(batch_id)
             if batch_index is not None:
@@ -237,7 +248,18 @@ class BackflowService:
                 record["batch_size"] = batch_size
             with open(paths["record_path"], "w", encoding="utf-8") as stream:
                 json.dump(record, stream, ensure_ascii=False, indent=2)
+            vision_logger.info("数据回流完成 {}", log_json({
+                "filename": original_filename, "classification": record["verdict"],
+                "image_status": image_status, "record_status": "written",
+                "image_path": paths["image_path"], "record_path": paths["record_path"],
+                "batch_id": batch_id, "batch_index": batch_index,
+            }), event="backflow.completed")
         except Exception as exc:
             vision_logger.warning(
-                "数据回流落盘失败 filename={}: {}", original_filename, exc
+                "数据回流失败 {}", log_json({
+                    "filename": original_filename, "record_status": "failed",
+                    "record_path": paths.get("record_path"), "image_status": image_status,
+                    "error_type": type(exc).__name__, "error": str(exc),
+                }),
+                event="backflow.failed",
             )
