@@ -74,14 +74,12 @@ def build_one(
 ) -> None:
     clean(project)
     cmd = [
-        sys.executable,
-        "-m",
-        "pip",
-        "wheel",
-        str(project),
-        "--no-deps",
-        "-w",
+        "uv",
+        "build",
+        "--wheel",
+        "--out-dir",
         str(out),
+        str(project),
     ]
     if no_isolation:
         cmd.append("--no-build-isolation")
