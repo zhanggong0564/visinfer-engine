@@ -14,6 +14,8 @@
 
 - editable 安装不再向源码目录生成 Cython `.so`，wheel 构建结束后清理源码旁
   二进制和中间产物，并将清理范围限制在框架及插件包目录内。
+- 限定 pytest 默认收集目录为框架 `test/`，避免裸 `uv run pytest` 扫描发布包、
+  权重、隔离工作区和插件子仓库。
 
 - 本地开发环境改用 uv 管理 Python 3.10、依赖组和锁文件；Docker 发布链路
   继续保留 requirements 合同及定制 ONNX Runtime wheel 安装逻辑。
