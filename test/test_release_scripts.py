@@ -14,6 +14,14 @@ def _load_weight_collector():
     return module
 
 
+def _load_wheel_builder():
+    path = Path("scripts/release/build_wheels.py")
+    spec = importlib.util.spec_from_file_location("build_wheels", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _environment_contract(root: Path) -> str:
     env = os.environ.copy()
     env["VIE_CONTRACT_ROOT"] = str(root)
@@ -350,6 +358,22 @@ def test_wheel_builder_supports_plugins_only_mode():
     assert '"--wheel",' in script
     assert '"-m",\n        "pip"' not in script
 
+
+def test_wheel_builder_clean_does_not_touch_virtual_environment(tmp_path):
+    builder = _load_wheel_builder()
+    builder.ROOT = tmp_path
+
+    source_extension = tmp_path / "services/example.so"
+    source_extension.parent.mkdir()
+    source_extension.write_bytes(b"extension")
+    venv_extension = tmp_path / ".venv/lib/example.so"
+    venv_extension.parent.mkdir(parents=True)
+    venv_extension.write_bytes(b"dependency")
+
+    builder.clean(tmp_path)
+
+    assert not source_extension.exists()
+    assert venv_extension.read_bytes() == b"dependency"
 
 
 def test_offline_release_script_help_lists_service_split():
