@@ -28,6 +28,8 @@ from services.inference.admission import inference_admission_controller
 from utils import vision_logger
 from utils.async_utils import run_sync
 from utils.timing import StageTimer
+from utils.log_context import current_log_context, detection_log_context
+from utils.request_logging import log_detection_result, log_json, parameter_summary
 from routers.upload_processor import UploadProcessor
 from routers.backflow_service import BackflowService, BackflowTarget, UNKNOWN_MODEL_DIR
 from routers.response_builder import ResponseBuilder
@@ -99,11 +101,12 @@ class BaseRouter(ABC):
         # 调用统计埋点：每一次调用都要计数——参数校验失败、图片非法等
         # 进不了检测的请求也算，统一记 error；成功路径在内层按检测结论记
         # ok/ng。record_call 自吞异常，统计失败绝不影响检测主流程。
-        try:
-            return await self._process_detect_request(background_tasks, file, json_data)
-        except Exception:
-            await run_sync(record_call, self.detector_type, "error")
-            raise
+        with detection_log_context(self.detector_type, file.filename or "unknown.jpg"):
+            try:
+                return await self._process_detect_request(background_tasks, file, json_data)
+            except Exception:
+                await run_sync(record_call, self.detector_type, "error")
+                raise
 
     async def _process_detect_request(
         self,
@@ -114,21 +117,15 @@ class BaseRouter(ABC):
         timer = StageTimer()
         received_at = datetime.now().isoformat(timespec="milliseconds")
         original_filename = file.filename or "unknown.jpg"
-        # json_data 可能很长（含 line_order 等），且防止以后夹带 base64 图撑爆日志，截断预览
-        json_preview = (
-            json_data
-            if len(json_data) <= 500
-            else f"{json_data[:500]}...(共{len(json_data)}字符)"
-        )
         try:
             vision_logger.info(
-                f"接收{self.router_name}请求：图片={original_filename}, "
-                f"json_data={json_preview}"
+                "接收检测请求 router={} json_chars={}",
+                self.router_name, len(json_data), event="request.received",
             )
             with timer.stage("validate_params"):
                 request_params = await self._validate_and_parse_params(json_data)
-            vision_logger.info(f"校验参数：{request_params}")
             fallback_product_type = self._extract_product_type(request_params)
+            self._log_request_params(request_params, fallback_product_type)
 
             with timer.stage("process_image"):
                 upload = await self.upload_processor.process(
@@ -186,10 +183,6 @@ class BaseRouter(ABC):
                 raise
             end = time.time()
             latency_ms = (end - start) * 1000
-            # 用 loguru 占位参数（惰性格式化）：仅当 sink 真要写该级别时才拼接字符串，
-            # 避免在热路径上对结果对象做无谓的 str() 求值
-            vision_logger.info("检测耗时：{:.4f}秒", end - start)
-            vision_logger.debug("原始检测结果：{}", result_info)
             with timer.stage("result_to_dict"):
                 result_dict = self._result_to_dict(result_info)
             try:
@@ -221,7 +214,7 @@ class BaseRouter(ABC):
                         fallback_product_type=fallback_product_type,
                     )
                 raise
-            vision_logger.info("返回检测结果")
+            log_detection_result(result_dict)
 
             with timer.stage("schedule_background_tasks"):
                 background_tasks.add_task(
@@ -252,7 +245,21 @@ class BaseRouter(ABC):
                 self.detector_type,
                 original_filename,
                 timer.summary(),
+                event="request.timings",
             )
+
+    def _log_request_params(self, request_params: Any, product_type: Optional[str]) -> None:
+        context = current_log_context()
+        if context is not None:
+            context.product_type = product_type or "-"
+        vision_logger.info(
+            "请求参数 {}", log_json(self.request_log_params(request_params)),
+            event="request.params",
+        )
+
+    def request_log_params(self, request_params: Any) -> dict:
+        """场景可扩展关键判定字段；不打印完整请求对象和参考图片地址。"""
+        return parameter_summary(request_params)
 
     @staticmethod
     def _extract_product_type(request_params: Any) -> Optional[str]:
