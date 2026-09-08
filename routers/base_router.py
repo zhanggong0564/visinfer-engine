@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 import numpy as np
 from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
+from pydantic import ValidationError
 
 from config import settings
 from schemas import CommonResponse
@@ -292,6 +293,11 @@ class BaseRouter(ABC):
             return self.request_schema(json_dict)
         except json.JSONDecodeError:
             raise InvalidParamsError("json_data 格式非法，需传入标准 JSON 字符串")
+        except ValidationError as e:
+            raise InvalidParamsError(
+                f"参数校验失败: {e}",
+                validation_errors=e.errors(include_input=False, include_url=False, include_context=False),
+            ) from e
         except ValueError as e:
             raise InvalidParamsError(f"参数校验失败: {e}")
 
