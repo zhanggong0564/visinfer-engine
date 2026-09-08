@@ -10,6 +10,11 @@
 
 ## [Unreleased]
 
+### 修复
+
+- editable 安装不再向源码目录生成 Cython `.so`，wheel 构建结束后清理源码旁
+  二进制和中间产物，并将清理范围限制在框架及插件包目录内。
+
 - 本地开发环境改用 uv 管理 Python 3.10、依赖组和锁文件；Docker 发布链路
   继续保留 requirements 合同及定制 ONNX Runtime wheel 安装逻辑。
 - 增加指示灯生产服务黑盒验证工具，覆盖健康状态、OpenAPI、CUDA 模型契约、`type`/`register` 兼容性及同型号注册图切换。
