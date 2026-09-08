@@ -72,6 +72,7 @@ class InferenceAdmissionController:
             self._active,
             self._waiting,
             self._max_concurrency,
+            event="inference.admitted",
         )
         try:
             return await asyncio.shield(future)
