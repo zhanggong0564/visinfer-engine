@@ -27,7 +27,7 @@ class BatchBusinessLogicBase(BusinessLogicBase):
             with timer.stage("inspect_batch"):
                 return self.inspect_batch(images, request_params)
         finally:
-            vision_logger.info("批量业务阶段耗时 {}", timer.summary())
+            vision_logger.info("批量业务阶段耗时 {}", timer.summary(), event="inference.batch_timings")
 
     def validate_batch(
         self,
