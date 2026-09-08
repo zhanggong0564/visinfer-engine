@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+## [2.2.4] - 2026-09-08（Git tag: `v2.2.4`）
+
+本次配套插件：panel-label `v1.3.0`、dc-fuse `v0.2.0`、MVS `v0.2.0`。
+
 ### 修复
 
 - editable 安装不再向源码目录生成 Cython `.so`，wheel 构建结束后清理源码旁
