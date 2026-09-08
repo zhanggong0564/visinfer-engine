@@ -30,7 +30,45 @@ uv run --locked python scripts/release/build_wheels.py --no-isolation
 
 普通 `git clone` 只获取框架；需要场景插件时使用 `--recurse-submodules`，或在已有克隆中执行 `git submodule update --init --recursive`。
 
-服务默认监听 `0.0.0.0:3001`。修改插件时必须同时运行框架测试和对应插件测试。场景容器使用 `docker compose -f docker-compose.scenes.yml up -d` 启动，非明确重建镜像时不要添加 `--build`。运行时镜像必须保留 `libgl1`，否则 PaddleOCR 传递安装的 OpenCV 可能因缺少 `libGL.so.1` 而启动失败。
+服务默认监听 `0.0.0.0:3001`。容器部署、更新与回滚遵循下方“部署与环境约定”。
+
+## 部署与环境约定
+
+### 环境与服务识别
+
+| 环境 | 主机 / SSH 目标 | 登录账号 |
+| --- | --- | --- |
+| 生产环境 | `192.168.100.183`；使用 `ssh sun@192.168.100.183` | `sun` |
+| 测试环境 | `AItest`；优先使用 `ssh AItest` | 使用本地 SSH 配置或已有连接约定，未明确时先核实 |
+
+`AItest` 是测试环境标识，不是 Conda 环境名或容器名。连接前可用 `ssh -G AItest` 核对本地解析出的主机、账号和端口；解析结果不代表远端已经连通。不得猜测测试环境 IP 或沿用生产账号。
+
+| 服务 | 包含场景 | Compose 文件 | 默认宿主机端口 | 更新脚本 |
+| --- | --- | --- | --- | --- |
+| `panel-label` | `panel_label`、`mvs` | `docker-compose.panel-label.yml` | `3001` | `scripts/release/sync-plugin.sh` |
+| `scenes` | `dc_fuse`、`indicator_light`、`lap_surf`、`line_squeeze`、`plate_screw` | `docker-compose.scenes.yml` | `3005` | `scripts/release/sync-plugin-scenes.sh` |
+
+实际部署目录、容器名、端口和挂载以目标机器的 Compose 与运行状态为准；`docs/deploy.md` 中的 `/srv/vie/panel-label`、`/srv/vie/scenes` 是示例路径，不视为已确认的现场目录。两个服务使用独立部署目录；测试与生产不得共用可写数据、日志或发布目录。同机运行测试副本时，必须使用独立容器名和宿主机端口，并核对脚本中的 readiness 地址是否匹配。
+
+### 部署流程与操作范围
+
+完整流程见 [部署指南](docs/deploy.md)，单服务速查见 [panel-label 部署清单](deploy/README-部署清单.md) 和 [scenes 部署清单](deploy/README-部署清单-scenes.md)。命令参数以当前 `scripts/release/` 脚本实现为准。
+
+1. 根据用户请求和已有会话确定目标环境、服务及发布范围；测试部署不自动包含生产发布。未明确目标时先完成本地检查与构建准备，在远程变更前澄清；已有明确部署授权时不重复询问。
+2. 发布前检查主仓库及受影响插件的 `git status`、提交版本和 submodule 指针，明确发布包是否包含未提交改动，不得将其宣称为可由提交号完整复现的版本。运行框架测试和受影响插件测试；新增或修改发布链路时还需运行 `test/test_deployment_config.py`、`test/test_release_scripts.py`。
+3. 在已授权的目标环境只读核查主机身份、部署目录、容器、镜像、端口、挂载、磁盘空间及 GPU 状态，记录现有镜像标识和 `current` / `previous` 指向，确定可用的回滚版本。
+4. 默认先在 `AItest` 验证本次发布，再将相同构建产物用于已授权的生产发布；环境配置分别维护。用户明确要求直接修复或回滚生产时，按其指定范围执行并说明验证情况。
+5. 发布后检查容器状态、启动日志、`/health/ready` 和受影响场景的代表性推理请求。仅容器启动或健康接口通过，不代表业务验证完成；真实模型或样本不可用时明确说明未验证项。
+6. 完成后报告目标环境、服务、发布版本、实际目录、验证结果和回滚状态。部署授权包含发布失败后的恢复操作；失败时先检查脚本自动恢复结果，避免重复执行回滚导致版本再次切换。
+
+### 发布方式与回滚
+
+- **首次部署或运行环境变化**：使用 `scripts/release/build_docker_release.sh` 构建离线包，再使用包内 `deploy_offline.sh` 部署指定服务。校验 `SHA256SUMS`；CUDA、系统依赖、Python requirements、ONNX Runtime wheel 或 Python ABI 变化时重新构建镜像，不绕过环境契约校验。
+- **日常代码或权重更新**：使用上表对应的 sync 脚本，显式传入 `--remote` 和已核实的 `--remote-dir`。生产目标为 `sun@192.168.100.183`，测试目标为 `AItest`。脚本更新整个服务的 framework、插件及相关资源；即使只修改一个插件，也需验证同服务的其他受影响场景。
+- **仅准备产物**：sync 脚本使用 `--local`。`--no-build` 仅用于已核对版本的现有 wheel；`--no-weights` 仅用于模型未变且远端权重满足新代码要求的发布。`--allow-legacy-image` 仅在确认旧镜像缺少契约标签且其他兼容检查通过时显式使用。
+- **原子更新**：沿用脚本的 `releases/<release-id>.staging`、`current` 和 `previous` 机制，不直接覆盖运行中的 `current` 内容。`logs/`、`data/` 跨版本保留；不得在常规发布中清理历史模型、回流数据或回滚所需版本。
+- **显式回滚**：使用 `scripts/release/rollback-plugin.sh --remote <SSH目标> --remote-dir <实际部署目录> --service <panel-label或scenes>`。该脚本交换 `current` / `previous` 并重建容器，不是可无条件重复执行的幂等操作；回滚后重新检查 readiness 和业务请求。
+- **容器操作**：优先使用发布脚本。手动启动场景服务时使用 `docker compose -f docker-compose.scenes.yml up -d`；非明确重建镜像时不要添加 `--build`。热更新会重建容器，不能宣称零停机。运行时镜像必须保留 `libgl1`，否则 PaddleOCR 传递安装的 OpenCV 可能因缺少 `libGL.so.1` 而启动失败。
 
 ## 编码与命名规范
 
@@ -56,7 +94,7 @@ OCR 中间结果统一使用框架 `OCRToken`。文字区域必须通过带有�
 
 框架运行配置使用 Pydantic Settings，场景运行配置继承 `services.base.SceneSettings`；不得新增普通类常量配置或手写 `os.getenv`、布尔值及数字解析。场景配置字段使用 `snake_case`，通过固定场景前缀的环境变量或 `.env` 覆盖，非法类型和越界值必须在加载阶段报错，不得静默回退默认值。复杂、需要运营维护的嵌套业务规则使用 YAML，并在进入业务代码前转换为类型化模型和完整校验；模型自带的 `inference.yml` 等 metadata 保持原格式，不得并入运行配置。配置优先级统一为“显式构造参数 > 环境变量/`.env` > YAML 业务规则 > 代码默认值”，不得为了统一后缀将全部配置机械改成 INI 或 YAML。
 
-`LOG_DIR` 和 `DATA_DIR` 必须保持相对工作目录解析，避免编译为 `.so` 后数据写入虚拟环境。模型遵循 `weights/{scene}/{task}_{arch}_v{N}` 命名；发布新模型时新增版本，不覆盖旧文件。不得提交密钥、生产地址或敏感样本。
+`LOG_DIR` 和 `DATA_DIR` 必须保持相对工作目录解析，避免编译为 `.so` 后数据写入虚拟环境。模型遵循 `weights/{scene}/{task}_{arch}_v{N}` 命名；发布新模型时新增版本，不覆盖旧文件。不得提交密钥或敏感样本；生产地址仅允许记录用户明确要求维护的部署环境信息，不得硬编码到业务代码或通用配置默认值中。
 
 ## 提交与合并请求
 
