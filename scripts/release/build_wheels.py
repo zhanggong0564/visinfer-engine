@@ -27,6 +27,7 @@ from pathlib import Path
 # 本脚本位于 scripts/release/，距仓库根两级（release → scripts → root）
 ROOT = Path(__file__).resolve().parent.parent.parent
 PLUGINS = sorted((ROOT / "plugins").glob("vie-plugin-*"))
+FRAMEWORK_PACKAGES = ("services", "schemas", "routers", "utils", "config")
 
 
 def _norm(name: str) -> str:
@@ -55,9 +56,15 @@ def clean(project: Path) -> None:
     shutil.rmtree(project / "build", ignore_errors=True)
     for egg in project.glob("*.egg-info"):
         shutil.rmtree(egg, ignore_errors=True)
-    for stray in list(project.rglob("*.c")) + list(project.rglob("*.so")):
-        if "build" not in stray.parts:
-            stray.unlink()
+    package_dirs = (
+        [project / package for package in FRAMEWORK_PACKAGES]
+        if project == ROOT
+        else list(project.glob("vie_plugin_*"))
+    )
+    for package_dir in package_dirs:
+        for pattern in ("*.c", "*.so"):
+            for stray in package_dir.rglob(pattern):
+                stray.unlink()
 
 
 def build_one(
