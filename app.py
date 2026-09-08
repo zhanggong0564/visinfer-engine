@@ -7,8 +7,6 @@
 @Description  :
 '''
 
-import time
-import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import FastAPI, Request
@@ -20,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from config import settings
 from utils import vision_logger
 from utils.openapi_docs import configure_openapi_docs
+from utils.request_logging import RequestLoggingMiddleware, log_request_error
 from schemas.error_codes import ErrorCode, ERROR_CODE_MESSAGES
 from schemas.exceptions import VisionAPIError
 from routers import RouterRegistry
@@ -70,32 +69,7 @@ app.add_middleware(
 )
 
 
-@app.middleware("http")
-async def access_log_middleware(request: Request, call_next):
-    """统一访问日志钩子：为每个请求生成 request-id，记录耗时与状态码。
-
-    覆盖所有端点（含健康检查/异常），把计时与访问日志从各业务 handler 中抽离。
-    """
-    request_id = uuid.uuid4().hex[:12]
-    start = time.perf_counter()
-    try:
-        response = await call_next(request)
-    except Exception:
-        latency_ms = (time.perf_counter() - start) * 1000
-        vision_logger.exception(
-            f"[{request_id}] {request.method} {request.url.path} 异常 耗时={latency_ms:.1f}ms"
-        )
-        raise
-    latency_ms = (time.perf_counter() - start) * 1000
-    # 健康探针等高频端点：响应正常（<400）时静默，不刷访问日志；
-    # 一旦异常或非 2xx（如探针 503）仍照常记录，保留排障可见性。
-    if not (request.url.path in settings.ACCESS_LOG_SKIP_PATHS and response.status_code < 400):
-        vision_logger.info(
-            f"[{request_id}] {request.method} {request.url.path} "
-            f"-> {response.status_code} 耗时={latency_ms:.1f}ms"
-        )
-    response.headers["X-Request-ID"] = request_id
-    return response
+app.add_middleware(RequestLoggingMiddleware, skip_paths=settings.ACCESS_LOG_SKIP_PATHS)
 
 
 # 注册路由（仅发现与注册，不加载模型）
@@ -123,24 +97,25 @@ def _build_error_response(code: ErrorCode, error_msg: str) -> dict:
 @app.exception_handler(VisionAPIError)
 async def vision_api_exception_handler(request: Request, exc: VisionAPIError):
     """业务层主动抛出的异常 → 翻译为 CommonResponse"""
-    vision_logger.error(
-        f"业务异常 code={int(exc.code)} msg={exc.error_msg} context={exc.context}"
-    )
+    headers = log_request_error(request, exc, exc.code, exc.context.get("validation_errors"))
     return JSONResponse(
         status_code=200,
         content=_build_error_response(exc.code, exc.error_msg),
+        headers=headers,
     )
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Pydantic / FastAPI 自带的参数校验失败 → INVALID_PARAMS"""
-    vision_logger.error(f"参数校验失败: {exc.errors()}")
+    details = [{"loc": error["loc"], "type": error["type"], "msg": error["msg"]} for error in exc.errors()]
+    headers = log_request_error(request, exc, ErrorCode.INVALID_PARAMS, details)
     return JSONResponse(
         status_code=200,
         content=_build_error_response(
             ErrorCode.INVALID_PARAMS, f"参数校验失败: {exc.errors()}"
         ),
+        headers=headers,
     )
 
 
@@ -151,12 +126,13 @@ async def global_exception_handler(request: Request, exc: Exception):
     对外只回固定文案，不把 str(exc)（含路径/栈片段等内部细节）透传给调用方；
     异常详情仅进日志（含 request-id 由访问日志中间件输出）便于排障。
     """
-    vision_logger.exception(f"未捕获异常: {exc}")
+    headers = log_request_error(request, exc, ErrorCode.INTERNAL_ERROR)
     return JSONResponse(
         status_code=200,
         content=_build_error_response(
             ErrorCode.INTERNAL_ERROR, ERROR_CODE_MESSAGES[ErrorCode.INTERNAL_ERROR]
         ),
+        headers=headers,
     )
 
 
