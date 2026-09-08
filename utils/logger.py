@@ -15,6 +15,7 @@ from loguru import logger
 from typing import Optional
 from config import settings  # 引入项目全局配置
 import threading
+from .log_context import enrich_log_record
 
 
 # 定义单例元类（线程安全的单例实现）
@@ -42,6 +43,10 @@ class VisionLogger(metaclass=SingletonMeta):
         """初始化loguru配置：控制台输出 + 文件输出（按大小/时间分割）"""
         # 1. 清空loguru默认的控制台输出（避免重复输出）
         logger.remove()
+        logger.configure(
+            extra={"scene": "default", "request_id": "-", "product_type": "-", "filename": "-", "event": "-"},
+            patcher=enrich_log_record,
+        )
 
         # 2. 定义日志格式（包含时间、级别、模块、行号、场景、消息）
         log_format = (
@@ -49,6 +54,8 @@ class VisionLogger(metaclass=SingletonMeta):
             "<level>{level: <8}</level> | "
             "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
             "<yellow>{extra[scene]}</yellow> | "  # 场景标记（如dc_fuse）
+            "request_id={extra[request_id]} product_type={extra[product_type]} "
+            "file={extra[filename]} event={extra[event]} | "
             "<level>{message}</level>"
         )
 
@@ -56,49 +63,52 @@ class VisionLogger(metaclass=SingletonMeta):
         log_dir = Path(settings.LOG_DIR)
         log_dir.mkdir(parents=True, exist_ok=True)
 
+        common_options = {
+            "format": log_format,
+            "enqueue": True,
+            "diagnose": False,
+            "backtrace": False,
+        }
+        file_options = {
+            **common_options,
+            "rotation": "00:00",
+            "retention": "30 days",
+            "compression": "zip",
+            "encoding": "utf-8",
+        }
+
         # 4. 配置控制台输出（级别取全局配置）
         logger.add(
             sink=sys.stderr,  # 直接用标准错误流，比 lambda+print 少一层 Python 调用
-            format=log_format,
             level=settings.LOG_LEVEL,  # 全局配置的日志级别（如INFO）
-            enqueue=True,  # 异步输出，提升性能
             colorize=True,  # 控制台日志带颜色
+            **common_options,
         )
 
         # 5. 配置文件输出（按天分割，每天 0 点切新文件，保留 30 天，压缩归档）
         logger.add(
             sink=str(log_dir / "mobile_vision_{time:YYYY-MM-DD}.log"),  # 按日期命名文件
-            format=log_format,
             # 文件级别同样取全局配置：原先写死 DEBUG，导致生产每请求都把分阶段计时/
             # 结果对象全量落盘，LOG_LEVEL=INFO 形同虚设。需排障时调 LOG_LEVEL=DEBUG 即可。
             level=settings.LOG_LEVEL,
-            enqueue=True,
-            rotation="00:00",  # 每天零点切分，避免长跑堆积到单个文件
-            retention="30 days",  # 保留 30 天日志
-            compression="zip",  # 过期日志压缩为zip
-            encoding="utf-8",
+            **file_options,
         )
 
         # 6. 单独配置错误日志文件（仅ERROR及以上级别，同样按天分割）
         logger.add(
             sink=str(log_dir / "mobile_vision_error_{time:YYYY-MM-DD}.log"),
-            format=log_format,
             level="ERROR",
-            enqueue=True,
-            rotation="00:00",  # 每天零点切分
-            retention="30 days",
-            compression="zip",
-            encoding="utf-8",
+            **file_options,
         )
 
-    def get_logger(self, scene: Optional[str] = "default"):
+    def get_logger(self, scene: Optional[str] = None):
         """
         获取带场景标记的日志实例
         :param scene: 场景名称（如dc_fuse、scene1等）
         :return: 带场景标记的loguru logger实例
         """
         # 通过bind添加场景上下文，所有日志都会携带该场景标记
-        return logger.bind(scene=scene)
+        return logger.bind(scene=scene) if scene is not None else logger
 
 
 # 全局日志实例（项目中直接导入该实例使用）
