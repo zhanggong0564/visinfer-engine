@@ -84,7 +84,11 @@ def build_one(
     if no_isolation:
         cmd.append("--no-build-isolation")
     print(f"\n>>> 构建 {project.name or 'vie-framework'}")
-    subprocess.run(cmd, check=True, cwd=str(ROOT))
+    try:
+        subprocess.run(cmd, check=True, cwd=str(ROOT))
+    finally:
+        # 构建后也清理 Cython/setuptools 可能写回源码树的中间产物。
+        clean(project)
 
 
 def main() -> None:
