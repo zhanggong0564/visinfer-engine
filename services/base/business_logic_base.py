@@ -55,7 +55,7 @@ class BusinessLogicBase:
                 self.finalize_hook(ctx)
             return ctx.result
         finally:
-            vision_logger.info("业务检测阶段耗时 {}", timer.summary())
+            vision_logger.info("业务检测阶段耗时 {}", timer.summary(), event="inference.timings")
 
     def build_context(self, params: InputParamsBusiness) -> InferenceContext:
         h, w = params.image.shape[:2]
