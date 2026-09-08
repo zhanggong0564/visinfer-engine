@@ -16,6 +16,8 @@ from services.call_stats import record_call
 from utils import vision_logger
 from utils.async_utils import run_sync
 from utils.timing import StageTimer
+from utils.log_context import detection_log_context
+from utils.request_logging import log_detection_result, log_json
 
 
 @dataclass(frozen=True)
@@ -67,15 +69,16 @@ class BaseBatchRouter(BaseRouter):
         files: list[UploadFile] = File(..., description="按顺序上传的图片列表"),
         json_data: str = Form(default="{}", description="可选检验参数 JSON"),
     ):
-        try:
-            return await self._process_batch_request(
-                background_tasks,
-                files,
-                json_data,
-            )
-        except Exception:
-            await run_sync(record_call, self.detector_type, "error")
-            raise
+        with detection_log_context(self.detector_type, "batch"):
+            try:
+                return await self._process_batch_request(
+                    background_tasks,
+                    files,
+                    json_data,
+                )
+            except Exception:
+                await run_sync(record_call, self.detector_type, "error")
+                raise
 
     async def _process_batch_request(
         self,
@@ -91,6 +94,10 @@ class BaseBatchRouter(BaseRouter):
         error_persisted = False
         started = time.time()
         try:
+            vision_logger.info("接收批量请求 {}", log_json({
+                "batch_id": batch_id, "files": [file.filename for file in files],
+                "file_count": len(files), "json_chars": len(json_data),
+            }), event="request.received")
             with timer.stage("validate_params"):
                 request_params = await self._validate_and_parse_params(json_data)
                 if len(files) < self.min_files:
@@ -98,6 +105,7 @@ class BaseBatchRouter(BaseRouter):
                         f"至少需要上传 {self.min_files} 张图片"
                     )
             fallback_product_type = self._extract_product_type(request_params)
+            self._log_request_params(request_params, fallback_product_type)
 
             for index, file in enumerate(files):
                 filename = file.filename or f"unknown-{index + 1}.jpg"
@@ -155,6 +163,7 @@ class BaseBatchRouter(BaseRouter):
                 error_persisted = True
                 raise
 
+            log_detection_result(result_dict)
             with timer.stage("schedule_background_tasks"):
                 for index, upload in enumerate(uploads, start=1):
                     background_tasks.add_task(
@@ -200,6 +209,7 @@ class BaseBatchRouter(BaseRouter):
                 batch_id,
                 len(files),
                 timer.summary(),
+                event="request.batch_timings",
             )
 
     async def _persist_batch(
