@@ -345,6 +345,11 @@ def test_wheel_builder_supports_plugins_only_mode():
 
     assert '"--plugins-only"' in script
     assert "if not args.plugins_only:" in script
+    assert '"uv",' in script
+    assert '"build",' in script
+    assert '"--wheel",' in script
+    assert '"-m",\n        "pip"' not in script
+
 
 
 def test_offline_release_script_help_lists_service_split():
