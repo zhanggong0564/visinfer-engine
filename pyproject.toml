@@ -37,4 +37,18 @@ dev = [
 required-version = ">=0.12,<0.13"
 default-groups = ["runtime", "dev"]
 
+[tool.pytest.ini_options]
+testpaths = ["test"]
+norecursedirs = [
+    ".git",
+    ".release-staging",
+    ".venv",
+    ".worktrees",
+    "build",
+    "data",
+    "dist",
+    "pkg",
+    "weights",
+]
+
 # 包发现与 cython 编译在 setup.py 中处理（ext_modules + build_py 覆盖）。
