@@ -86,8 +86,7 @@ class BaseVisionInfer:
             raise
         except Exception as e:
             # 推理失败必须向上暴露，避免被静默吞成空结果，导致线上故障无法区分
-            vision_logger.error(f"推理过程中发生错误: {e}")
-            raise ModelInferenceError("模型推理失败", original_error=str(e))
+            raise ModelInferenceError("模型推理失败", original_error=str(e)) from e
 
     def close(self) -> None:
         self.runner.close()
