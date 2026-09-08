@@ -91,7 +91,7 @@ def test_persist_record_moves_pending_image_and_writes_json(service):
     assert record["request_params"] == {"product_type": "TK2"}
 
 
-def test_image_failure_does_not_prevent_record_write(service, monkeypatch):
+def test_image_failure_does_not_prevent_record_write(service, monkeypatch, log_records):
     def fail_write(*args, **kwargs):
         raise OSError("disk failure")
 
@@ -110,6 +110,47 @@ def test_image_failure_does_not_prevent_record_write(service, monkeypatch):
         "sample.jpg", "2026-07-10T10:00:00.000", "TK2", "ng", ".jpg"
     )
     assert Path(paths["record_path"]).exists()
+    record = json.loads(Path(paths["record_path"]).read_text())
+    assert record["image_persist_status"] == "failed"
+    completed = [r for r in log_records if r["extra"]["event"] == "backflow.completed"]
+    assert len(completed) == 1
+    assert '"image_status":"failed"' in completed[0]["message"]
+
+
+def test_backflow_completion_correlates_with_record(service, log_records):
+    from utils.log_context import RequestLogContext, use_log_context
+
+    with use_log_context(RequestLogContext(request_id="request-test", scene="indicator_light")):
+        service.persist_record(
+            original_filename="sample.jpg", raw_json="{}",
+            result_dict={"verdict": "REVIEW"}, latency_ms=1.0,
+            received_at="2026-07-10T10:00:00.000", raw_image_bytes=b"image",
+        )
+    completed = next(r for r in log_records if r["extra"]["event"] == "backflow.completed")
+    summary = json.loads(completed["message"].split(" ", 1)[1])
+    assert summary["classification"] == "review"
+    assert summary["record_status"] == "written"
+    assert summary["image_status"] == "written"
+    assert completed["extra"]["request_id"] == "request-test"
+    assert json.loads(Path(summary["record_path"]).read_text())["request_id"] == "request-test"
+
+
+def test_record_write_failure_is_not_logged_as_completed(service, monkeypatch, log_records):
+    def fail_dump(*args, **kwargs):
+        raise OSError("record disk full")
+
+    monkeypatch.setattr("routers.backflow_service.json.dump", fail_dump)
+    service.persist_record(
+        original_filename="sample.jpg", raw_json="{}",
+        result_dict={"verdict": "PASS"}, latency_ms=1.0,
+        received_at="2026-07-10T10:00:00.000", raw_image_bytes=b"image",
+    )
+    assert not any(r["extra"]["event"] == "backflow.completed" for r in log_records)
+    failed = next(r for r in log_records if r["extra"]["event"] == "backflow.failed")
+    summary = json.loads(failed["message"].split(" ", 1)[1])
+    assert summary["record_status"] == "failed"
+    assert summary["record_path"].endswith("sample.json")
+    assert summary["image_status"] == "written"
 
 
 @pytest.mark.parametrize(
