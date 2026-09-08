@@ -19,6 +19,7 @@ import os
 
 def test_settings_defaults():
     with patch.dict("os.environ", {}, clear=True):
+        settings = Settings(_env_file=None)
         assert settings.API_TITLE == "Mobile Vision alg API"
         assert settings.API_VERSION == "2.1.0"
         assert settings.HOST == "0.0.0.0"
@@ -28,7 +29,8 @@ def test_settings_defaults():
         assert settings.WORKERS == 1
 
 
-def test_settings_env_file():
+def test_settings_env_file(monkeypatch):
+    monkeypatch.delenv("LOG_DIR", raising=False)
     env_content = """API_TITLE=Env File API
 API_VERSION=3.0.0
 HOST=0.0.0.0
