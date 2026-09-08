@@ -103,6 +103,20 @@ scripts/release/*
 docs/*
 !docs/deploy.md
 !docs/fix_multi_process_oom.md
+!docs/MVS业务对接文档.md
+!docs/MVS数据标注规范.md
+!docs/Panel-Label业务对接文档.md
+!docs/直流熔丝业务技术方案.md
+!docs/images/
+docs/images/*
+!docs/images/mvs-business-flow.png
+!docs/images/mvs-business-flow.svg
+!docs/images/mvs-guideline-design.png
+!docs/images/mvs-annotation-example.png
+!docs/images/mvs-guideline-example.png
+!docs/images/panel-label-business-flow.png
+!docs/images/panel-label-guideline-example.png
+!docs/images/dc-fuse-business-flow.png
 
 # Superpowers 隔离开发工作区
 .worktrees/
@@ -112,3 +126,15 @@ demo/parallel_eval_report.md
 demo/parallel_eval_report_yolo.md
 demo/TEST_REPORT.md
 plugins/vie-plugin-mvs-self
+docs/MVS业务对接文档.md
+docs/MVS数据标注规范.md
+docs/Panel-Label业务对接文档.md
+docs/直流熔丝业务技术方案.md
+docs/images/dc-fuse-business-flow.png
+docs/images/mvs-annotation-example.png
+docs/images/mvs-business-flow.png
+docs/images/mvs-business-flow.svg
+docs/images/mvs-guideline-design.png
+docs/images/mvs-guideline-example.png
+docs/images/panel-label-business-flow.png
+docs/images/panel-label-guideline-example.png
