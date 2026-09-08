@@ -4,6 +4,7 @@
 wheel 仅含各包 __init__.py + .so + 元数据，不落明文业务源码。app.py 作为启动器
 随部署单独提供，不打入本 wheel。
 """
+import sys
 from pathlib import Path
 
 from setuptools import setup, find_packages
@@ -41,6 +42,10 @@ py_sources = [
     and not _is_legacy_scene_example(str(p))
 ]
 
+# PEP 660 editable 安装用于本地开发，必须直接加载源码；否则 setuptools 会把
+# 编译扩展复制回源码目录，后续修改同名 .py 时仍会优先导入旧 .so。
+BUILD_BINARY_EXTENSIONS = "editable_wheel" not in sys.argv
+
 
 class BuildPyInitOnly(build_py):
     """只把 __init__.py 作为源码打入 wheel；其余 .py 已编成 .so，剔除以防明文泄露。"""
@@ -56,9 +61,14 @@ setup(
     ),
     # annotation_typing=False：关闭 Cython3 默认的注解类型强制，否则 FastAPI Form()/File()
     # 默认值与 `x: str` 注解冲突报 "Expected str, got Form"，pydantic 字段注解同理。
-    ext_modules=cythonize(
-        py_sources, build_dir="build",
-        compiler_directives={"language_level": "3", "annotation_typing": False},
+    ext_modules=(
+        cythonize(
+            py_sources,
+            build_dir="build",
+            compiler_directives={"language_level": "3", "annotation_typing": False},
+        )
+        if BUILD_BINARY_EXTENSIONS
+        else []
     ),
     cmdclass={"build_py": BuildPyInitOnly},
 )
