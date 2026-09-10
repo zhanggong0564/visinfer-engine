@@ -10,6 +10,16 @@
 
 ## [Unreleased]
 
+## [2.2.5] - 2026-09-10
+
+### 修复
+
+- AICameraModel 仅强校验注册标识、版本和模型文件字段，`ModelFile`
+  必须提供但允许为 null；其他业务元数据允许缺失、为 null 或透传任意
+  JSON 值，避免无关字段阻断场景请求。
+- 更新直流熔丝 OpenAPI 请求示例，使用 `AICameraModel`
+  产品类型参数代替已弃用的 `modelParams.product_model`。
+
 ## [2.2.4] - 2026-09-08（Git tag: `v2.2.4`）
 
 本次配套插件：panel-label `v1.3.0`、dc-fuse `v0.2.0`、MVS `v0.2.0`。
