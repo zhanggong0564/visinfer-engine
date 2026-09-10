@@ -1,6 +1,7 @@
 """数据模型 schemas 单元测试"""
 import pytest
 import numpy as np
+from pydantic import ValidationError
 from schemas.data_base import (
     DetectResult,
     DetectionItem,
@@ -10,7 +11,40 @@ from schemas.data_base import (
     IndicatorLightEmbedding,
     MessageType,
 )
-from schemas.common import CommonResponse, ResultResponse, EmptyRequest
+from schemas.common import AICameraModel, CommonResponse, ResultResponse, EmptyRequest
+
+
+class TestAICameraModel:
+    def test_only_validates_inference_keys(self):
+        model = AICameraModel(
+            Id="registration-id",
+            Version=2,
+            ModelFile="http://host/reference.jpg",
+            AIProductTypeName=None,
+            AIProductTypeValue=None,
+            Remark={"arbitrary": "metadata"},
+        )
+
+        assert model.AIProductTypeName is None
+        assert model.AIProductTypeValue is None
+        assert model.Remark == {"arbitrary": "metadata"}
+
+    def test_model_file_key_accepts_null(self):
+        model = AICameraModel(Id="registration-id", Version=2, ModelFile=None)
+
+        assert model.ModelFile is None
+
+    @pytest.mark.parametrize("field", ["Id", "Version", "ModelFile"])
+    def test_inference_keys_remain_required(self, field):
+        payload = {
+            "Id": "registration-id",
+            "Version": 2,
+            "ModelFile": "http://host/reference.jpg",
+        }
+        payload.pop(field)
+
+        with pytest.raises(ValidationError):
+            AICameraModel(**payload)
 
 
 class TestDetectResult:
