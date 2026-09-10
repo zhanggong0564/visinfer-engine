@@ -228,7 +228,9 @@ def test_openapi_documents_dc_fuse_json_data_example():
 
     assert "DCFUSE_JSON_DATA_EXAMPLE" not in json_data_schema.get("example", "")
     assert '"product"' in json_data_schema["example"]
-    assert '"product_model"' in json_data_schema["example"]
+    assert '"product_model"' not in json_data_schema["example"]
+    assert '"AIParameterName":"产品类型"' in json_data_schema["example"]
+    assert '"AIParameterValue":"六路无熔丝盒无磁环"' in json_data_schema["example"]
     assert json_data_schema["description"].startswith("JSON 字符串")
 
 
