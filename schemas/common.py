@@ -73,23 +73,23 @@ class VisualReferenceParams(BaseModel):
 
 
 class AICameraModel(BaseModel):
-    """Shared external AICameraModel record."""
+    """Shared external record with validation limited to inference keys."""
 
     Id: str
-    SN: str
-    ProductName: str
     Version: int
-    AIProductTypeName: str
-    AIProductTypeValue: str
-    ModelFile: str
-    Remark: str | None = None
-    CreateBy: str | None = None
-    CreateTime: str | None = None
-    UpdateBy: str | None = None
-    UpdateTime: str | None = None
-    AIParameterName: str | None = None
-    AIParameterValue: str | None = None
-    DictionaryCode: str | None = None
+    ModelFile: str | None
+    SN: Any = None
+    ProductName: Any = None
+    AIProductTypeName: Any = None
+    AIProductTypeValue: Any = None
+    Remark: Any = None
+    CreateBy: Any = None
+    CreateTime: Any = None
+    UpdateBy: Any = None
+    UpdateTime: Any = None
+    AIParameterName: Any = None
+    AIParameterValue: Any = None
+    DictionaryCode: Any = None
 
 
 # class DetailListItem(BaseModel):
