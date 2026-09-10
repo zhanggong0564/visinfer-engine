@@ -16,11 +16,16 @@ JSON_DATA_EXAMPLES_BY_PATH = {
         "product": "直流熔丝",
         "type": "物料号",
         "modelParams": {
-            "product_model": "六路无熔丝盒无磁环",
             "guide_line": [],
             "example_images": [],
         },
-        "AICameraModel": [],
+        "AICameraModel": [{
+            "Id": "registration-id",
+            "Version": 1,
+            "ModelFile": None,
+            "AIParameterName": "产品类型",
+            "AIParameterValue": "六路无熔丝盒无磁环",
+        }],
     }),
     "/api/v1/line_squeeze_recognition": _compact_json_example({
         "product": "线路压缩",
