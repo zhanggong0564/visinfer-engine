@@ -198,6 +198,21 @@ def test_default_backflow_target_is_scene_agnostic():
     assert target.save_stem == "AI-中压线标检验TK2-1-1764780181920"
 
 
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "风电-整机组装1-23-1-1789009462570.jpg",
+        "集中式-SG1100UD-AI拍照-直流侧-1-1-1789009471192.jpg",
+    ],
+)
+def test_default_backflow_target_accepts_production_hyphenated_filenames(filename):
+    router = _Router()
+
+    target = router.resolve_backflow_target(filename, fallback_product_type="model")
+
+    assert target.save_stem == Path(filename).stem
+
+
 def test_default_backflow_target_unknown_model():
     """无 product_type 兜底时型号目录回退 _unknown_model。"""
     from routers.backflow_service import UNKNOWN_MODEL_DIR
