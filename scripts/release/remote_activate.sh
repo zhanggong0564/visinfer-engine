@@ -2,6 +2,10 @@
 # Runs on the deployment host; activates a staged release and rolls back on failure.
 set -euo pipefail
 
+if ! declare -F install_deployment_compose >/dev/null; then
+  source "$(dirname "${BASH_SOURCE[0]}")/deployment_compose.sh"
+fi
+
 select_compose() {
   if docker compose version >/dev/null 2>&1; then
     COMPOSE=(docker compose)
@@ -87,7 +91,6 @@ if [ -L current ]; then
 fi
 ln -sfn "releases/${RELEASE_ID}" current.next
 mv -Tf current.next current
-cp "$FINAL/$COMPOSE_FILE" "$ROOT/$COMPOSE_FILE"
 
 rollback() {
   trap - ERR
@@ -106,8 +109,10 @@ rollback() {
 }
 trap 'rollback' ERR
 
+install_deployment_compose "$FINAL/$COMPOSE_FILE" "$ROOT/$COMPOSE_FILE"
 "${COMPOSE[@]}" -f "$COMPOSE_FILE" config --quiet
 "${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --force-recreate
+HEALTH_URL="$(deployment_health_url "$COMPOSE_FILE" "$CONTAINER_NAME")"
 for _ in $(seq 1 60); do
   if curl -fsS "$HEALTH_URL" >/dev/null; then
     exit 0
