@@ -55,6 +55,7 @@ class BuildPyInitOnly(build_py):
 
 
 setup(
+    package_data={"utils": ["fonts/*.otf", "fonts/OFL.txt"]},
     packages=find_packages(
         include=[f"{p}*" for p in PACKAGES],
         exclude=["services.dc_fuse", "services.dc_fuse.*"],  # 示例不入 wheel，见上
