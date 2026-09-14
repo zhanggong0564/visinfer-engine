@@ -92,7 +92,7 @@ uv run --locked python scripts/release/build_wheels.py --no-isolation
 
 OCR 中间结果统一使用框架 `OCRToken`。文字区域必须通过带有明确坐标空间的 `Region` 表达；像素坐标与归一化坐标不得依靠字段名、数值范围或调用上下文猜测。文字识别置信度使用 `recognition_score`，文字检测置信度使用 `detection_score`，不得合并成含义不明的单一 `confidence`。场景可保留面向判定的文本列表、排序索引或裁图，但它们必须与 `OCRToken` 保持逐项对应，过滤和排序时同步处理全部平行字段。
 
-目标检测的公共输出优先使用 `Detection`、`DetectionResult` 和 `Region`，避免长期传递依赖约定键名的裸字典。对外部请求中跨场景重复的结构，例如视觉参考参数和 `AICameraModel`，应复用 `VisualReferenceParams`、`AICameraModel` 等公共 Schema；插件只增加本场景字段，不得复制整份公共模型。公共字段的名称、类型、可空性或语义发生变化时，必须检查所有正式插件、OpenAPI、回流记录、统计和可视化消费者。
+目标检测的公共输出优先使用 `Detection`、`DetectionResult` 和 `Region`，避免长期传递依赖约定键名的裸字典。跨场景请求结构应复用 `VisualReferenceParams`、`AICameraModel` 等公共 Schema，插件只增加本场景字段。公共字段的名称、类型、可空性或语义发生变化时，必须检查所有正式插件、OpenAPI、回流记录、统计和可视化消费者。
 
 兼容别名只允许用于已有导入路径的平滑迁移，必须直接指向公共类型，不得复制实现或形成第二套真实定义。新增公共数据结构或迁移场景结构时，框架需增加类型语义和序列化测试，受影响插件需增加映射、排序、过滤或响应契约测试；旧字段仍存在时，必须验证其满足已声明的兼容映射，并保留统一字段的完整语义。涉及检测判定的代码变更还需覆盖场景支持的结论、执行错误、整体汇总与空结果，以及 OpenAPI、回流和可视化的一致性。
 
