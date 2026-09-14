@@ -14,3 +14,15 @@ install_deployment_compose() {
   "${COMPOSE[@]}" -f "${target_file}.next" config --quiet
   mv -f "${target_file}.next" "$target_file"
 }
+
+deployment_health_url() {
+  local binding port
+  binding="$("${COMPOSE[@]}" -f "$1" port "$2" 3001)" || return 1
+  port="${binding##*:}"
+  if [[ "$binding" = *$'\n'* ]] || ! [[ "$port" =~ ^[0-9]+$ ]] || \
+      [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+    echo "无法确定服务 $2 的健康检查端口" >&2
+    return 1
+  fi
+  printf 'http://127.0.0.1:%s/health/ready\n' "$port"
+}
