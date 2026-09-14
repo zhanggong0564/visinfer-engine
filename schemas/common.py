@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Any, List, Literal, Optional
 
 from .inspection import InspectionVerdict
+from services.base.ocr import OCRToken
 
 
 class DetectionItemResponse(BaseModel):
@@ -28,6 +29,10 @@ class DetectionItemResponse(BaseModel):
     )
     scene: str = Field(default="", description="检测类别或业务场景标识")
     coordinate: List[float] = Field(default_factory=list, description="检测框/轮廓坐标")
+    ocr_tokens: List[OCRToken] | None = Field(
+        default=None,
+        description="功能项逐条 OCR：文字、显式坐标空间的 region、独立识别/检测分数；MVS 使用原图 PIXEL 坐标",
+    )
     accuracy: float = Field(default=0.0, description="检测置信度，范围 0-1")
     name: str = Field(default="", description="检测目标名称")
     color: str = Field(
