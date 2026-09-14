@@ -56,7 +56,7 @@ RUN python3.10 -m venv /opt/venv
 COPY requirements.txt /tmp/requirements.txt
 COPY requirements.scenes.txt /tmp/requirements.scenes.txt
 COPY whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl /tmp/
-RUN pip install --upgrade pip setuptools wheel "Cython>=3" \
+RUN pip install --upgrade pip setuptools wheel "Cython>=3" "uv>=0.12,<0.13" \
     && pip install /tmp/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl --no-deps \
     && pip install -r /tmp/requirements.txt \
     && pip install -r /tmp/requirements.scenes.txt \
@@ -75,7 +75,7 @@ RUN python scripts/release/build_wheels.py --no-isolation --framework-only \
     && pip install --no-deps /build/dist/vie_framework-*.whl
 
 FROM base-builder AS runtime-venv
-RUN pip uninstall -y Cython
+RUN pip uninstall -y Cython uv
 
 FROM system-runtime AS base
 ARG CUDA_BASE_IMAGE
