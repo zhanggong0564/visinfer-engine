@@ -112,7 +112,7 @@ class ResultResponse(BaseModel):
     detailList: List[DetectionItemResponse] = Field(..., description="检测详情列表")
     status: Literal["true", "false"] = Field(
         ...,
-        description="兼容整体状态：true=通过，false=不通过",
+        description="兼容整体状态：PASS 对应 true，FAIL/REVIEW 及执行错误对应 false；结合 code 和 verdict 判断",
     )
     verdict: InspectionVerdict | None = Field(
         default=None,
