@@ -195,6 +195,10 @@ def _apply_request_document(
     if not multipart:
         return
     body = components[multipart["schema"]["$ref"].rsplit("/", 1)[-1]]
+    file_field = body.get("properties", {}).get("file", {})
+    if file_field.get("contentMediaType") == "application/octet-stream":
+        # 保留新版 Schema 的媒体类型，同时兼容随服务分发的 Swagger UI 文件控件。
+        file_field.setdefault("format", "binary")
     field = body.get("properties", {}).get("json_data")
     if field is None:
         return
