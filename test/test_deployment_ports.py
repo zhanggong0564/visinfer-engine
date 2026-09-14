@@ -58,3 +58,17 @@ def test_readiness_rejects_missing_or_ambiguous_ports(binding):
         env={**os.environ, "BINDING": binding}, capture_output=True, text=True,
     )
     assert result.returncode != 0
+
+
+def test_invalid_port_does_not_replace_deployment_compose(tmp_path):
+    source = tmp_path / "archive.yml"
+    source.write_text(Path("docker-compose.scenes.yml").read_text())
+    target = tmp_path / "docker-compose.scenes.yml"
+    target.write_text("original configuration\n")
+    result = subprocess.run(
+        ["bash", "-euc", 'source "$1"; COMPOSE=(docker compose); '
+         'install_deployment_compose "$2" "$3"', "bash", str(HELPER), str(source), str(target)],
+        env={**os.environ, "SCENES_PORT": "invalid"}, capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert target.read_text() == "original configuration\n"
