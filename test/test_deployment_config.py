@@ -236,28 +236,19 @@ def test_openapi_documents_dc_fuse_json_data_example():
     assert json_data_schema["description"].startswith("JSON 字符串")
 
 
-def test_openapi_documents_panel_label_json_data_example_from_real_request_log():
+def test_openapi_documents_panel_label_example_from_plugin():
     from app import app
+    from vie_plugin_panel_label.plugin import panel_label_router
 
     schema = app.openapi()
-    panel_body = schema["components"]["schemas"]["Body__handle_request_api_v1_panel_label_detect_post"]
-    json_data_schema = panel_body["properties"]["json_data"]
-    example = json.loads(json_data_schema["example"])
-
-    assert example["product"] == "逆变器组件_SG1100UD-V3039_S"
-    assert example["type"] == "A0ST6329"
-    assert example["sn"] == "A2670608545"
-    assert example["modelParams"]["product_type"] == "S1S2"
-    assert example["modelParams"]["rule"] == "front"
-    assert (
-        example["modelParams"]["line_order"]
-        == "S2-14,S2-13,S1-13,S1-14;S1-14,S1-13,S2-13,S2-14"
-    )
-    assert example["modelParams"]["guideline_coordinates"] == "0.154,0.114666666666667,0.771,0.76"
-    assert example["modelParams"]["guide_line"][0]["FileName"] == "5、直流侧开关S1S2.png"
-    assert example["modelParams"]["example_images"][0]["FileName"] == "屏幕截图 2026-04-22 145231.png"
-    assert example["AICameraModel"][0]["Version"] == 4
-    assert example["AICameraModel"][0]["AIParameterValue"] == "五路有熔丝盒无磁环"
+    body = schema["components"]["schemas"]["Body__handle_request_api_v1_panel_label_detect_post"]
+    example = json.loads(body["properties"]["json_data"]["example"])
+    assert example == panel_label_router.request_document_example
+    request = panel_label_router.request_schema(example)
+    assert request.modelParams.line_order == [
+        ["TK2-2", None, "TK2-1"], ["TK2-1", None, "TK2-2"],
+    ]
+    assert request.modelParams.guideline_coordinates == (0.1, 0.1, 0.8, 0.8)
 
 
 def test_docker_images_include_offline_swagger_assets():
