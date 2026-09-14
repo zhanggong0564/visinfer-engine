@@ -244,11 +244,16 @@ def _apply_request_document(
         f"`result.verdict` 为 {verdict_description}，执行错误时为 null。"
         "兼容字段 `status` 是字符串：PASS 对应 `\"true\"`，其余检测结论对应 `\"false\"`。"
         "`detailList` 为检测详情，`vis_image` 为可选的可视化图片。"
-        "以下为公共响应结构示例，具体检测详情由场景决定。"
+        "响应示例使用合成数据说明结构，不代表当前上传图片的检测结果。"
     )
     if InspectionVerdict.REVIEW in verdicts:
         sections.append("不能仅凭 status 将 REVIEW 归为 FAIL。")
     sections.append(owner.response_document_notes)
+    sections.append(
+        "### 返回字段\n\n下表来自实际响应模型；必填表示 Schema 是否要求字段，"
+        "实际字段输出受响应序列化配置影响。明细字段的场景含义见上文。\n\n"
+        + _field_table({"$ref": "#/components/schemas/CommonResponse"}, components)
+    )
     operation["description"] = "\n\n".join(section for section in sections if section)
     response = operation["responses"]["200"]
     response["description"] = "检测通过、不通过及执行错误的完整结构；选择 Example Value 示例查看场景明细。"
