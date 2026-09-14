@@ -17,10 +17,10 @@ from typing import Any, Optional
 
 import numpy as np
 from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from config import settings
-from schemas import CommonResponse
+from schemas import CommonResponse, InspectionVerdict
 from schemas.exceptions import InvalidParamsError, InternalError
 from services.scenario_registry import scenario_registry
 from services.call_stats import record_call
@@ -41,6 +41,13 @@ DATA_DIR = os.path.abspath(settings.DATA_DIR)
 
 class BaseRouter(ABC):
     """路由基类，封装所有路由共有的功能"""
+
+    # 插件声明 json_data 的真实模型和示例；只用于文档，不改变请求解析。
+    request_document_model: type[BaseModel] | None = None
+    request_document_example: dict[str, Any] | None = None
+    request_document_notes: str = ""
+    response_document_verdicts: tuple[InspectionVerdict, ...] = tuple(InspectionVerdict)
+    response_document_notes: str = ""
 
     def __init__(
         self,
