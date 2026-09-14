@@ -47,7 +47,9 @@ class ResponseBuilder:
         if self.vis_enabled:
             extra = getattr(inputs, "extra", None)
             guideline = extra.get("guideline") if isinstance(extra, dict) else None
-            guides = [tuple(guideline)] if guideline else None
+            guides = extra.get("guidelines") if isinstance(extra, dict) else None
+            if guides is None:
+                guides = [tuple(guideline)] if guideline else None
             started = time.perf_counter()
             try:
                 vis_b64 = await run_sync(
