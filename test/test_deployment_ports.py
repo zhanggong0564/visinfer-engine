@@ -36,3 +36,14 @@ def test_deployed_compose_uses_environment_port_without_editing_archive(tmp_path
     assert service["ports"][0]["target"] == 3001
     assert service["healthcheck"]["test"][-1].endswith(":3001/health/ready")
     assert source.read_text() == original
+
+
+@pytest.mark.parametrize("binding", ["0.0.0.0:3007", "[::]:3007", "127.0.0.1:3007"])
+def test_readiness_uses_actual_published_port(binding):
+    result = subprocess.run(
+        ["bash", "-euc", 'source "$1"; fake_compose() { echo "$BINDING"; }; '
+         'COMPOSE=(fake_compose); deployment_health_url compose.yml mobile-vision-scenes',
+         "bash", str(HELPER)],
+        env={**os.environ, "BINDING": binding}, check=True, capture_output=True, text=True,
+    )
+    assert result.stdout.strip() == "http://127.0.0.1:3007/health/ready"
