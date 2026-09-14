@@ -12,6 +12,7 @@ from pydantic_core import core_schema
 
 from schemas.error_codes import ErrorCode, ERROR_CODE_MESSAGES
 from schemas.inspection import InspectionVerdict
+from schemas.common import CommonResponse
 
 
 def _compact_json_example(data: dict) -> str:
@@ -150,7 +151,7 @@ def _field_table(schema: dict, components: dict) -> str:
     return "\n".join(rows) if len(rows) > 2 else "无业务字段，提交 `json_data={}`。"
 
 
-def _response_examples(verdicts: tuple[InspectionVerdict, ...]) -> dict:
+def _response_examples(verdicts: tuple[InspectionVerdict, ...], scene_examples=None) -> dict:
     examples = {}
     for verdict, label in [
         (InspectionVerdict.PASS, "通过"),
@@ -184,6 +185,20 @@ def _response_examples(verdicts: tuple[InspectionVerdict, ...]) -> dict:
                     "error_msg": message, "message": message,
                 },
             },
+        }
+    for name, example in (scene_examples or {}).items():
+        response = CommonResponse(
+            code=int(ErrorCode.SUCCESS), message=ERROR_CODE_MESSAGES[ErrorCode.SUCCESS],
+            result=example["result"],
+        )
+        if response.result.verdict not in verdicts:
+            raise ValueError(f"响应示例 {name} 使用了场景未声明的结论")
+        if response.result.status != response.result.verdict.legacy_status:
+            raise ValueError(f"响应示例 {name} 的 verdict 与 status 不一致")
+        if name in ErrorCode.__members__:
+            raise ValueError(f"业务响应示例不能覆盖公共错误示例 {name}")
+        examples[name] = {
+            "summary": example["summary"], "value": response.model_dump(mode="json"),
         }
     return examples
 
@@ -235,4 +250,8 @@ def _apply_request_document(
         sections.append("不能仅凭 status 将 REVIEW 归为 FAIL。")
     sections.append(owner.response_document_notes)
     operation["description"] = "\n\n".join(section for section in sections if section)
-    operation["responses"]["200"]["content"]["application/json"]["examples"] = _response_examples(verdicts)
+    response = operation["responses"]["200"]
+    response["description"] = "检测通过、不通过及执行错误的完整结构；选择 Example Value 示例查看场景明细。"
+    response["content"]["application/json"]["examples"] = _response_examples(
+        verdicts, owner.response_document_examples,
+    )
