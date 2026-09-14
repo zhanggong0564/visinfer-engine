@@ -18,9 +18,9 @@ services:
     image: ${SCENES_IMAGE:-mobile_vision:scenes}
     container_name: mobile-vision-scenes
 
-    # panel-label 占用 3001；本服务用 3005 以便同机并存。单独部署可改回 3001。
+    # 宿主端口由部署目录 .env 的 SCENES_PORT 指定，默认 3005。
     ports:
-      - "3005:3001"
+      - "${SCENES_PORT:-3005}:3001"
 
     deploy:
       resources:
