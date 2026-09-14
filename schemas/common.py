@@ -33,7 +33,7 @@ class DetectionItemResponse(BaseModel):
         default=None,
         description="功能项逐条 OCR：文字、显式坐标空间的 region、独立识别/检测分数；MVS 使用原图 PIXEL 坐标",
     )
-    accuracy: float = Field(default=0.0, description="检测置信度，范围 0-1")
+    accuracy: float = Field(default=0.0, description="场景分数，具体含义见接口说明；不能单凭此值推导检测结论")
     name: str = Field(default="", description="检测目标名称")
     color: str = Field(
         default="#FFFF00",
