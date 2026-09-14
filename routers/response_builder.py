@@ -50,12 +50,15 @@ class ResponseBuilder:
             guides = extra.get("guidelines") if isinstance(extra, dict) else None
             if guides is None:
                 guides = [tuple(guideline)] if guideline else None
+            details = result_dict.get("detailList", [])
+            if isinstance(extra, dict):
+                details = extra.get("visualization_details", details)
             started = time.perf_counter()
             try:
                 vis_b64 = await run_sync(
                     render_detection_overlay,
                     image,
-                    result_dict.get("detailList", []),
+                    details,
                     guides=guides,
                     max_side=self.max_side,
                     jpeg_quality=self.jpeg_quality,
