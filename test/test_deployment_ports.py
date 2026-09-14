@@ -72,3 +72,70 @@ def test_invalid_port_does_not_replace_deployment_compose(tmp_path):
     )
     assert result.returncode != 0
     assert target.read_text() == "original configuration\n"
+
+
+@pytest.mark.parametrize("operation", ["activate", "failed_activate", "rollback"])
+def test_release_workflows_keep_production_port_with_historical_compose(tmp_path, operation):
+    root = tmp_path / "deploy"
+    root.mkdir()
+    (root / ".env").write_text("SCENES_PORT=3007\n")
+    original = Path("docker-compose.scenes.yml").read_text().replace("${SCENES_PORT:-3005}", "3005")
+    for release in ("old", "new.staging"):
+        directory = root / "releases" / release
+        (directory / "pkg").mkdir(parents=True)
+        (directory / "weights").mkdir()
+        (directory / "app.py").touch()
+        (directory / "weight-paths.txt").touch()
+        (directory / "docker-compose.scenes.yml").write_text(original)
+    (root / "current").symlink_to("releases/old")
+    (root / "docker-compose.scenes.yml").write_text(original)
+    if operation == "rollback":
+        (root / "releases/new.staging").rename(root / "releases/new")
+        (root / "current").unlink()
+        (root / "current").symlink_to("releases/new")
+        (root / "previous").symlink_to("releases/old")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    scripts = {
+        "ssh": '#!/bin/bash\nshift; exec "$@"\n',
+        "sleep": '#!/bin/bash\nexit 0\n',
+        "curl": '#!/bin/bash\n[[ "$*" == *":3007/health/ready" ]] || exit 22\n'
+                'echo "$*" >> "$TEST_ROOT/health-calls"\n'
+                'if [ "$FAIL_NEW" = 1 ] && [ "$(readlink current)" = releases/new ]; then exit 22; fi\n',
+        "docker": '#!/bin/bash\nset -eu\n'
+                  'case "$*" in\n'
+                  ' "compose version") exit 0 ;;\n'
+                  ' *Config.Image*) echo test-image ;;\n'
+                  ' *requirements-sha256*) echo requirements-sha ;;\n'
+                  ' *python-abi*) echo cp310 ;;\n'
+                  ' *environment-contract-sha256*) echo environment-sha ;;\n'
+                  ' "run "*) exit 0 ;;\n'
+                  ' *"config --quiet"*) exit 0 ;;\n'
+                  ' *"up -d --force-recreate"*) '
+                  'grep -Fq \'${SCENES_PORT:-3005}:3001\' docker-compose.scenes.yml ;;\n'
+                  ' *"port mobile-vision-scenes 3001"*) echo 0.0.0.0:3007 ;;\n'
+                  ' *"logs --tail=200"*) exit 0 ;;\n'
+                  ' *) echo "unexpected docker call: $*" >&2; exit 99 ;;\n'
+                  'esac\n',
+    }
+    for name, source in scripts.items():
+        script = bin_dir / name
+        script.write_text(source)
+        script.chmod(0o755)
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}",
+           "TEST_ROOT": str(root), "FAIL_NEW": str(int(operation == "failed_activate"))}
+    if operation == "rollback":
+        command = ["bash", "scripts/release/rollback-plugin.sh", "--remote", "mock-host",
+                   "--remote-dir", str(root), "--service", "scenes"]
+    else:
+        command = ["bash", "scripts/release/remote_activate.sh", str(root), "new",
+                   "docker-compose.scenes.yml", "mobile-vision-scenes",
+                   "http://127.0.0.1:3005/health/ready", "requirements-sha", "cp310",
+                   "runtime-sha", "0", "dc_fuse", "environment-sha", "0"]
+    result = subprocess.run(command, env=env, capture_output=True, text=True)
+    assert result.returncode == (1 if operation == "failed_activate" else 0), result.stderr
+    expected = "releases/new" if operation == "activate" else "releases/old"
+    assert os.readlink(root / "current") == expected
+    assert (root / "health-calls").read_text()
+    assert (root / "releases/old/docker-compose.scenes.yml").read_text() == original
+    assert (root / ".env").read_text() == "SCENES_PORT=3007\n"
