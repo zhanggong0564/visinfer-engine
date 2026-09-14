@@ -118,7 +118,8 @@ def test_runtime_base_excludes_build_tool_layers():
     assert "FROM system-runtime AS base" in base
     assert "COPY --from=runtime-venv /opt/venv /opt/venv" in base
     assert 'pip install --upgrade pip setuptools wheel "Cython>=3"' in base
-    assert "pip uninstall -y Cython" in base
+    assert '"uv>=0.12,<0.13"' in base
+    assert "pip uninstall -y Cython uv" in base
     assert 'io.vie.image-role="builder"' in base
     assert 'io.vie.image-role="runtime-base"' in base
     assert base.count("io.vie.environment-contract-sha256") == 2
