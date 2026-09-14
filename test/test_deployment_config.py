@@ -36,6 +36,7 @@ def test_framework_build_excludes_legacy_scene_examples(monkeypatch):
     assert not any(
         package.startswith("services.dc_fuse.") for package in setup_kwargs["packages"]
     )
+    assert setup_kwargs["package_data"]["utils"] == ["fonts/*.otf", "fonts/OFL.txt"]
 
 
 def test_compose_persists_data_directory():
