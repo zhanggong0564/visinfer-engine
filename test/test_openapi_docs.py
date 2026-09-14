@@ -60,6 +60,29 @@ def scenes_app():
     return app, routers
 
 
+def test_upload_media_type_keeps_swagger_binary_format(scenes_app, monkeypatch):
+    import utils.openapi_docs as docs
+
+    original = docs.get_openapi
+
+    def media_type_schema(**kwargs):
+        schema = original(**kwargs)
+        for body in schema["components"]["schemas"].values():
+            field = body.get("properties", {}).get("file")
+            if field is not None:
+                field.pop("format", None)
+                field["contentMediaType"] = "application/octet-stream"
+        return schema
+
+    monkeypatch.setattr(docs, "get_openapi", media_type_schema)
+    app, routers = scenes_app
+    schema = app.openapi()
+    for path in routers:
+        field = _body(schema, path)["properties"]["file"]
+        assert field["contentMediaType"] == "application/octet-stream"
+        assert field["format"] == "binary"
+
+
 def test_nested_router_documents_use_effective_paths_and_visibility(scenes_app):
     _, routers = scenes_app
     owner = routers["/api/v1/lap_surf_detect"]
