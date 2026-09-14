@@ -2,7 +2,7 @@
 @Description : 服务端检测结果可视化：把 detailList 绘制到缩图上并编码为 JPEG base64。
 
 框架层通用绘制，复用各场景 detailList（coordinate+color+status+name+scene），
-插件零改动。坐标系兼容归一化 8 点与像素两种；文字仅 ASCII；任何异常降级返回 ""。
+插件零改动。坐标系兼容归一化 8 点与像素两种；图例兼容中文；任何异常降级返回 ""。
 '''
 
 import base64
@@ -124,10 +124,14 @@ def _draw_legend(canvas, entries):
     pad = 8
     text_x0 = pad + 2 * r + 8
 
+    from utils.visualization_text import measure_text, draw_text
+
     max_tw = 0
     for _, text, _ in entries:
-        t = text if (text and text.isascii()) else ""
+        t = text or ""
         (tw, _), _ = cv2.getTextSize(t, font, fs, 1)
+        if not t.isascii():
+            tw = measure_text(t, max(12, int(28 * fs)))
         max_tw = max(max_tw, tw)
 
     x0, y0 = 6, 6
@@ -148,9 +152,12 @@ def _draw_legend(canvas, entries):
         (ntw, nth), _ = cv2.getTextSize(ntxt, font, nfs, 1)
         cv2.putText(canvas, ntxt, (bx - ntw // 2, cy + nth // 2),
                     font, nfs, _label_text_color(color), 1, cv2.LINE_AA)
-        t = text if (text and text.isascii()) else ""
+        t = text or ""
         (tw, th), _ = cv2.getTextSize(t, font, fs, 1)
-        cv2.putText(canvas, t, (x0 + text_x0, cy + th // 2), font, fs, (20, 20, 20), 1, cv2.LINE_AA)
+        if t.isascii():
+            cv2.putText(canvas, t, (x0 + text_x0, cy + th // 2), font, fs, (20, 20, 20), 1, cv2.LINE_AA)
+        else:
+            draw_text(canvas, t, (x0 + text_x0, cy), max(12, int(28 * fs)))
 
 
 def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, jpeg_quality=85):
