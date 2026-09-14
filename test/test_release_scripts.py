@@ -270,6 +270,7 @@ def test_legacy_image_requires_opt_in_and_matching_runtime(
 
 def test_rollback_script_swaps_previous_and_validates_readiness():
     script = Path("scripts/release/rollback-plugin.sh").read_text(encoding="utf-8")
+    script += Path("scripts/release/deployment_compose.sh").read_text(encoding="utf-8")
 
     assert "--remote" in script
     assert "--remote-dir" in script
