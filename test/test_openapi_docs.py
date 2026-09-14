@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field, create_model
 
@@ -58,6 +58,23 @@ def scenes_app():
         routers["/api/v1" + path] = router
     configure_openapi_docs(app)
     return app, routers
+
+
+def test_nested_router_documents_use_effective_paths_and_visibility(scenes_app):
+    _, routers = scenes_app
+    owner = routers["/api/v1/lap_surf_detect"]
+    nested = APIRouter()
+    nested.include_router(owner.get_router(), prefix="/scene")
+    app = FastAPI()
+    app.include_router(nested, prefix="/visible")
+    app.include_router(nested, prefix="/hidden", include_in_schema=False)
+    configure_openapi_docs(app)
+
+    schema = app.openapi()
+    path = "/visible/scene/lap_surf_detect"
+    assert set(schema["paths"]) == {path}
+    assert json.loads(_body(schema, path)["properties"]["json_data"]["example"]) == {}
+    assert "HTTP 200" in schema["paths"][path]["post"]["description"]
 
 
 def test_all_scene_documents_match_parsers_and_form_protocol(scenes_app):
