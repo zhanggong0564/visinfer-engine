@@ -135,4 +135,4 @@ class CommonResponse(BaseModel):
 
 
 class EmptyRequest(BaseModel):
-    """空返回模型"""
+    """无业务参数的请求模型；上传接口仍需提交 json_data={}。"""
