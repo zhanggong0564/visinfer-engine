@@ -97,8 +97,9 @@ rollback() {
   if [ -n "$OLD_TARGET" ]; then
     ln -sfn "$OLD_TARGET" current.rollback
     mv -Tf current.rollback current
-    cp "$(readlink -f current)/$COMPOSE_FILE" "$ROOT/$COMPOSE_FILE"
+    install_deployment_compose "$(readlink -f current)/$COMPOSE_FILE" "$ROOT/$COMPOSE_FILE"
     "${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --force-recreate
+    HEALTH_URL="$(deployment_health_url "$COMPOSE_FILE" "$CONTAINER_NAME")"
     for _ in $(seq 1 60); do
       curl -fsS "$HEALTH_URL" >/dev/null && return 0
       sleep 5
