@@ -13,6 +13,16 @@
 
 两个服务应放在不同部署目录，默认端口分别为 panel `3001`、scenes `3005`。
 
+scenes 宿主端口由实际部署目录 `.env` 中的 `SCENES_PORT` 指定，例如
+`SCENES_PORT=3007`；容器内部仍监听 `3001`。修改后使用该目录的 Compose
+重建 scenes 容器，不需要重新构建镜像。迁移前备份配置、镜像标识和发布指向，
+核实并停止占用目标端口的旧服务，保留旧容器和数据用于恢复。
+
+热更新与显式/自动回滚使用目标环境的端口配置，并从运行容器的实际映射生成
+readiness 地址。历史 Compose 中的固定端口只在部署副本中转换，归档文件不改动。
+离线部署会从包内 `release.env` 重建 `.env`，因此准备离线包时必须保留目标环境的
+`SCENES_PORT`，同步设置包内 `HEALTH_URL` 并重新生成 `SHA256SUMS`。
+
 ## 1. 构建前置条件
 
 构建机需要 Docker、Docker Compose、Conda `mobile_vision` 环境和下列本地资产。
