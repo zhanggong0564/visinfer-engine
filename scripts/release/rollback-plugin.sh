@@ -20,7 +20,9 @@ done
 : "${REMOTE:?必须指定 --remote}"
 : "${REMOTE_DIR:?必须指定 --remote-dir}"
 
-ssh "$REMOTE" bash -s -- "$REMOTE_DIR" "$SERVICE" <<'REMOTE_SCRIPT'
+{
+cat "$(dirname "${BASH_SOURCE[0]}")/deployment_compose.sh"
+cat <<'REMOTE_SCRIPT'
 set -euo pipefail
 
 select_compose() {
@@ -50,10 +52,10 @@ if [ -z "$SERVICE" ]; then
 fi
 if [ "$SERVICE" = "panel-label" ]; then
   COMPOSE_FILE="docker-compose.panel-label.yml"
-  HEALTH_URL="http://127.0.0.1:3001/health/ready"
+  CONTAINER_NAME="mobile-vision-panel-label"
 else
   COMPOSE_FILE="docker-compose.scenes.yml"
-  HEALTH_URL="http://127.0.0.1:3005/health/ready"
+  CONTAINER_NAME="mobile-vision-scenes"
 fi
 
 CURRENT_TARGET="$(readlink current)"
@@ -62,8 +64,9 @@ ln -sfn "$PREVIOUS_TARGET" current.rollback
 mv -Tf current.rollback current
 ln -sfn "$CURRENT_TARGET" previous.rollback
 mv -Tf previous.rollback previous
-cp "$(readlink -f current)/$COMPOSE_FILE" "$ROOT/$COMPOSE_FILE"
+install_deployment_compose "$(readlink -f current)/$COMPOSE_FILE" "$ROOT/$COMPOSE_FILE"
 "${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --force-recreate
+HEALTH_URL="$(deployment_health_url "$COMPOSE_FILE" "$CONTAINER_NAME")"
 for _ in $(seq 1 60); do
   curl -fsS "$HEALTH_URL" >/dev/null && exit 0
   sleep 5
@@ -73,7 +76,8 @@ ln -sfn "$CURRENT_TARGET" current.restore
 mv -Tf current.restore current
 ln -sfn "$PREVIOUS_TARGET" previous.restore
 mv -Tf previous.restore previous
-cp "$(readlink -f current)/$COMPOSE_FILE" "$ROOT/$COMPOSE_FILE"
+install_deployment_compose "$(readlink -f current)/$COMPOSE_FILE" "$ROOT/$COMPOSE_FILE"
 "${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --force-recreate
 exit 1
 REMOTE_SCRIPT
+} | ssh "$REMOTE" bash -s -- "$REMOTE_DIR" "$SERVICE"
