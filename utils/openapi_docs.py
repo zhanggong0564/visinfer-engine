@@ -3,7 +3,7 @@
 import json
 import re
 
-from fastapi import FastAPI
+from fastapi import FastAPI, routing
 from fastapi.openapi.utils import get_openapi
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
@@ -37,8 +37,11 @@ def configure_openapi_docs(app: FastAPI) -> None:
                 if not isinstance(operation, dict):
                     continue
                 operation.get("responses", {}).pop("422", None)
-        for route in app.routes:
-            if not isinstance(route, APIRoute) or not route.include_in_schema:
+        # 新版 FastAPI 保留 include_router 上下文，路径前缀和可见性由上下文提供。
+        iter_contexts = getattr(routing, "iter_route_contexts", iter)
+        for route in iter_contexts(app.routes):
+            original_route = getattr(route, "original_route", route)
+            if not isinstance(original_route, APIRoute) or not route.include_in_schema:
                 continue
             owner = getattr(route.endpoint, "__self__", None)
             model = getattr(owner, "request_document_model", None)
