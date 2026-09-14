@@ -192,6 +192,20 @@ def test_response_examples_match_actual_builder_and_error_handler(scenes_app):
                 assert _build_error_response(ErrorCode[key], value["result"]["error_msg"]) == value
 
 
+def test_scenes_response_documents_explain_details_and_real_verdicts(scenes_app):
+    schema = scenes_app[0].openapi()
+    for _, _, endpoint in SCENES:
+        op = schema["paths"]["/api/v1" + endpoint]["post"]
+        examples = op["responses"]["200"]["content"]["application/json"]["examples"]
+        assert "REVIEW" not in examples
+        for verdict in ("PASS", "FAIL"):
+            assert examples[verdict]["value"]["result"]["detailList"]
+        for field in ("result.detailList[].coordinate", "result.detailList[].accuracy", "result.verdict", "result.vis_image"):
+            assert field in op["description"]
+        assert "四边形八个数" in op["description"]
+        assert "场景明细与判定规则" in op["description"]
+
+
 def test_swagger_and_form_submission_without_inference(scenes_app, monkeypatch):
     app, routers = scenes_app
     schema = app.openapi()
