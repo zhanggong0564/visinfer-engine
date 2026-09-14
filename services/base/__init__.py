@@ -7,6 +7,9 @@
 @Description  :
 '''
 
+# 公共值对象先于依赖 API Schema 的编排模块加载，供响应模型直接复用。
+from .geometry import CoordinateSpace, Point, Polygon, Region, xyxy_region
+from .ocr import OCRResult, OCRToken
 from .business_logic_base import BusinessLogicBase
 from .batch_business_logic_base import BatchBusinessLogicBase
 from .vision_infer import BaseVisionInfer
@@ -17,9 +20,7 @@ from .classification_pipeline import (
 from .ctc_recognition_pipeline import BaseCtcRecognitionPipeline, CtcRecognitionResult
 from .detection import Detection, DetectionResult
 from .detector import Detector
-from .geometry import CoordinateSpace, Point, Polygon, Region, xyxy_region
 from .inspection import InspectionVerdict
-from .ocr import OCRResult, OCRToken
 from .settings import SceneSettings
 
 
