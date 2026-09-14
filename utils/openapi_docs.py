@@ -1,87 +1,22 @@
 """OpenAPI 文档定制逻辑。"""
 
 import json
+import re
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
+from fastapi.routing import APIRoute
+from pydantic import BaseModel
+from pydantic.json_schema import GenerateJsonSchema
+from pydantic_core import core_schema
+
+from schemas.error_codes import ErrorCode, ERROR_CODE_MESSAGES
+from schemas.inspection import InspectionVerdict
 
 
 def _compact_json_example(data: dict) -> str:
     """Swagger 表单字段示例：json_data 是字符串，因此示例也必须是 JSON 字符串。"""
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-
-
-JSON_DATA_EXAMPLES_BY_PATH = {
-    "/api/v1/dcfuse_detect": _compact_json_example({
-        "product": "直流熔丝",
-        "type": "物料号",
-        "modelParams": {
-            "guide_line": [],
-            "example_images": [],
-        },
-        "AICameraModel": [{
-            "Id": "registration-id",
-            "Version": 1,
-            "ModelFile": None,
-            "AIParameterName": "产品类型",
-            "AIParameterValue": "六路无熔丝盒无磁环",
-        }],
-    }),
-    "/api/v1/line_squeeze_recognition": _compact_json_example({
-        "product": "线路压缩",
-        "type": "物料号",
-        "modelParams": {
-            "product_model": "五路有熔丝盒有磁环",
-        },
-    }),
-    "/api/v1/panel_label_detect": _compact_json_example({
-        "product": "逆变器组件_SG1100UD-V3039_S",
-        "type": "A0ST6329",
-        "sn": "A2670608545",
-        "modelParams": {
-            "guide_line": [{
-                "FileName": "5、直流侧开关S1S2.png",
-                "FilePath": "http://10.172.2.32:9986/AIModelFile/202606/20260622140657_d35pud55.png",
-            }],
-            "example_images": [{
-                "FileName": "屏幕截图 2026-04-22 145231.png",
-                "FilePath": "http://10.172.2.32:9986/AIModelFile/202606/20260622140214_edvlny2u.png",
-            }],
-            "product_type": "S1S2",
-            "rule": "front",
-            "line_order": "S2-14,S2-13,S1-13,S1-14;S1-14,S1-13,S2-13,S2-14",
-            "guideline_coordinates": "0.154,0.114666666666667,0.771,0.76",
-        },
-        "AICameraModel": [{
-            "Id": "d4315be0f3c645ca86ca0f4a793b9e95",
-            "SN": "A2662715398",
-            "ProductName": "A0ST6329",
-            "Version": 4,
-            "AIProductTypeName": "集中式检验组",
-            "AIProductTypeValue": "集中式检验组",
-            "ModelFile": None,
-            "Remark": None,
-            "CreateBy": None,
-            "CreateTime": "2026-07-01T10:15:46",
-            "UpdateBy": None,
-            "UpdateTime": "2026-07-01T10:15:46",
-            "AIParameterName": "产品类型",
-            "AIParameterValue": "五路有熔丝盒无磁环",
-            "DictionaryCode": None,
-        }],
-    }),
-    "/api/v1/indicator_light_detect": _compact_json_example({
-        "product": "指示灯",
-        "type": "物料号",
-        "modelParams": {
-            "type": 1,
-            "register": False,
-            "guide_line": [],
-            "example_images": [],
-        },
-        "AICameraModel": [],
-    }),
-}
 
 
 def configure_openapi_docs(app: FastAPI) -> None:
@@ -97,30 +32,200 @@ def configure_openapi_docs(app: FastAPI) -> None:
             routes=app.routes,
         )
         components = schema.get("components", {}).get("schemas", {})
-        for path, path_item in schema.get("paths", {}).items():
+        for path_item in schema.get("paths", {}).values():
             for operation in path_item.values():
                 if not isinstance(operation, dict):
                     continue
                 operation.get("responses", {}).pop("422", None)
-                _apply_json_data_example(path, operation, components)
+        for route in app.routes:
+            if not isinstance(route, APIRoute) or not route.include_in_schema:
+                continue
+            owner = getattr(route.endpoint, "__self__", None)
+            model = getattr(owner, "request_document_model", None)
+            if model is None:
+                continue
+            for method in route.methods:
+                operation = schema["paths"][route.path_format].get(method.lower())
+                if operation is not None:
+                    _apply_request_document(operation, components, model, owner)
         app.openapi_schema = schema
         return app.openapi_schema
 
     app.openapi = custom_openapi
 
 
-def _apply_json_data_example(path: str, operation: dict, components: dict) -> None:
-    example = JSON_DATA_EXAMPLES_BY_PATH.get(path)
-    request_body = operation.get("requestBody", {})
-    multipart = request_body.get("content", {}).get("multipart/form-data")
-    body_ref = (multipart or {}).get("schema", {}).get("$ref")
-    if not (example and body_ref):
-        return
-    body_schema = components.get(body_ref.rsplit("/", 1)[-1], {})
-    json_data_schema = body_schema.get("properties", {}).get("json_data")
-    if json_data_schema is None:
-        return
-    json_data_schema["description"] = (
-        "JSON 字符串，结构见示例；提交时作为 multipart/form-data 的普通文本字段传入"
+class _RequestJsonSchema(GenerateJsonSchema):
+    def get_default_value(self, schema: core_schema.WithDefaultSchema):
+        # 只展开无副作用的空容器工厂，不在生成文档时执行任意业务工厂。
+        factory = schema.get("default_factory")
+        if factory is list or factory is dict:
+            return factory()
+        return super().get_default_value(schema)
+
+
+def _register_request_schema(model: type[BaseModel], components: dict) -> str:
+    """为插件模型及其嵌套定义加完整模型名前缀，避免 ModelParams 等重名。"""
+    name = re.sub(r"[^a-zA-Z0-9._-]", "_", f"{model.__module__}.{model.__qualname__}")
+    schema = model.model_json_schema(
+        by_alias=True, mode="validation", schema_generator=_RequestJsonSchema,
     )
-    json_data_schema["example"] = example
+    definitions = schema.pop("$defs", {})
+
+    def rewrite(value):
+        if isinstance(value, dict):
+            return {
+                key: f"#/components/schemas/{name}__{item.removeprefix('#/$defs/')}"
+                if key == "$ref" and item.startswith("#/$defs/") else rewrite(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [rewrite(item) for item in value]
+        return value
+
+    components.update({
+        f"{name}__{key}": rewrite(value) for key, value in definitions.items()
+    })
+    components[name] = rewrite(schema)
+    return f"#/components/schemas/{name}"
+
+
+def _field_table(schema: dict, components: dict) -> str:
+    rows = [
+        "| 字段 | 类型 | 必填（相对所属对象） | 默认值 | 说明 |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+
+    def resolve(node):
+        while "$ref" in node:
+            node = components[node["$ref"].rsplit("/", 1)[-1]]
+        return node
+
+    def type_label(node):
+        node = resolve(node)
+        if "anyOf" in node:
+            return " / ".join(type_label(item) for item in node["anyOf"])
+        if node.get("type") == "array":
+            if "prefixItems" in node:
+                types = dict.fromkeys(type_label(item) for item in node["prefixItems"])
+                return f"array<{' / '.join(types)}>（{len(node['prefixItems'])} 项）"
+            return f"array<{type_label(node.get('items', {}))}>"
+        return node.get("type", "any")
+
+    def walk(node, prefix="", visited=frozenset()):
+        ref = node.get("$ref")
+        if ref and ref in visited:
+            return
+        if ref:
+            visited = visited | {ref}
+        node = resolve(node)
+        for variant in node.get("anyOf", []):
+            walk(variant, prefix, visited)
+        if node.get("type") == "array":
+            if isinstance(node.get("items"), dict):
+                walk(node["items"], prefix + "[]", visited)
+            for index, item in enumerate(node.get("prefixItems", [])):
+                walk(item, f"{prefix}[{index}]", visited)
+        for key, field in node.get("properties", {}).items():
+            path = f"{prefix}.{key}" if prefix else key
+            default = (
+                json.dumps(field["default"], ensure_ascii=False)
+                if "default" in field else "—"
+            )
+            description = field.get("description", resolve(field).get("description", ""))
+            if "enum" in resolve(field):
+                description += " 可选值：" + json.dumps(resolve(field)["enum"], ensure_ascii=False)
+            cells = [
+                f"`{path}`", f"`{type_label(field)}`",
+                "是" if key in node.get("required", []) else "否", default, description,
+            ]
+            rows.append("| " + " | ".join(
+                str(cell).replace("|", "\\|").replace("\n", "<br>") for cell in cells
+            ) + " |")
+            walk(field, path, visited)
+
+    walk(schema)
+    return "\n".join(rows) if len(rows) > 2 else "无业务字段，提交 `json_data={}`。"
+
+
+def _response_examples(verdicts: tuple[InspectionVerdict, ...]) -> dict:
+    examples = {}
+    for verdict, label in [
+        (InspectionVerdict.PASS, "通过"),
+        (InspectionVerdict.FAIL, "不通过"),
+        (InspectionVerdict.REVIEW, "待复核"),
+    ]:
+        if verdict not in verdicts:
+            continue
+        examples[verdict.value] = {
+            "summary": label,
+            "value": {
+                "code": int(ErrorCode.SUCCESS),
+                "message": ERROR_CODE_MESSAGES[ErrorCode.SUCCESS],
+                "result": {
+                    "detailList": [], "status": verdict.legacy_status,
+                    "verdict": verdict.value, "error_msg": "",
+                    "message": label, "vis_image": "",
+                },
+            },
+        }
+    for code in ErrorCode:
+        if code is ErrorCode.SUCCESS:
+            continue
+        message = ERROR_CODE_MESSAGES[code]
+        examples[code.name] = {
+            "summary": message,
+            "value": {
+                "code": int(code), "message": message,
+                "result": {
+                    "detailList": [], "status": "false", "verdict": None,
+                    "error_msg": message, "message": message,
+                },
+            },
+        }
+    return examples
+
+
+def _apply_request_document(
+    operation: dict, components: dict, model: type[BaseModel], owner,
+) -> None:
+    multipart = operation.get("requestBody", {}).get("content", {}).get("multipart/form-data")
+    if not multipart:
+        return
+    body = components[multipart["schema"]["$ref"].rsplit("/", 1)[-1]]
+    field = body.get("properties", {}).get("json_data")
+    if field is None:
+        return
+    ref = _register_request_schema(model, components)
+    field["description"] = "JSON 字符串，字段结构和业务约束见接口说明；作为 multipart/form-data 普通文本字段提交"
+    field["x-json-schema"] = {"$ref": ref}
+    example = owner.request_document_example
+    if example is not None:
+        field["example"] = _compact_json_example(example)
+    sections = [
+        operation.get("description", ""),
+        "### 请求参数\n\n使用 `multipart/form-data`：`file` 为必填图片，`json_data` 为必填 JSON 字符串。",
+        owner.request_document_notes,
+        _field_table({"$ref": ref}, components),
+    ]
+    if example is not None:
+        sections.append(
+            "### json_data 示例\n\n```json\n"
+            + json.dumps(example, ensure_ascii=False, indent=2) + "\n```"
+        )
+    verdicts = owner.response_document_verdicts
+    labels = {InspectionVerdict.PASS: "通过", InspectionVerdict.FAIL: "不通过",
+              InspectionVerdict.REVIEW: "待复核，须独立处理"}
+    verdict_description = "、".join(f"`{item.value}`（{labels[item]}）" for item in verdicts)
+    sections.append(
+        "### 响应说明\n\n检测完成及应用异常处理均返回 HTTP 200。`code=1` 表示推理正常完成，"
+        "不代表产品通过；其他业务错误码见响应示例。"
+        f"`result.verdict` 为 {verdict_description}，执行错误时为 null。"
+        "兼容字段 `status` 是字符串：PASS 对应 `\"true\"`，其余检测结论对应 `\"false\"`。"
+        "`detailList` 为检测详情，`vis_image` 为可选的可视化图片。"
+        "以下为公共响应结构示例，具体检测详情由场景决定。"
+    )
+    if InspectionVerdict.REVIEW in verdicts:
+        sections.append("不能仅凭 status 将 REVIEW 归为 FAIL。")
+    sections.append(owner.response_document_notes)
+    operation["description"] = "\n\n".join(section for section in sections if section)
+    operation["responses"]["200"]["content"]["application/json"]["examples"] = _response_examples(verdicts)
