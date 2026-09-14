@@ -183,7 +183,7 @@ def test_response_examples_match_actual_builder_and_error_handler(scenes_app):
         for key, example in examples.items():
             value = example["value"]
             CommonResponse.model_validate(value)
-            if key in {"PASS", "FAIL", "REVIEW"}:
+            if value["code"] == int(ErrorCode.SUCCESS):
                 actual = asyncio.run(builder.build(
                     np.zeros((2, 2, 3), np.uint8), copy.deepcopy(value["result"]), SimpleNamespace(),
                 )).model_dump(mode="json")
