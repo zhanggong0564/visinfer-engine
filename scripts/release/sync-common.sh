@@ -145,12 +145,12 @@ REMOTE_STAGE="${REMOTE_DIR}/releases/${RELEASE_ID}.staging"
 ssh "$REMOTE" "test ! -e '${REMOTE_STAGE}' && mkdir -p '${REMOTE_STAGE}'"
 rsync -az --delete "$LOCAL_STAGE/" "${REMOTE}:${REMOTE_STAGE}/"
 
+cat scripts/release/deployment_compose.sh scripts/release/remote_activate.sh | \
 ssh "$REMOTE" bash -s -- \
   "$REMOTE_DIR" "$RELEASE_ID" "$COMPOSE_FILE" "$CONTAINER_NAME" \
   "$HEALTH_URL" "$REQUIREMENTS_SHA256" "$PYTHON_ABI" \
   "$RUNTIME_CONTRACT_SHA256" "$DO_WEIGHTS" \
   "$(IFS=,; echo "${EXPECTED_ENTRYPOINTS[*]}")" \
-  "$ENVIRONMENT_CONTRACT_SHA256" "$ALLOW_LEGACY_IMAGE" \
-  < scripts/release/remote_activate.sh
+  "$ENVIRONMENT_CONTRACT_SHA256" "$ALLOW_LEGACY_IMAGE"
 
 echo "发布完成: ${SERVICE} ${RELEASE_ID}"
