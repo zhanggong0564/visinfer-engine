@@ -187,6 +187,17 @@ def render_detection_overlay(image, detail_list, *, guides=None, max_side=1280, 
         # 大图 thickness≥3 时仍比框线细一档，达成"参考线"视觉
         guide_thickness = max(2, thickness - 1)
         for g in guides or []:
+            if isinstance(g, (list, tuple)) and len(g) == 8:
+                try:
+                    points = np.asarray(g, dtype=np.float32).reshape(4, 2)
+                    if not np.isfinite(points).all():
+                        continue
+                    points = np.rint(points * [new_w, new_h]).astype(np.int32)
+                except (TypeError, ValueError):
+                    continue
+                for start, end in zip(points, np.roll(points, -1, axis=0)):
+                    _draw_dashed_line(canvas, start, end, _BLUE_BGR, guide_thickness)
+                continue
             if not isinstance(g, (list, tuple)) or len(g) != 4:
                 continue
             try:
