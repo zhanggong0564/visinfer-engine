@@ -21,7 +21,7 @@ class DetectionItemResponse(BaseModel):
 
     status: Literal["true", "false"] = Field(
         default="false",
-        description="兼容状态字符串：true=通过，false=不通过",
+        description="兼容状态字符串：PASS 对应 true，FAIL/REVIEW 对应 false；优先读取 verdict",
     )
     verdict: InspectionVerdict | None = Field(
         default=None,
