@@ -48,6 +48,8 @@ class BaseRouter(ABC):
     request_document_notes: str = ""
     response_document_verdicts: tuple[InspectionVerdict, ...] = tuple(InspectionVerdict)
     response_document_notes: str = ""
+    # 名称 -> {summary, result}；result 为真实业务响应结构，由框架补齐公共外层。
+    response_document_examples: dict[str, dict[str, Any]] | None = None
 
     def __init__(
         self,
