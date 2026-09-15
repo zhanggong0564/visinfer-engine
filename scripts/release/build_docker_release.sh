@@ -348,5 +348,6 @@ EOF
 done
 
 cp scripts/release/deploy_offline.sh "$OUT/deploy_offline.sh"
-(cd "$OUT" && find image.tar.gz "${SERVICES[@]}" -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+cp scripts/release/deployment_compose.sh "$OUT/deployment_compose.sh"
+(cd "$OUT" && find deploy_offline.sh deployment_compose.sh image.tar.gz "${SERVICES[@]}" -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
 echo "离线发布包已生成: $OUT"
