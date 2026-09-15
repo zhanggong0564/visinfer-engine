@@ -139,3 +139,16 @@ def test_release_workflows_keep_production_port_with_historical_compose(tmp_path
     assert (root / "health-calls").read_text()
     assert (root / "releases/old/docker-compose.scenes.yml").read_text() == original
     assert (root / ".env").read_text() == "SCENES_PORT=3007\n"
+
+
+def test_application_listens_on_configured_port(monkeypatch):
+    import app
+    from config.config import Settings
+
+    monkeypatch.setenv("PORT", "3007")
+    settings = Settings(_env_file=None)
+    monkeypatch.setattr(app, "settings", settings)
+    calls = []
+    monkeypatch.setattr(app.uvicorn, "run", lambda *args, **kwargs: calls.append(kwargs))
+    app.main()
+    assert calls[0]["port"] == 3007
