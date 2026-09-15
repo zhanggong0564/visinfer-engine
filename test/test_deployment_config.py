@@ -67,7 +67,8 @@ def test_container_healthchecks_use_readiness_endpoint():
         Path("docker-compose.scenes.yml"),
     ):
         content = path.read_text(encoding="utf-8")
-        assert "http://127.0.0.1:3001/health/ready" in content
+        port = "${SCENES_PORT:-3005}" if path.name == "docker-compose.scenes.yml" else "3001"
+        assert f"http://127.0.0.1:{port}/health/ready" in content
 
 
 def test_panel_label_compose_uses_scene_runtime_and_versioned_overlay():
