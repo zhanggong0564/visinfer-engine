@@ -12,6 +12,9 @@
 
 ### 改进
 
+- scenes Compose 支持通过 `INDICATOR_SIM_THRESHOLD` 配置指示灯相似度阈值，
+  未配置时使用 0.80，与更新后的指示灯插件默认阈值一致。
+
 - scenes 部署端口支持通过目标目录 `.env` 的 `SCENES_PORT` 配置；热更新和
   回滚保留环境端口，兼容历史 Compose，并按实际映射检查 readiness。
 
