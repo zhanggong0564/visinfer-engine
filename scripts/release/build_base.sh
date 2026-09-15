@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =========================================================
-# 构建共享镜像 mobile_vision:base-builder 和 mobile_vision:base。
+# 构建共享镜像 mobile_vision/build-base:latest 和 mobile_vision/runtime-base:latest。
 #
 # base-builder = CUDA + 构建工具链 + 全部 pip 依赖 + framework。
 # base = CUDA 运行库 + 全部 pip 依赖 + framework，不包含编译工具链。
@@ -11,8 +11,8 @@
 #
 # 用法（仓库根目录）：
 #   bash scripts/release/build_base.sh
-#   BASE_TAG=mobile_vision:base-20260626 \
-#   BASE_BUILDER_TAG=mobile_vision:base-builder-20260626 \
+#   BASE_TAG=mobile_vision/runtime-base:latest \
+#   BASE_BUILDER_TAG=mobile_vision/build-base:latest \
 #     bash scripts/release/build_base.sh
 #
 # 构建完 base 后，通过 build_docker_release.sh 构建具体场景 runtime。
@@ -23,8 +23,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
-BASE_TAG="${BASE_TAG:-${TAG:-mobile_vision:base}}"
-BASE_BUILDER_TAG="${BASE_BUILDER_TAG:-mobile_vision:base-builder}"
+BASE_TAG="${BASE_TAG:-${TAG:-mobile_vision/runtime-base:latest}}"
+BASE_BUILDER_TAG="${BASE_BUILDER_TAG:-mobile_vision/build-base:latest}"
 CUDA_BASE_IMAGE="${CUDA_BASE_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04}"
 CONDA_ENV="${CONDA_ENV:-mobile_vision}"
 ORT_WHEEL="whl/onnxruntime_gpu-1.20.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
