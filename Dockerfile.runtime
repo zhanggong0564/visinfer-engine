@@ -1,6 +1,6 @@
 # VIE scene runtime: add selected scene plugins to the shared project environment.
-ARG BASE_IMAGE=mobile_vision:base
-ARG BUILDER_IMAGE=mobile_vision:base-builder
+ARG BASE_IMAGE=mobile_vision/runtime-base:latest
+ARG BUILDER_IMAGE=mobile_vision/build-base:latest
 
 FROM ${BUILDER_IMAGE} AS plugin-builder
 ARG PLUGINS
