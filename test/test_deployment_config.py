@@ -53,7 +53,7 @@ def test_onnx_runtime_gpu_image_matches_ort_120_cuda_requirements():
     runtime = Path("Dockerfile.runtime").read_text(encoding="utf-8")
     assert f"ARG CUDA_BASE_IMAGE={expected_base}" in base
     assert 'io.vie.base-image="${CUDA_BASE_IMAGE}"' in base
-    assert "ARG BASE_IMAGE=mobile_vision:base" in runtime
+    assert "ARG BASE_IMAGE=mobile_vision/runtime-base:latest" in runtime
     assert 'io.vie.base-image="${BASE_IMAGE}"' in runtime
 
     requirements = Path("requirements.txt").read_text(encoding="utf-8")
@@ -74,7 +74,7 @@ def test_container_healthchecks_use_readiness_endpoint():
 def test_panel_label_compose_uses_scene_runtime_and_versioned_overlay():
     compose = Path("docker-compose.panel-label.yml").read_text(encoding="utf-8")
 
-    assert "image: ${PANEL_LABEL_IMAGE:-mobile_vision:panel-label}" in compose
+    assert "image: ${PANEL_LABEL_IMAGE:?请设置带版本的 label-service 镜像}" in compose
     assert "build:" not in compose
     assert 'ENABLED_SCENES=["panel_label","mvs"]' in compose
     assert "STRICT_STARTUP=true" in compose
@@ -88,7 +88,7 @@ def test_scenes_compose_uses_scene_runtime_and_versioned_overlay():
 
     assert "INDICATOR_SIM_THRESHOLD=${INDICATOR_SIM_THRESHOLD:-0.80}" in compose
 
-    assert "image: ${SCENES_IMAGE:-mobile_vision:scenes}" in compose
+    assert "image: ${SCENES_IMAGE:?请设置带版本的 equipment-service 镜像}" in compose
     assert "build:" not in compose
     for mount in ("pkg", "weights", "app.py", "static"):
         assert f"./current/{mount}:/app/workspace/{mount}:ro" in compose
@@ -159,7 +159,7 @@ def test_deploy_panel_label_compose_uses_service_image_and_versioned_overlay():
 
     compose = compose_path.read_text(encoding="utf-8")
 
-    assert "image: ${PANEL_LABEL_IMAGE:-mobile_vision:panel-label}" in compose
+    assert "image: ${PANEL_LABEL_IMAGE:?请设置带版本的 label-service 镜像}" in compose
     assert "build:" not in compose
     assert 'ENABLED_SCENES=["panel_label","mvs"]' in compose
     assert "STRICT_STARTUP=true" in compose
@@ -445,12 +445,12 @@ def test_release_builds_and_validates_separate_builder_image():
     )
     runtime = Path("Dockerfile.runtime").read_text(encoding="utf-8")
 
-    assert 'BASE_BUILDER_TAG="${BASE_BUILDER_TAG:-mobile_vision:base-builder}"' in release
+    assert 'BASE_BUILDER_TAG="${BASE_BUILDER_TAG:-mobile_vision/build-base:latest}"' in release
     assert "--target base-builder" in release
     assert 'validate_base_image "$BASE_BUILDER_TAG" builder' in release
     assert 'validate_base_image "$BASE_TAG" runtime-base' in release
     assert '--build-arg "BUILDER_IMAGE=${BASE_BUILDER_TAG}"' in release
-    assert "ARG BUILDER_IMAGE=mobile_vision:base-builder" in runtime
+    assert "ARG BUILDER_IMAGE=mobile_vision/build-base:latest" in runtime
     assert 'docker save "${IMAGES[@]}"' in release
     assert 'IMAGES+=("$BASE_BUILDER_TAG")' not in release
 
