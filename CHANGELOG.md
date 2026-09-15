@@ -10,13 +10,30 @@
 
 ## [Unreleased]
 
+## [2.2.7] - 2026-09-15（Git tag: `v2.2.7`）
+
+### 修复
+
+- 输入构建和检测器初始化异常也保存错误回流 JSON，保留原始请求参数，
+  修复指示灯缺少注册参考图时只保存 pending 图片的问题。
+
 ### 改进
 
 - scenes Compose 支持通过 `INDICATOR_SIM_THRESHOLD` 配置指示灯相似度阈值，
   未配置时使用 0.80，与更新后的指示灯插件默认阈值一致。
 
+- 离线部署保留目标环境配置，按实际映射更新健康检查地址；部署前校验合并配置并
+  备份原配置，拒绝覆盖同版本目录，随包校验部署辅助脚本。
+- scenes 应用监听、内外映射及容器健康检查统一使用 `SCENES_PORT`，例如
+  `3007:3007`；热更新与回滚兼容历史 Compose 的固定内部端口。
+
 - scenes 部署端口支持通过目标目录 `.env` 的 `SCENES_PORT` 配置；热更新和
   回滚保留环境端口，兼容历史 Compose，并按实际映射检查 readiness。
+
+- 镜像统一使用 `mobile_vision/<服务包>:X.Y.Z`，服务包为 `label-service` 和
+  `equipment-service`；通用环境使用 `runtime-base:latest` / `build-base:latest`。
+  构建、热更新和 Compose 引用同步迁移；Compose 要求显式指定成品镜像，
+  离线构建拒绝带日期、提交号或自定义后缀的发布版本，保留原服务标识和契约校验。
 
 ## [2.2.6] - 2026-09-14（Git tag: `v2.2.6`）
 
