@@ -11,7 +11,7 @@
 
 services:
   mobile-vision-panel-label:
-    image: ${PANEL_LABEL_IMAGE:-mobile_vision:panel-label}
+    image: ${PANEL_LABEL_IMAGE:?请设置带版本的 label-service 镜像}
     container_name: mobile-vision-panel-label
 
     ports:
