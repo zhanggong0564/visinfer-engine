@@ -6,7 +6,13 @@ install_deployment_compose() {
   if [ "$(basename "$target_file")" = "docker-compose.scenes.yml" ]; then
     # Historical releases used a literal host port. Normalize only the deployed
     # copy; keep archived releases immutable and let Compose read the local .env.
-    sed -E 's/^([[:space:]]*-[[:space:]]*)"[0-9]+:3001"([[:space:]]*(#.*)?)$/\1"${SCENES_PORT:-3005}:3001"\2/' \
+    sed -E '
+      s/"(\$\{SCENES_PORT:-3005\}|[0-9]+):[0-9]+"/"${SCENES_PORT:-3005}:${SCENES_PORT:-3005}"/
+      /^[[:space:]]*-[[:space:]]*PORT=/d
+      /^[[:space:]]*environment:/a\
+      - PORT=${SCENES_PORT:-3005}
+      s@http://127\.0\.0\.1:[0-9]+/health/ready@http://127.0.0.1:${SCENES_PORT:-3005}/health/ready@g
+    ' \
       "$source_file" > "${target_file}.next"
   else
     cp "$source_file" "${target_file}.next"
