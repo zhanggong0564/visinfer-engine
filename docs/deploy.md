@@ -23,8 +23,12 @@ scenes 宿主端口由实际部署目录 `.env` 中的 `SCENES_PORT` 指定，�
 
 热更新与显式/自动回滚使用目标环境的端口配置，并从运行容器的实际映射生成
 readiness 地址。历史 Compose 中的固定端口只在部署副本中转换，归档文件不改动。
-离线部署会从包内 `release.env` 重建 `.env`，因此准备离线包时必须保留目标环境的
-`SCENES_PORT`，同步设置包内 `HEALTH_URL` 并重新生成 `SHA256SUMS`。
+离线部署合并包内 `release.env` 与目标 `.env`：版本、镜像、Compose 标识随包更新；
+`SCENES_PORT`、`INDICATOR_ALLOWED_HOSTS` 等运行配置以目标目录为准，未配置项使用包内默认值。
+首次部署可提前创建 `.env` 指定端口。脚本先校验合并配置，再加载镜像和重建容器，
+按实际映射写回 `HEALTH_URL` 并验证 readiness，无需手动修改离线包的健康检查地址。
+旧配置和发布指向保存在 `.release-backups/offline-<版本>-<随机标识>/`；
+已存在的同版本发布目录不会被覆盖。离线部署失败仍需根据备份恢复，不宣称自动回滚。
 
 ## 1. 构建前置条件
 
@@ -79,7 +83,7 @@ RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service sce
 - 根目录唯一的 gzip Docker archive，其中包含所选场景镜像；
 - 首次覆盖层及配置实际引用的完整权重；
 - 对应 Compose；
-- `deploy_offline.sh`；
+- `deploy_offline.sh` 和 `deployment_compose.sh`（均纳入校验清单）；
 - `SHA256SUMS`。
 
 不指定 `--service` 时一次构建两个服务，输出到
@@ -224,7 +228,7 @@ docker compose -f docker-compose.panel-label.yml ps
 curl -fsS http://127.0.0.1:3001/health/ready
 
 docker compose -f docker-compose.scenes.yml ps
-curl -fsS http://127.0.0.1:3005/health/ready
+curl -fsS "$(sed -n 's/^HEALTH_URL=//p' .env)"
 ```
 
 常见问题：
