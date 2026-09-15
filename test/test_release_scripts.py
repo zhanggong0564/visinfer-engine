@@ -328,8 +328,8 @@ def test_offline_release_script_exports_scene_images_in_one_archive():
 
     assert "RELEASE_VERSION" in script
     assert "Dockerfile.runtime" in script
-    assert "mobile_vision:panel-label-" in script
-    assert "mobile_vision:scenes-" in script
+    assert "mobile_vision/label-service:" in script
+    assert "mobile_vision/equipment-service:" in script
     assert "Dockerfile.panel-label" not in script
     assert "Dockerfile.scenes" not in script
     assert "sha256sum" in script
@@ -436,7 +436,7 @@ def test_release_scripts_use_configurable_mobile_vision_environment():
         assert "conda run -n ppocr" not in script
 
     assert "setuptools.config.pyprojecttoml" in release_script
-    assert 'WHEEL_BUILDER_IMAGE="${WHEEL_BUILDER_IMAGE:-mobile_vision:base-builder}"' in sync_script
+    assert 'WHEEL_BUILDER_IMAGE="${WHEEL_BUILDER_IMAGE:-mobile_vision/build-base:latest}"' in sync_script
     assert 'docker image inspect "$WHEEL_BUILDER_IMAGE"' in sync_script
     assert "使用隔离构建" in sync_script
 
