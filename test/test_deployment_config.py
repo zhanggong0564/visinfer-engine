@@ -85,6 +85,8 @@ def test_panel_label_compose_uses_scene_runtime_and_versioned_overlay():
 def test_scenes_compose_uses_scene_runtime_and_versioned_overlay():
     compose = Path("docker-compose.scenes.yml").read_text(encoding="utf-8")
 
+    assert "INDICATOR_SIM_THRESHOLD=${INDICATOR_SIM_THRESHOLD:-0.80}" in compose
+
     assert "image: ${SCENES_IMAGE:-mobile_vision:scenes}" in compose
     assert "build:" not in compose
     for mount in ("pkg", "weights", "app.py", "static"):
