@@ -362,7 +362,7 @@ bash deploy_offline.sh --bundle /path/docker-release-2.1.3-scenes \
 不指定 `--service` 时仍会一次构建两个服务，并输出到
 `dist/docker-release-2.1.3/`；该包只生成一份 `image.tar.gz`，其中包含两个场景
 镜像引用，共享 base layers 只保存一次。已有完整基础合同指纹匹配的
-`mobile_vision:base` 时可设置
+`mobile_vision/runtime-base:latest` 时可设置
 `SKIP_BASE_BUILD=1` 跳过基础镜像构建。
 
 ### 直接部署
