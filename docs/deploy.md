@@ -2,18 +2,16 @@
 
 生产部署采用“首次离线镜像 + 后续原子覆盖层更新”：
 
-- `mobile_vision:base-builder`：仅在构建机使用，包含插件编译工具链、全部项目依赖和 framework，不进入离线交付包。
-- `mobile_vision:base`：所有场景共用的运行基础，包含 CUDA 12.4、Python 3.10、全部项目依赖和 framework，不包含编译工具链。
-- `mobile_vision:panel-label-<版本>`：从 base 继承，只增加 panel_label 插件、`app.py` 和静态资源。
-- `mobile_vision:scenes-<版本>`：从 base 继承，只增加其余五个场景插件、`app.py` 和静态资源。
+- `mobile_vision/build-base:latest`：仅在构建机使用，包含插件编译工具链、全部项目依赖和 framework，不进入离线交付包。
+- `mobile_vision/runtime-base:latest`：所有场景共用的运行基础，包含 CUDA 12.4、Python 3.10、全部项目依赖和 framework，不包含编译工具链。
+- `mobile_vision/label-service:<版本>`：标签检测服务包，包含 panel_label、MVS 场景及入口、静态资源。
+- `mobile_vision/equipment-service:<版本>`：从 base 继承，只增加其余五个场景插件、`app.py` 和静态资源。
 - `panel-label/current/`：panel_label 插件和对应权重。
 - `scenes/current/`：dc_fuse、indicator_light、lap_surf、line_squeeze、plate_screw 插件和对应权重。
 - `current/`：后续 sync 发布的 framework、插件、入口、静态资源和权重快照。
 - `logs/`、`data/`：跨发布持久化，不进入版本目录。
 
 两个服务应放在不同部署目录，默认端口分别为 panel `3001`、scenes `3005`。
-
-scenes `3005`。
 
 scenes 宿主端口由实际部署目录 `.env` 中的 `SCENES_PORT` 指定，例如
 `SCENES_PORT=3007`；应用监听、容器健康检查及内外端口统一为 `3007`，映射为
@@ -29,6 +27,37 @@ readiness 地址。历史 Compose 中的固定端口只在部署副本中转换�
 按实际映射写回 `HEALTH_URL` 并验证 readiness，无需手动修改离线包的健康检查地址。
 旧配置和发布指向保存在 `.release-backups/offline-<版本>-<随机标识>/`；
 已存在的同版本发布目录不会被覆盖。离线部署失败仍需根据备份恢复，不宣称自动回滚。
+
+### 镜像命名规则
+
+- 通用运行环境固定为 `mobile_vision/runtime-base:latest`，通用构建环境固定为 `mobile_vision/build-base:latest`。
+- 服务包成品固定为 `mobile_vision/label-service:X.Y.Z` 或 `mobile_vision/equipment-service:X.Y.Z`。
+  `X.Y.Z` 是发布版本号，三段均为无前导零的非负整数；不加 `v`、日期、
+  提交号、任务名、环境名或 `test` / `docs1` 等后缀。版本号最长 128 字符，
+  保证完整 Docker 标签不超过 128 字符。
+- 修订成品应递增发布版本号；构建来源用镜像 ID、标签元数据和发布记录追踪。
+  本地同一服务只保留最新版本，不额外创建重复别名。历史镜像清理显式执行，
+  构建脚本不自动删除镜像或远端回滚资源。
+
+`RELEASE_VERSION`、`--version` 和位置参数使用相同校验；非法版本在构建前报错。
+
+镜像名体现服务包用途，版本号代表整个服务包的发布，不代表单个场景版本。
+包内插件或框架变更形成新发布时递增发布版本，具体插件版本由镜像元数据记录。
+`label-service` 对应现有 Compose 服务 `panel-label`；`equipment-service` 对应
+`scenes`（dc_fuse、indicator_light、lap_surf、line_squeeze、plate_screw）。
+Compose 服务名、发布目录和脚本 `--service` 参数不随镜像名改变。
+
+Compose 必须通过环境变量或部署目录 `.env` 指定 `PANEL_LABEL_IMAGE` /
+`SCENES_IMAGE`，不再隐式使用未带版本的成品镜像。例如：
+
+```dotenv
+PANEL_LABEL_IMAGE=mobile_vision/label-service:2.2.5
+SCENES_IMAGE=mobile_vision/equipment-service:2.2.5
+```
+
+离线包自动将完整镜像名写入 `release.env`；已有部署仍可显式引用原镜像名，
+这次本地改名不会修改远端配置。通用基础镜像改名后内容契约仍须完整匹配，
+不能仅凭 `latest` 标签跳过兼容性检查。
 
 ## 1. 构建前置条件
 
@@ -90,14 +119,14 @@ RELEASE_VERSION=2.1.3 bash scripts/release/build_docker_release.sh --service sce
 `dist/docker-release-2.1.3/`。该目录只有一份公共 `image.tar.gz`，
 其中包含 panel-label/scenes 两个镜像引用，共享 base layer 只出现一次；
 两个服务的基础 overlay 只携带权重和热更新挂载文件，不重复打包 framework 或插件。
-已有完整基础合同指纹匹配的 `mobile_vision:base-builder` 和
-`mobile_vision:base` 时，可设置 `SKIP_BASE_BUILD=1` 跳过两个基础镜像的构建。
+已有完整基础合同指纹匹配的 `mobile_vision/build-base:latest` 和
+`mobile_vision/runtime-base:latest` 时，可设置 `SKIP_BASE_BUILD=1` 跳过两个基础镜像的构建。
 builder 只留在构建机供场景插件和热更新 wheel 编译使用，不会写入
 `image.tar.gz`。
 
 脚本默认使用 `mobile_vision` Conda 环境；需要使用其他已准备好构建依赖的环境时，
 可通过 `CONDA_ENV=<环境名>` 覆盖。环境中没有 Cython 时，插件 wheel 优先使用
-`mobile_vision:base-builder` 构建；该镜像也不存在时再使用隔离构建。
+`mobile_vision/build-base:latest` 构建；该镜像也不存在时再使用隔离构建。
 
 #### 基础镜像源
 
