@@ -13,6 +13,7 @@ usage() {
 --service scenes 只构建 scenes 服务
 --service all    构建两个服务（默认，兼容旧用法）
 版本号必须为 X.Y.Z（数字，不带前导零或附加后缀）。
+镜像名固定为 mobile_vision/label-service:X.Y.Z 或 mobile_vision/equipment-service:X.Y.Z。
 EOF
 }
 
@@ -90,8 +91,8 @@ case "$TARGET" in
 esac
 
 CUDA_BASE_IMAGE="${CUDA_BASE_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04}"
-BASE_TAG="${BASE_TAG:-mobile_vision:base}"
-BASE_BUILDER_TAG="${BASE_BUILDER_TAG:-mobile_vision:base-builder}"
+BASE_TAG="${BASE_TAG:-mobile_vision/runtime-base:latest}"
+BASE_BUILDER_TAG="${BASE_BUILDER_TAG:-mobile_vision/build-base:latest}"
 CONDA_ENV="${CONDA_ENV:-mobile_vision}"
 export CONDA_ENV
 
@@ -259,7 +260,7 @@ if [ "$TARGET" = "panel-label" ] || [ "$TARGET" = "all" ]; then
   PANEL_CONTEXT="$BUILD_ROOT/panel-label"
   PANEL_PLUGINS=(panel-label mvs)
   stage_runtime_context "$PANEL_CONTEXT" "${PANEL_PLUGINS[@]}"
-  PANEL_IMAGE="mobile_vision:panel-label-${RELEASE_VERSION}"
+  PANEL_IMAGE="mobile_vision/label-service:${RELEASE_VERSION}"
   PANEL_PLUGIN_VERSIONS=""
   for plugin_name in "${PANEL_PLUGINS[@]}"; do
     plugin_version="$(project_version "plugins/vie-plugin-${plugin_name}/pyproject.toml")"
@@ -287,7 +288,7 @@ if [ "$TARGET" = "scenes" ] || [ "$TARGET" = "all" ]; then
   SCENES_PLUGINS=(dc-fuse indicator-light lap-surf line-squeeze plate-screw)
   SCENES_CONTEXT="$BUILD_ROOT/scenes"
   stage_runtime_context "$SCENES_CONTEXT" "${SCENES_PLUGINS[@]}"
-  SCENES_IMAGE="mobile_vision:scenes-${RELEASE_VERSION}"
+  SCENES_IMAGE="mobile_vision/equipment-service:${RELEASE_VERSION}"
   SCENES_PLUGIN_VERSIONS=""
   for plugin_name in "${SCENES_PLUGINS[@]}"; do
     plugin_version="$(project_version "plugins/vie-plugin-${plugin_name}/pyproject.toml")"
