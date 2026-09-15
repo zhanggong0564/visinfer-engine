@@ -286,6 +286,41 @@ def test_remote_activation_ignores_blank_weight_paths():
     assert '[ -n "$weight" ] || continue' in script
 
 
+@pytest.mark.parametrize("input_mode", ["env", "option", "positional"])
+@pytest.mark.parametrize("version", [
+    "2.2.5-docs1", "2.2.5-20260914-7e8118e", "2.2.5-test",
+    "v2.2.5", "02.2.5", "2.02.5", "2.2.05", "2.2", "2.2.5.1",
+    "2.2.5+build", "2.2.5/other", "2.2.5\n", "2.2.5 ", "1" * 125 + ".0.0",
+])
+def test_offline_release_rejects_nonstandard_versions_before_build(input_mode, version):
+    env = os.environ.copy()
+    env.pop("RELEASE_VERSION", None)
+    env.pop("BUILD_TARGET", None)
+    command = ["bash", "scripts/release/build_docker_release.sh"]
+    if input_mode == "env":
+        env["RELEASE_VERSION"] = version
+    elif input_mode == "option":
+        command += ["--version", version]
+    else:
+        command += [version]
+    result = subprocess.run(command, env=env, capture_output=True, text=True)
+    assert result.returncode == 2
+    assert "无效发布版本" in result.stderr
+
+
+@pytest.mark.parametrize("version", ["0.0.0", "2.2.5", "10.20.30", "1" * 124 + ".0.0"])
+def test_offline_release_accepts_numeric_versions_before_target_validation(version):
+    env = os.environ.copy()
+    env.update(RELEASE_VERSION=version, BUILD_TARGET="invalid-target")
+    result = subprocess.run(
+        ["bash", "scripts/release/build_docker_release.sh"],
+        env=env, capture_output=True, text=True,
+    )
+    assert result.returncode == 2
+    assert "无效服务目标" in result.stderr
+    assert "无效发布版本" not in result.stderr
+
+
 def test_offline_release_script_exports_scene_images_in_one_archive():
     script = Path("scripts/release/build_docker_release.sh").read_text(
         encoding="utf-8"
