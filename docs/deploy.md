@@ -150,6 +150,9 @@ export INDICATOR_ALLOWED_HOSTS=172.17.0.1
 
 scenes Compose 会将该值传入容器。未配置时保持空列表，内网地址下载仍会被拒绝。
 
+指示灯相似度阈值通过 `INDICATOR_SIM_THRESHOLD` 配置，默认 `0.80`；
+当前本地生产配置为 `0.80`。严格大于阈值才通过，变更后需重建 scenes 容器使环境变量生效。
+
 ## 3. 日常代码与权重更新
 
 panel-label：
