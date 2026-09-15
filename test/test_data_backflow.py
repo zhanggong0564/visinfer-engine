@@ -21,7 +21,7 @@ from routers.base_router import BaseRouter
 from routers.backflow_service import BackflowService
 from routers.upload_processor import DecodedUpload
 from routers.upload_persistence import write_bytes_atomically
-from schemas.exceptions import ProductNotRegisteredError
+from schemas.exceptions import ProductNotRegisteredError, InvalidParamsError
 
 
 def test_stats_classification_ignores_custom_backflow_directory():
@@ -130,6 +130,45 @@ def test_persist_called_when_detect_fails(monkeypatch):
     assert events[:2] == ["pending_published", "detect"]
     assert len(calls) == 1, "检测失败时错误记录未落盘"
     assert calls[0]["original_filename"] == "线标检验FU211-1779526099406.jpg"
+
+
+@pytest.mark.parametrize("failure_stage", ["sync_inputs", "async_inputs", "get_detector"])
+def test_preparation_failure_persists_original_request(monkeypatch, tmp_path, failure_stage):
+    router, calls, events = _make_router(monkeypatch, lambda: pytest.fail("不应进入推理"))
+    router.backflow_service = BackflowService(
+        router.detector_type, router.resolve_backflow_target, str(tmp_path),
+    )
+    async def upload(*args, **kwargs):
+        return DecodedUpload(
+            image=np.zeros((10, 10, 3), dtype=np.uint8),
+            raw_bytes=_image_bytes(".jpg"), extension=".jpg",
+        )
+    monkeypatch.setattr(router.upload_processor, "process", upload)
+    error = InvalidParamsError("未找到型号 1 对应的注册参考图")
+    def fail(*args, **kwargs):
+        raise error
+    async def async_fail(*args, **kwargs):
+        raise error
+    if failure_stage == "get_detector":
+        monkeypatch.setattr(router, "get_detector_singleton", fail)
+    else:
+        monkeypatch.setattr(router, "get_inputs", async_fail if failure_stage == "async_inputs" else fail)
+    params = {"modelParams": {"type": 1, "product_type": "FU211"}, "AICameraModel": []}
+    tasks = BackgroundTasks()
+    with pytest.raises(InvalidParamsError) as caught:
+        _run(router._handle_request(
+            background_tasks=tasks, file=_FakeUpload(), json_data=json.dumps(params),
+        ))
+    assert caught.value is error
+    assert not tasks.tasks and "detect" not in events
+    records = list(tmp_path.rglob("records/*.json"))
+    assert len(records) == 1
+    record = json.loads(records[0].read_text())
+    assert record["request_params"] == params
+    assert record["result"]["error"] == str(error)
+    assert record["verdict"] == "error"  # 回流文件顶层字段沿用历史分类契约。
+    assert record["result"].get("verdict") is None
+    assert len(list(tmp_path.rglob("images/*.jpg"))) == 1
 
 
 def test_image_persisted_before_detect(monkeypatch):
