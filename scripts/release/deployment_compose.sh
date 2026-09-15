@@ -22,10 +22,12 @@ install_deployment_compose() {
 }
 
 deployment_health_url() {
+  # Retain the compose-file argument for existing callers. Read published ports
+  # without assuming that the application still listens on container port 3001.
   local binding port
-  binding="$("${COMPOSE[@]}" -f "$1" port "$2" 3001)" || return 1
-  port="${binding##*:}"
-  if [[ "$binding" = *$'\n'* ]] || ! [[ "$port" =~ ^[0-9]+$ ]] || \
+  binding="$(docker port "$2")" || return 1
+  port="$(printf '%s\n' "$binding" | sed 's/.*://' | sort -u)"
+  if ! [[ "$port" =~ ^[0-9]+$ ]] || \
       [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
     echo "无法确定服务 $2 的健康检查端口" >&2
     return 1
