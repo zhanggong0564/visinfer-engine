@@ -12,6 +12,7 @@ usage() {
 --service panel  构建 panel-label + MVS 合并服务
 --service scenes 只构建 scenes 服务
 --service all    构建两个服务（默认，兼容旧用法）
+版本号必须为 X.Y.Z（数字，不带前导零或附加后缀）。
 EOF
 }
 
@@ -63,6 +64,11 @@ for arg in "${POSITIONAL[@]}"; do
 done
 
 : "${RELEASE_VERSION:?用法: RELEASE_VERSION=2.1.3 $0 [--service panel|scenes|all]}"
+if [[ ! "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ||
+   [ "${#RELEASE_VERSION}" -gt 128 ]; then
+  echo "无效发布版本: $RELEASE_VERSION；必须为 X.Y.Z，不带前导零、日期、提交号或其他后缀（最长 128 字符）" >&2
+  exit 2
+fi
 case "$TARGET" in
   panel|panel-label)
     TARGET="panel-label"
