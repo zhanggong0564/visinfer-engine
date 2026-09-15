@@ -152,20 +152,23 @@ class BaseRouter(ABC):
                     stage_recorder=timer.record,
                 )
             image = upload.image
-            with timer.stage("build_inputs"):
-                inputs = self.prepare_inputs(
-                    request_params,
-                    image,
-                    original_filename,
-                )
-                if inspect.isawaitable(inputs):
-                    inputs = await inputs
-            with timer.stage("get_detector"):
-                detector = self.get_detector_singleton()
-
             start = time.time()
-            # detect 是同步 CPU/GPU 密集操作，丢到线程池执行，避免阻塞事件循环
             try:
+                # 输入构建（如注册参考图匹配）和检测器初始化也可能失败，
+                # 必须覆盖同一错误回流路径，避免只留下 pending 图片。
+                with timer.stage("build_inputs"):
+                    inputs = self.prepare_inputs(
+                        request_params,
+                        image,
+                        original_filename,
+                    )
+                    if inspect.isawaitable(inputs):
+                        inputs = await inputs
+                with timer.stage("get_detector"):
+                    detector = self.get_detector_singleton()
+
+                start = time.time()
+                # detect 是同步 CPU/GPU 密集操作，丢到线程池执行。
                 with timer.stage("detect"):
                     result_info = await self.inference_admission.run(
                         self.detector_type,
@@ -173,8 +176,7 @@ class BaseRouter(ABC):
                         inputs,
                     )
             except Exception as exc:
-                # 检测失败（如型号未注册）也要落盘：数据回流的核心价值之一就是
-                # 收集这些"没见过"的新型号样本去标注、补型号。异常会跳过下方
+                # 准备或检测失败时也要落盘，以便诊断原始请求。异常会跳过下方
                 # background_tasks 注册，故此处内联落盘后再重抛，交全局异常处理器响应。
                 latency_ms = (time.time() - start) * 1000
                 with timer.stage("persist_error_record"):
