@@ -341,7 +341,7 @@ def test_uv_does_not_change_production_onnx_runtime_contract():
 def test_framework_package_version_includes_yolo_pipeline():
     framework = Path("pyproject.toml").read_text(encoding="utf-8")
 
-    assert 'version = "2.2.7"' in framework
+    assert 'version = "2.2.8"' in framework
 
 
 def test_runtime_requirements_use_onnx_without_paddle():
