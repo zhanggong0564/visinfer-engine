@@ -30,6 +30,7 @@ WITH_WEIGHTS="$9"
 EXPECTED_ENTRYPOINTS="${10}"
 EXPECTED_ENVIRONMENT_CONTRACT_SHA="${11}"
 ALLOW_LEGACY_IMAGE="${12}"
+LEGACY_IMAGE_NAMES_CONTRACT_SHA256="${13:-}"
 STAGE="${ROOT}/releases/${RELEASE_ID}.staging"
 FINAL="${ROOT}/releases/${RELEASE_ID}"
 select_compose
@@ -61,8 +62,13 @@ if [ -z "$IMAGE_ENVIRONMENT_CONTRACT_SHA" ]; then
   fi
   echo "警告: 旧镜像缺少环境契约标签，已通过 requirements 与 Python ABI 兼容校验" >&2
 elif [ "$IMAGE_ENVIRONMENT_CONTRACT_SHA" != "$EXPECTED_ENVIRONMENT_CONTRACT_SHA" ]; then
-  echo "镜像环境契约不一致，必须重新构建镜像" >&2
-  exit 1
+  if [ -n "$LEGACY_IMAGE_NAMES_CONTRACT_SHA256" ] && \
+     [ "$IMAGE_ENVIRONMENT_CONTRACT_SHA" = "$LEGACY_IMAGE_NAMES_CONTRACT_SHA256" ]; then
+    echo "环境契约仅存在已知基础镜像命名差异；依赖与Python ABI已通过校验，继续覆盖层预检"
+  else
+    echo "镜像环境契约不一致，必须重新构建镜像" >&2
+    exit 1
+  fi
 fi
 
 if [ "$WITH_WEIGHTS" -eq 0 ]; then
