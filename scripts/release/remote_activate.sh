@@ -87,7 +87,7 @@ docker run --rm --entrypoint python3.10 \
   -e PYTHONPATH=/app/workspace/pkg \
   -v "$STAGE/pkg:/app/workspace/pkg:ro" \
   "$IMAGE_REF" -c \
-  "import importlib.metadata as m; expected=set('${EXPECTED_ENTRYPOINTS}'.split(',')); actual={e.name for e in m.entry_points(group='vie.plugins')}; assert expected <= actual, (expected, actual)"
+  "import importlib.metadata as m; expected=set('${EXPECTED_ENTRYPOINTS}'.split(',')); entry_points=list(m.entry_points(group='vie.plugins')); actual={e.name for e in entry_points}; assert expected <= actual, (expected, actual); [entry_point.load() for entry_point in entry_points if entry_point.name in expected]"
 
 mv "$STAGE" "$FINAL"
 OLD_TARGET=""
