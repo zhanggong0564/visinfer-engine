@@ -7,6 +7,8 @@
 @Description  : 后端无关的视觉模型推理模板
 '''
 
+from typing import Any
+
 import numpy as np
 from services.inference import InferenceRunner
 from utils import vision_logger
@@ -56,6 +58,10 @@ class BaseVisionInfer:
         """
         raise NotImplementedError("post_process method must be implemented in subclass")
 
+    def model_inference(self, model_inputs: Any) -> Any:
+        """Execute prepared inputs; subclasses may sequence multiple model calls."""
+        return self.runner.run({self.input_names[0]: model_inputs})
+
     def infer(self, img: np.ndarray) -> DetectResult:
         """执行推理过程（无状态：每请求态走局部 meta，不写 self）。
 
@@ -74,7 +80,7 @@ class BaseVisionInfer:
             end = time.time()
             vision_logger.debug("模型预处理时间: {:.4f}秒", end - start)
             start = time.time()
-            outputs = self.runner.run({self.input_names[0]: tensor})
+            outputs = self.model_inference(tensor)
             end = time.time()
             vision_logger.debug("模型推理时间: {:.4f}秒", end - start)
             start = time.time()
