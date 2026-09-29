@@ -117,6 +117,7 @@ REQUIREMENTS_SHA256="$(sha256sum "${RUNTIME_REQUIREMENTS[@]}" | sha256sum | awk 
 PYTHON_ABI="$("${CONDA_PYTHON[@]}" -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')"
 BASE_CONTRACT_SHA256="$(bash scripts/release/compute_base_contract.sh)"
 ENVIRONMENT_CONTRACT_SHA256="$(bash scripts/release/compute_environment_contract.sh)"
+LEGACY_IMAGE_NAMES_CONTRACT_SHA256="$(bash scripts/release/compute_environment_contract.sh --legacy-image-names)"
 RUNTIME_CONTRACT_SHA256="$(
   {
     printf '%s\n' "$BASE_CONTRACT_SHA256"
@@ -131,6 +132,7 @@ BASE_CONTRACT_SHA256=${BASE_CONTRACT_SHA256}
 PYTHON_ABI=${PYTHON_ABI}
 RUNTIME_CONTRACT_SHA256=${RUNTIME_CONTRACT_SHA256}
 ENVIRONMENT_CONTRACT_SHA256=${ENVIRONMENT_CONTRACT_SHA256}
+LEGACY_IMAGE_NAMES_CONTRACT_SHA256=${LEGACY_IMAGE_NAMES_CONTRACT_SHA256}
 EOF
 
 # 保持 --local 的旧行为：pkg/ 仍得到本次完整覆盖层。
@@ -151,6 +153,7 @@ ssh "$REMOTE" bash -s -- \
   "$HEALTH_URL" "$REQUIREMENTS_SHA256" "$PYTHON_ABI" \
   "$RUNTIME_CONTRACT_SHA256" "$DO_WEIGHTS" \
   "$(IFS=,; echo "${EXPECTED_ENTRYPOINTS[*]}")" \
-  "$ENVIRONMENT_CONTRACT_SHA256" "$ALLOW_LEGACY_IMAGE"
+  "$ENVIRONMENT_CONTRACT_SHA256" "$ALLOW_LEGACY_IMAGE" \
+  "$LEGACY_IMAGE_NAMES_CONTRACT_SHA256"
 
 echo "发布完成: ${SERVICE} ${RELEASE_ID}"
